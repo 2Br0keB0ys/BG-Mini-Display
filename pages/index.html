@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BGDisplay — Settings</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f0f0f0;--surface:#fff;--border:rgba(0,0,0,0.09);--border-mid:rgba(0,0,0,0.15);
+  --text:#1a1a1a;--muted:#666;--faint:#999;
+  --accent:#E24B4A;--accent-bg:#fff5f5;
+  --green:#16a34a;--green-bg:#dcfce7;
+  --amber:#92400e;--amber-bg:#fef3c7;
+  --red:#b91c1c;--red-bg:#fee2e2;
+  --blue:#1d4ed8;--blue-bg:#dbeafe;
+  --r:8px;--rl:12px;--mono:'Courier New',monospace;
+}
+body{font-family:'Trebuchet MS','Segoe UI',Verdana,sans-serif;background:radial-gradient(1200px 700px at 20% -20%,rgba(255,107,106,.12),transparent 55%),radial-gradient(900px 500px at 100% 0,rgba(96,165,250,.12),transparent 45%),var(--bg);color:var(--text);font-size:14px;line-height:1.5;min-height:100vh}
+
+/* ── Header ── */
+.header{background:color-mix(in srgb,var(--surface) 82%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;padding:0 1.5rem}
+.header-inner{max-width:1280px;margin:0 auto;display:flex;align-items:center;gap:12px;height:62px}
+.logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(145deg,#ff8f70,#e24b4a 65%);box-shadow:0 8px 18px rgba(226,75,74,.25);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.logo svg{width:18px;height:18px;fill:white}
+.header h1{font-size:16px;font-weight:700;letter-spacing:.01em}
+.header p{font-size:12px;color:var(--muted)}
+.status-pill{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;padding:5px 11px;border-radius:99px;white-space:nowrap;flex-shrink:0;border:1px solid transparent}
+.status-pill.online{color:var(--green);background:var(--green-bg)}
+.status-pill.offline{color:var(--red);background:var(--red-bg)}
+.dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+.save-bar{margin-left:12px}
+.save-btn{padding:8px 18px;background:linear-gradient(145deg,#ff8578,#e24b4a 70%);color:white;border:1px solid rgba(255,255,255,.2);border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;transition:transform .15s,filter .15s}
+.save-btn:hover{transform:translateY(-1px);filter:brightness(1.05)}
+
+/* ── Layout ── */
+.page{max-width:1280px;margin:0 auto;padding:1.25rem 1.5rem 2rem}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1.15rem;align-items:start}
+.grid.full{grid-template-columns:1fr}
+@media(max-width:720px){.grid{grid-template-columns:1fr}}
+
+/* ── Section ── */
+.section{background:linear-gradient(180deg,color-mix(in srgb,var(--surface) 92%,#fff 8%),var(--surface));border:1px solid var(--border);border-radius:14px;overflow:hidden;box-shadow:0 6px 20px rgba(0,0,0,.08)}
+.section-head{display:flex;align-items:center;gap:10px;padding:12px 16px;cursor:pointer;user-select:none;border-bottom:1px solid transparent;transition:background .15s}
+.section-head:hover{background:#fafafa}
+.section-head.open{border-bottom-color:var(--border)}
+.section-icon{width:28px;height:28px;border-radius:var(--r);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.section-icon svg{width:14px;height:14px}
+.section-title{font-size:13px;font-weight:700;flex:1}
+.section-sub{font-size:11px;color:var(--muted);margin-top:1px}
+.chevron{width:16px;height:16px;color:var(--faint);transition:transform .2s;flex-shrink:0}
+.chevron.open{transform:rotate(180deg)}
+.section-body{display:none}
+.section-body.open{display:block}
+
+/* ── Field ── */
+.field{padding:11px 16px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border)}
+.field:last-child{border-bottom:none}
+.field-label{flex:1;min-width:0}
+.field-label .name{font-size:13px;font-weight:600}
+.field-label .desc{font-size:11px;color:var(--muted);margin-top:2px;line-height:1.35}
+.subfield{padding:8px 16px 8px 28px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border);background:#fafafa}
+.subfield:last-child{border-bottom:none}
+.subfield .field-label .name{font-size:12px;font-weight:400;color:var(--muted)}
+
+/* ── Inputs ── */
+input[type=text],input[type=password],input[type=url],input[type=number],select{
+  font-size:13px;padding:7px 10px;border-radius:10px;border:1px solid var(--border-mid);
+  background:#fafafa;color:var(--text);outline:none;transition:border .15s,box-shadow .15s}
+input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(226,75,74,.1)}
+input[type=number]{width:80px}
+select{min-width:120px}
+.wide{width:210px}
+input[type=text].wide,input[type=password].wide,input[type=url].wide{width:210px}
+
+/* ── Toggle ── */
+.toggle{position:relative;width:38px;height:21px;flex-shrink:0}
+.toggle input{opacity:0;width:0;height:0}
+.track{position:absolute;inset:0;background:#d1d5db;border-radius:99px;cursor:pointer;transition:background .2s}
+.track::before{content:'';position:absolute;width:15px;height:15px;left:3px;top:3px;background:white;border-radius:50%;transition:transform .2s;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.toggle input:checked+.track{background:var(--accent)}
+.toggle input:checked+.track::before{transform:translateX(17px)}
+
+/* ── Radio ── */
+.radio-group{display:flex;gap:6px;flex-wrap:wrap}
+.radio-opt{display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;padding:4px 9px;border-radius:var(--r);border:1px solid var(--border-mid);background:#fafafa;transition:all .15s}
+.radio-opt:has(input:checked){border-color:var(--accent);background:var(--accent-bg);color:var(--accent)}
+.radio-opt input{accent-color:var(--accent)}
+
+/* ── Badges ── */
+.badge{font-size:11px;padding:2px 7px;border-radius:99px;font-weight:600;white-space:nowrap}
+.badge.green{background:var(--green-bg);color:var(--green)}
+.badge.amber{background:var(--amber-bg);color:var(--amber)}
+.badge.red{background:var(--red-bg);color:var(--red)}
+.badge.blue{background:var(--blue-bg);color:var(--blue)}
+
+/* ── Buttons ── */
+.btn{font-size:12px;padding:6px 12px;border-radius:10px;border:1px solid var(--border-mid);background:white;color:var(--text);cursor:pointer;transition:background .15s,transform .15s;white-space:nowrap}
+.btn:hover{background:#f5f5f5;transform:translateY(-1px)}
+.btn.danger{color:var(--red);border-color:#fca5a5}
+.btn.danger:hover{background:var(--red-bg)}
+.btn.full{width:100%;padding:9px;margin-top:6px;text-align:center}
+
+/* ── Key display ── */
+.key-display{font-family:var(--mono);font-size:11px;background:#f1f5f9;padding:3px 8px;border-radius:var(--r);color:var(--muted);border:1px solid var(--border)}
+
+/* ── Rotate ring ── */
+.rotate-block{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.rotate-meta{font-size:11px;color:var(--muted);text-align:right}
+
+/* ── Diag rows ── */
+.diag-row{display:flex;justify-content:space-between;align-items:center;padding:8px 16px;font-size:12px;border-bottom:1px solid var(--border)}
+.diag-row:last-child{border-bottom:none}
+
+/* ── Version rows ── */
+.vrow{display:flex;justify-content:space-between;align-items:center;padding:8px 16px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)}
+.vrow:last-child{border-bottom:none}
+.vrow .label{color:var(--text)}
+
+/* ── Log ── */
+.log-row{display:flex;justify-content:space-between;padding:4px 16px;font-size:11px;color:var(--muted);border-bottom:1px solid var(--border)}
+.log-row:last-child{border-bottom:none}
+
+/* ── Threshold row ── */
+.thr-row{display:flex;align-items:center;gap:6px}
+.thr-row input{width:68px}
+.thr-row span{font-size:11px;color:var(--muted)}
+
+/* ── Toast ── */
+.toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:#1a1a1a;color:white;padding:9px 18px;border-radius:var(--rl);font-size:13px;z-index:999;opacity:0;transition:opacity .3s;pointer-events:none}
+.toast.show{opacity:1}
+
+/* ── Time range ── */
+.time-range{display:flex;align-items:center;gap:6px}
+.time-range select{width:90px}
+.time-range span{font-size:12px;color:var(--muted)}
+
+/* ── Section icon colors ── */
+.icon-wifi{background:#dbeafe}.icon-wifi svg{stroke:#1d4ed8;fill:none}
+.icon-dex{background:#fce7f3}.icon-dex svg{fill:#be185d}
+.icon-alert{background:#fef3c7}.icon-alert svg{stroke:#92400e;fill:none}
+.icon-display{background:#f3e8ff}.icon-display svg{stroke:#7c3aed;fill:none}
+.icon-security{background:#fee2e2}.icon-security svg{stroke:#b91c1c;fill:none}
+.icon-backup{background:#dcfce7}.icon-backup svg{stroke:#16a34a;fill:none}
+.icon-diag{background:#e0f2fe}.icon-diag svg{stroke:#0369a1;fill:none}
+.icon-system{background:#f1f5f9}.icon-system svg{stroke:#475569;fill:none}
+
+[data-theme="dark"]{
+  --bg:#090a0c;--surface:#14161b;--border:rgba(255,255,255,0.09);--border-mid:rgba(255,255,255,0.18);
+  --text:#f4f6fb;--muted:#9aa0ad;--faint:#626776;
+  --accent:#ff6b6a;--accent-bg:#2d1515;
+  --green:#4ade80;--green-bg:#052e16;
+  --amber:#fbbf24;--amber-bg:#1c1105;
+  --red:#f87171;--red-bg:#2d0a0a;
+  --blue:#60a5fa;--blue-bg:#0c1a2e;
+}
+[data-theme="dark"] .section{box-shadow:0 10px 26px rgba(0,0,0,.32)}
+[data-theme="dark"] .section-head:hover{background:#1b1e25}
+[data-theme="dark"] .subfield{background:#111319}
+[data-theme="dark"] input,
+[data-theme="dark"] select{background:#21242d;border-color:rgba(255,255,255,0.16);color:#f4f6fb}
+[data-theme="dark"] .radio-opt{background:#21242d;border-color:rgba(255,255,255,0.14)}
+[data-theme="dark"] .radio-opt:has(input:checked){background:var(--accent-bg);border-color:var(--accent);color:var(--accent)}
+[data-theme="dark"] .btn{background:#21242d;border-color:rgba(255,255,255,0.18);color:#f4f6fb}
+[data-theme="dark"] .btn:hover{background:#2b3040}
+[data-theme="dark"] .key-display{background:#21242d;border-color:rgba(255,255,255,0.12);color:#a2a9b8}
+[data-theme="dark"] .header{background:color-mix(in srgb,#11131a 84%,transparent);border-color:rgba(255,255,255,0.1)}
+[data-theme="dark"] .icon-wifi{background:#0c1a2e}
+[data-theme="dark"] .icon-dex{background:#2d0a1e}
+[data-theme="dark"] .icon-alert{background:#1c1105}
+[data-theme="dark"] .icon-display{background:#1a0d2e}
+[data-theme="dark"] .icon-security{background:#2d0a0a}
+[data-theme="dark"] .icon-backup{background:#052e16}
+[data-theme="dark"] .icon-diag{background:#0c1a2e}
+[data-theme="dark"] .icon-system{background:#1a1a1a}
+[data-theme="dark"] .log-row{border-color:rgba(255,255,255,0.06)}
+[data-theme="dark"] #app > div > div{border-color:rgba(255,255,255,0.08)}
+.theme-btn{background:none;border:1px solid var(--border-mid);border-radius:var(--r);padding:5px 10px;cursor:pointer;font-size:13px;color:var(--muted);transition:all .15s;margin-right:4px}
+.theme-btn:hover{background:var(--border);color:var(--text)}
+
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-inner">
+    <div class="logo"><svg viewBox="0 0 24 24"><path d="M12 2a7 7 0 017 7c0 5-7 13-7 13S5 14 5 9a7 7 0 017-7zm0 4a3 3 0 100 6 3 3 0 000-6z"/></svg></div>
+    <div><h1>BGDisplay</h1></div>
+    <div id="statusPill" class="status-pill offline"><span class="dot"></span>Loading...</div>
+    <div class="save-bar"><button class="save-btn" onclick="saveConfig()">Save changes</button></div>
+  </div>
+</div>
+
+<div class="page" id="app"><p style="color:var(--muted);padding:2rem;text-align:center">Loading...</p></div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const WORKER_URL = "https://bgdisplay-worker.zanebaize.workers.dev";
+let CONFIG = {}, META = {}, METRICS = null;
+let ADMIN_SESSION = "";
+let LOGS = { meta: null, preview: [], total: 0 };
+let MAINT = null;
+
+// ── API ──────────────────────────────────────────────────────────────────────
+async function apiGet(p){
+  const headers={};
+  if(ADMIN_SESSION) headers['X-Admin-Session']=ADMIN_SESSION;
+  const r=await fetch(WORKER_URL+p,{headers});
+  if(!r.ok) throw new Error(r.status);
+  return r.json();
+}
+async function apiPost(p,d){
+  const headers={'Content-Type':'application/json'};
+  if(ADMIN_SESSION) headers['X-Admin-Session']=ADMIN_SESSION;
+  const r=await fetch(WORKER_URL+p,{method:'POST',headers,body:JSON.stringify(d)});
+  if(!r.ok) throw new Error(r.status);
+  return r.json();
+}
+
+async function ensureSession(){
+  if(ADMIN_SESSION) return;
+  const r=await fetch(WORKER_URL+'/api/admin/session');
+  if(!r.ok) throw new Error('session');
+  const data=await r.json();
+  ADMIN_SESSION=data.token||'';
+}
+
+// ── Toast ────────────────────────────────────────────────────────────────────
+function toast(msg,ms=2500){ const el=document.getElementById('toast'); el.textContent=msg; el.classList.add('show'); setTimeout(()=>el.classList.remove('show'),ms); }
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function fmtTs(ts){ if(!ts) return '—'; const d=new Date(ts),now=new Date(),diff=Date.now()-ts; if(diff<60000) return 'Just now'; if(diff<3600000) return Math.floor(diff/60000)+' min ago'; if(d.toDateString()===now.toDateString()) return 'Today '+d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}); return d.toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}); }
+function fmtCountdown(ms){ if(ms<=0) return 'Overdue'; const d=Math.floor(ms/86400000),h=Math.floor((ms%86400000)/3600000); return d>0?`${d}d ${h}h remaining`:`${h}h remaining`; }
+function rotateProgress(lastRotated){ const total=7*86400000,elapsed=Date.now()-(lastRotated||0),pct=Math.min(elapsed/total,1),r=15,circ=2*Math.PI*r,used=circ*pct,remain=circ-used,label=Math.max(0,7-Math.floor(elapsed/86400000))+'d',color=pct>0.85?'#E24B4A':pct>0.6?'#f59e0b':'#16a34a'; return{used,remain,label,color}; }
+function fmtUptime(s){ if(!s) return '—'; return `${Math.floor(s/86400)}d ${Math.floor((s%86400)/3600)}h`; }
+
+// ── Collect Config ────────────────────────────────────────────────────────────
+function get(id){ const el=document.getElementById(id); if(!el) return undefined; if(el.type==='checkbox') return el.checked; if(el.type==='number') return parseFloat(el.value); return el.value; }
+function radio(name){ const el=document.querySelector(`input[name="${name}"]:checked`); return el?el.value:undefined; }
+
+function collectConfig(){
+  const c={};
+  const fields=['wifi_ssid','wifi_pass','nightscout_url','nightscout_secret','dexcom_user','dexcom_pass','dexcom_region',
+    'poll_interval_min','stale_data_warn_min','config_ping_min',
+    'bg_units','urgent_low','low','high','urgent_high',
+    'show_last_reading_time','show_trend_arrow','brightness','auto_dim_min','dim_to_pct',
+    'dnd_enabled','dnd_from','dnd_to','clock_24hr','timezone',
+    'rate_limit_per_min','lockout_enabled','lockout_attempts','lockout_duration_min',
+    'session_timeout_min','ip_allowlist_enabled','auto_backup',
+    'alert_offline_min','alert_stale_min','alert_battery_low_pct','alert_cooldown_min'];
+  fields.forEach(f=>{ const v=get(f); if(v!==undefined&&v!=='') c[f]=v; });
+  const bgAlert=radio('bg_alert_style'); if(bgAlert) c.bg_alert_style=bgAlert;
+  if(get('wifi_pass')==='') delete c.wifi_pass;
+  if(get('dexcom_pass')==='') delete c.dexcom_pass;
+  return c;
+}
+
+// ── Actions ──────────────────────────────────────────────────────────────────
+async function saveConfig(){
+  const btn=document.querySelector('.save-btn');
+  if(btn){ btn.textContent='Saving...'; btn.disabled=true; }
+  try{
+    const updates=collectConfig();
+    await apiPost('/api/admin/config',updates);
+    CONFIG={...CONFIG,...updates};
+    toast('✓ Saved. Reboot device to apply now (or wait for 3AM auto reboot).', 4500);
+    await loadConfig();
+    await loadMetrics();
+    render();
+  }catch(e){
+    toast('❌ Error saving — check Worker');
+  } finally {
+    if(btn){ btn.textContent='Save changes'; btn.disabled=false; }
+  }
+}
+
+async function clearLog(){
+  try{ await apiPost('/api/admin/clear-log',{}); META.changelog=[]; render(); toast('✓ Log cleared'); }
+  catch(e){ toast('Error'); }
+}
+
+function exportConfig(){ window.open(WORKER_URL+'/api/admin/export','_blank'); }
+
+function importConfig(){
+  const input=document.createElement('input'); input.type='file'; input.accept='.json';
+  input.onchange=async e=>{
+    try{ const text=await e.target.files[0].text(); const data=JSON.parse(text); await apiPost('/api/admin/import',data); toast('✓ Config imported'); await loadConfig(); render(); }
+    catch(err){ toast('Import failed'); }
+  }; input.click();
+}
+
+async function runDiagnostics(){
+  document.getElementById('diag-dex').innerHTML='<span class="badge blue">Testing...</span>';
+  document.getElementById('diag-worker').innerHTML='<span class="badge blue">Testing...</span>';
+  const t0=Date.now();
+  try{ await apiGet('/api/admin/config'); document.getElementById('diag-latency').textContent=`${Date.now()-t0}ms`; document.getElementById('diag-worker').innerHTML='<span class="badge green">OK</span>'; }
+  catch(e){ document.getElementById('diag-worker').innerHTML='<span class="badge red">Error</span>'; }
+  document.getElementById('diag-dex').innerHTML=CONFIG.dexcom_user?'<span class="badge green">Configured</span>':'<span class="badge amber">Not configured</span>';
+}
+
+async function sendCommand(type){
+  try{
+    await apiPost('/api/admin/command',{type});
+    const msg = type==='reboot'
+      ? '✓ Reboot command queued'
+      : (type==='upload-logs' ? '✓ Pull SD logs command queued' : '✓ Sync-now command queued');
+    toast(msg);
+    await loadConfig();
+    await loadMetrics();
+    render();
+  }catch(e){
+    toast('❌ Failed to queue command');
+  }
+}
+
+function downloadLatestLogs(){
+  window.open(WORKER_URL + '/api/admin/logs/latest?download=1', '_blank');
+}
+
+async function loadLogs(){
+  const q = encodeURIComponent(document.getElementById('log_q')?.value || '');
+  const lvl = encodeURIComponent(document.getElementById('log_lvl')?.value || '');
+  try{
+    LOGS = await apiGet(`/api/admin/logs/latest?limit=120&q=${q}&lvl=${lvl}`);
+    render();
+  }catch(e){
+    toast('Log query failed');
+  }
+}
+
+async function loadMaintenance(){
+  try{ MAINT = await apiGet('/api/admin/maintenance'); }
+  catch(e){ MAINT = null; }
+}
+
+// ── Collapsible sections ──────────────────────────────────────────────────────
+function toggleSection(id){
+  const body=document.getElementById('body-'+id);
+  const head=document.getElementById('head-'+id);
+  const chev=document.getElementById('chev-'+id);
+  const open=body.classList.toggle('open');
+  head.classList.toggle('open',open);
+  chev.classList.toggle('open',open);
+  localStorage.setItem('section-'+id, open?'1':'0');
+}
+
+function sectionOpen(id){ return localStorage.getItem('section-'+id)!=='0'; }
+
+function section(id,iconClass,iconSvg,title,sub,content,fullWidth=false){
+  const open=sectionOpen(id);
+  return `<div class="section${fullWidth?' full':''}">
+    <div class="section-head${open?' open':''}" id="head-${id}" onclick="toggleSection('${id}')">
+      <div class="section-icon ${iconClass}">${iconSvg}</div>
+      <div style="flex:1"><div class="section-title">${title}</div>${sub?`<div class="section-sub">${sub}</div>`:''}
+      </div>
+      <svg class="chevron${open?' open':''}" id="chev-${id}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+    </div>
+    <div class="section-body${open?' open':''}" id="body-${id}">${content}</div>
+  </div>`;
+}
+
+function field(label,desc,control){
+  return `<div class="field"><div class="field-label"><div class="name">${label}</div>${desc?`<div class="desc">${desc}</div>`:''}</div>${control}</div>`;
+}
+
+function subfield(label,control){
+  return `<div class="subfield"><div class="field-label"><div class="name">${label}</div></div>${control}</div>`;
+}
+
+function sel(id,options,val){
+  return `<select id="${id}">${options.map(([v,l])=>`<option value="${v}"${val==v?' selected':''}>${l}</option>`).join('')}</select>`;
+}
+
+function tog(id,val){
+  return `<label class="toggle"><input type="checkbox" id="${id}"${val?' checked':''}><span class="track"></span></label>`;
+}
+
+function inp(id,type,val,ph,cls='wide'){
+  return `<input type="${type}" id="${id}" class="${cls}" value="${val||''}" placeholder="${ph||''}">`;
+}
+
+function badge(text,cls){ return `<span class="badge ${cls}">${text}</span>`; }
+
+async function loadMetrics(){
+  try{
+    const data=await apiGet('/api/admin/metrics');
+    METRICS=data||null;
+  }catch(e){
+    METRICS=null;
+  }
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function render(){
+  const c=CONFIG, m=META;
+  const online=m.status&&(Date.now()-m.status.lastSeen<180000);
+  document.getElementById('statusPill').className='status-pill '+(online?'online':'offline');
+  document.getElementById('statusPill').innerHTML=`<span class="dot"></span>${online?'Device online':'Device offline'}`;
+
+  const {used,remain,label,color}=rotateProgress(m.lastRotated);
+  const nextMs=(m.nextAutoRotate||0)-Date.now();
+
+  const wifiIcon=`<svg viewBox="0 0 24 24" stroke-width="2"><path d="M5 12.55a11 11 0 0114.08 0"/><path d="M1.42 9a16 16 0 0121.16 0"/><path d="M8.53 16.11a6 6 0 016.95 0"/><circle cx="12" cy="20" r="1" fill="currentColor"/></svg>`;
+  const dexIcon=`<svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"/></svg>`;
+  const alertIcon=`<svg viewBox="0 0 24 24" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
+  const displayIcon=`<svg viewBox="0 0 24 24" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`;
+  const secIcon=`<svg viewBox="0 0 24 24" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`;
+  const backupIcon=`<svg viewBox="0 0 24 24" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`;
+  const diagIcon=`<svg viewBox="0 0 24 24" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`;
+  const sysIcon=`<svg viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93l-1.41 1.41M4.93 4.93l1.41 1.41M4.93 19.07l1.41-1.41M19.07 19.07l-1.41-1.41M21 12h-2M3 12H1M12 3V1M12 23v-2"/></svg>`;
+  const ctrlIcon=`<svg viewBox="0 0 24 24" stroke-width="2"><path d="M12 2v10"/><path d="M6.2 6.2a8 8 0 1011.3 0"/></svg>`;
+
+  // WiFi section
+  const wifiContent =
+    field('Network (SSID)',`Current: ${c.wifi_ssid||'Not set'}`,inp('wifi_ssid','text',c.wifi_ssid,'Wi-Fi name'))+
+    field('Password','',inp('wifi_pass','password','','••••••••'));
+
+  // Data sources section
+  const nsContent =
+    field('Nightscout URL','Primary source',inp('nightscout_url','url',c.nightscout_url,'https://yoursite.ns.io'))+
+    field('Nightscout token / secret','Access token or API secret',inp('nightscout_secret','password','','token or secret'))+
+    field('Dexcom username','Fallback — email or phone number',inp('dexcom_user','text',c.dexcom_user,'email or +1xxxxxxxxxx'))+
+    field('Dexcom password','',inp('dexcom_pass','password','','••••••••'))+
+    field('Dexcom region','',sel('dexcom_region',[['US','US'],['Non-US','Non-US']],c.dexcom_region))+
+    field('BG poll interval','How often to fetch readings',sel('poll_interval_min',[[1,'1 min'],[5,'5 min'],[10,'10 min']],c.poll_interval_min))+
+    field('Stale data warning','Alert after no new reading',sel('stale_data_warn_min',[[5,'5 min'],[10,'10 min'],[15,'15 min'],[20,'20 min']],c.stale_data_warn_min))+
+    field('Config ping interval','How often to check for setting changes',sel('config_ping_min',[[1,'1 min'],[2,'2 min'],[5,'5 min']],c.config_ping_min||1));
+
+  // BG Alerts section
+  const alertContent =
+    field('BG units','',sel('bg_units',[['mg/dL','mg/dL'],['mmol/L','mmol/L']],c.bg_units))+
+    field('Urgent low','Flashes red, overrides all styles',`<div class="thr-row">${inp('urgent_low','number',c.urgent_low||55,'','')}<span>${c.bg_units||'mg/dL'}</span></div>`)+
+    field('Low threshold','Display turns red',`<div class="thr-row">${inp('low','number',c.low||70,'','')}<span>${c.bg_units||'mg/dL'}</span></div>`)+
+    field('High threshold','Display turns yellow',`<div class="thr-row">${inp('high','number',c.high||180,'','')}<span>${c.bg_units||'mg/dL'}</span></div>`)+
+    field('Urgent high','Display turns orange',`<div class="thr-row">${inp('urgent_high','number',c.urgent_high||250,'','')}<span>${c.bg_units||'mg/dL'}</span></div>`)+
+    field('Alert style','Visual only',`<div class="radio-group">${['pulse','flash','color only'].map(s=>`<label class="radio-opt"><input type="radio" name="bg_alert_style" value="${s}"${(c.bg_alert_style||'pulse')===s?' checked':''}> ${s[0].toUpperCase()+s.slice(1)}</label>`).join('')}</div>`);
+
+  // Display section
+  const displayContent =
+    field('Trend arrow','Show direction indicator next to BG',tog('show_trend_arrow',c.show_trend_arrow!==false))+
+    field('Last reading time','Show "X min ago" under BG number',tog('show_last_reading_time',c.show_last_reading_time!==false))+
+    field('24-hour clock','Affects time display on device',tog('clock_24hr',c.clock_24hr))+
+    field('Timezone','',sel('timezone',[['US/Central','US / Central'],['US/Eastern','US / Eastern'],['US/Mountain','US / Mountain'],['US/Pacific','US / Pacific']],c.timezone))+
+    field('Screen brightness','',sel('brightness',[[25,'25%'],[50,'50%'],[75,'75%'],[100,'100%']],c.brightness))+
+    field('Auto-dim after idle','',sel('auto_dim_min',[[5,'5 min'],[10,'10 min'],[30,'30 min'],[0,'Never']],c.auto_dim_min))+
+    field('Dim to brightness','When idle',sel('dim_to_pct',[[10,'10%'],[25,'25%'],[0,'Off']],c.dim_to_pct))+
+    field('Do not disturb','Lock screen off overnight',tog('dnd_enabled',c.dnd_enabled))+
+    subfield('From / To',`<div class="time-range"><input type="text" id="dnd_from" value="${c.dnd_from||'23:00'}" style="width:65px"><span>to</span><input type="text" id="dnd_to" value="${c.dnd_to||'06:00'}" style="width:65px"></div>`);
+
+  // Security section
+  const secContent =
+    field('Cloudflare Access','',badge('Enabled','green'))+
+    field('Session timeout','Auto-logout from this UI',sel('session_timeout_min',[[15,'15 min'],[30,'30 min'],[60,'1 hour'],[240,'4 hours']],c.session_timeout_min))+
+    field('IP allowlist','Restrict Worker access by IP',tog('ip_allowlist_enabled',c.ip_allowlist_enabled))+
+    field('Device API key','Read-only key used by Core2',`<span class="key-display">bg_ro_••••••••${m.keyTail||'????'}</span>`)+
+    field('Auto key rotate',`${fmtCountdown(nextMs)} — fully automated, zero manual steps<br><span style="font-size:11px;background:var(--amber-bg);color:var(--amber);padding:1px 7px;border-radius:99px;font-weight:600;display:inline-block;margin-top:3px">Locked — 7 days</span>`,
+      `<div class="rotate-block">
+        <svg width="36" height="36" viewBox="0 0 36 36">
+          <circle cx="18" cy="18" r="15" fill="none" stroke="#e5e7eb" stroke-width="3"/>
+          <circle cx="18" cy="18" r="15" fill="none" stroke="${color}" stroke-width="3" stroke-dasharray="${used.toFixed(1)} ${remain.toFixed(1)}" stroke-dashoffset="23.6" stroke-linecap="round" transform="rotate(-90 18 18)"/>
+          <text x="18" y="22" text-anchor="middle" font-size="9" fill="#1a1a1a" font-family="sans-serif">${label}</text>
+        </svg>
+        ${m.pendingRotation?badge('ACK pending','amber'):badge('Active','green')}
+        <div class="rotate-meta">Last rotated: ${fmtTs(m.lastRotated)}</div>
+        <div class="rotate-meta">Next: ${m.nextAutoRotate?new Date(m.nextAutoRotate).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—'}</div>
+      </div>`)+
+    field('Certificate pinning','Core2 rejects non-Cloudflare certs',badge('Active','green'))+
+    field('Rate limiting','Max requests to Worker',sel('rate_limit_per_min',[[10,'10 per Minute'],[15,'15 per Minute'],[25,'25 per Minute'],[30,'30 per Minute'],[45,'45 per Minute'],[60,'60 per Minute']],c.rate_limit_per_min))+
+    field('Failed auth lockout','Lock after repeated failed attempts',tog('lockout_enabled',c.lockout_enabled!==false))+
+    subfield('Attempts before lockout',sel('lockout_attempts',[[3,'3'],[5,'5'],[10,'10']],c.lockout_attempts))+
+    subfield('Lockout duration',sel('lockout_duration_min',[[5,'5 min'],[15,'15 min'],[60,'1 hour']],c.lockout_duration_min))+
+    field('Last known device IP','Masked for privacy',`<span class="key-display">${m.status?.ip||'—'}</span>`)+
+    field('Failed auth attempts','Last 24 hours',badge(`${m.failedAuthCount||0} attempts`,m.failedAuthCount>0?'red':'green'))+
+    `<div style="padding:8px 16px;background:#fafafa;border-top:1px solid var(--border)"><div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Config change log <span style="font-size:10px;font-weight:400">(v${m.config_version||0})</span></div>${(m.changelog||[]).slice(0,5).map(l=>`<div class="log-row"><span>${l.msg}</span><span>${fmtTs(l.ts)}</span></div>`).join('')||'<div style="font-size:12px;color:var(--faint);padding:4px 0">No entries yet</div>'}<div style="text-align:right;margin-top:6px"><button class="btn" onclick="clearLog()">Clear log</button></div></div>`;
+
+  // Backup section
+  const backupContent =
+    field('Export config','Download settings as JSON',`<button class="btn" onclick="exportConfig()">Export</button>`)+
+    field('Import config','Restore from a previous export',`<button class="btn" onclick="importConfig()">Import</button>`)+
+    field('Auto-backup to KV','Saves snapshot on every save',tog('auto_backup',c.auto_backup!==false));
+
+  // Diagnostics section
+  const diagContent =
+    `<div class="diag-row"><span>Cloudflare Worker</span><span id="diag-worker">${badge('—','blue')}</span></div>`+
+    `<div class="diag-row"><span>Dexcom Share</span><span id="diag-dex">${badge('—','blue')}</span></div>`+
+    `<div class="diag-row"><span>Worker latency</span><span id="diag-latency" style="font-size:12px;color:var(--muted)">—</span></div>`+
+    `<div class="diag-row"><span>Last device seen</span><span style="font-size:12px;color:var(--muted)">${fmtTs(m.status?.lastSeen)}</span></div>`+
+    `<div class="diag-row"><span>Device firmware</span><span style="font-size:12px;color:var(--muted)">${m.status?.firmware||'—'}</span></div>`+
+    `<div style="padding:10px 16px"><button class="btn full" onclick="runDiagnostics()">Run connection test</button></div>`;
+
+  // Device Control section
+  const cmd = m.pendingCommand;
+  const ack = m.lastCommandAck;
+  const logMeta = m.lastLogUpload;
+  const controlContent =
+    field('Immediate actions','Queue a one-time command for the device',`<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" onclick="sendCommand('sync-now')">Sync now</button><button class="btn" onclick="sendCommand('upload-logs')">Pull SD logs</button><button class="btn danger" onclick="sendCommand('reboot')">Reboot now</button></div>`)+
+    field('Latest SD log upload','Most recent device log bundle in Worker',
+      logMeta
+        ? `<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end"><span style="font-size:12px;color:var(--muted)">${logMeta.lineCount||0} lines, ${logMeta.bytes||0} bytes (${fmtTs(logMeta.uploadedAt)})</span><button class="btn" onclick="downloadLatestLogs()">Download logs</button></div>`
+        : '<span style="font-size:12px;color:var(--muted)">No uploaded logs yet</span>'
+    )+
+    field('Pending command','',cmd?badge(`${cmd.type} queued`, 'amber'):badge('None', 'green'))+
+    field('Last command ACK','',ack?`<span style="font-size:12px;color:var(--muted)">${ack.type}: ${ack.ok?'OK':'Failed'} (${fmtTs(ack.ts)})</span>`:'<span style="font-size:12px;color:var(--muted)">—</span>');
+
+  // Cloud Insights section
+  const mx = METRICS?.metrics || {};
+  const cloudInsightsContent =
+    field('Samples retained','Recent telemetry points in KV',`<span style="font-size:12px;color:var(--muted)">${mx.samples ?? '—'}</span>`)+
+    field('Average RSSI','Recent average signal strength',`<span style="font-size:12px;color:var(--muted)">${mx.avgRssi ?? '—'}${mx.avgRssi!==null&&mx.avgRssi!==undefined?' dBm':''}</span>`)+
+    field('Battery range','Min/Max from telemetry window',`<span style="font-size:12px;color:var(--muted)">${mx.minBattery ?? '—'}${mx.minBattery!==null&&mx.minBattery!==undefined?'%':''} / ${mx.maxBattery ?? '—'}${mx.maxBattery!==null&&mx.maxBattery!==undefined?'%':''}</span>`)+
+    field('Stale sample ratio','Percent of stale readings in window',`<span style="font-size:12px;color:var(--muted)">${mx.staleSamplePct ?? '—'}%</span>`)+
+    field('Events (1h)','Alerts / Config saves / Command ACK fail',`<span style="font-size:12px;color:var(--muted)">${mx.eventCounts1h?.alert ?? 0} / ${mx.eventCounts1h?.configSave ?? 0} / ${mx.eventCounts1h?.commandAckFail ?? 0}</span>`)+
+    field('Source health','Nightscout ok/fail, Dexcom ok/fail',`<span style="font-size:12px;color:var(--muted)">${mx.sourceHealth?.nsOk ?? 0}/${mx.sourceHealth?.nsFail ?? 0} • ${mx.sourceHealth?.dexOk ?? 0}/${mx.sourceHealth?.dexFail ?? 0}</span>`)+
+    field('Confidence','Overall data confidence score',`<span style="font-size:12px;color:var(--muted)">${mx.confidence?.score ?? '—'}%</span>`);
+
+  // Alert tuning section
+  const alertTuningContent =
+    field('Offline alert threshold','Trigger when device unseen for this long',sel('alert_offline_min',[[10,'10 min'],[15,'15 min'],[30,'30 min'],[60,'60 min']],c.alert_offline_min||15))+
+    field('Stale data alert threshold','Trigger when reading age exceeds this',sel('alert_stale_min',[[15,'15 min'],[30,'30 min'],[45,'45 min'],[60,'60 min']],c.alert_stale_min||30))+
+    field('Low battery threshold','Trigger battery warning at or below',sel('alert_battery_low_pct',[[10,'10%'],[15,'15%'],[20,'20%'],[25,'25%']],c.alert_battery_low_pct||15))+
+    field('Alert cooldown','Minimum minutes between same alert',sel('alert_cooldown_min',[[15,'15 min'],[30,'30 min'],[60,'60 min'],[180,'3 hours']],c.alert_cooldown_min||60));
+
+  // System section
+  const sdBadge = m.status?.sdAvailable ? badge('Available','green') : badge('Not detected','amber');
+  const sysContent =
+    `<div class="vrow"><span class="label">Firmware</span><span>${m.status?.firmware||'—'}</span></div>`+
+    `<div class="vrow"><span class="label">Connection</span><span>${badge(m.status?.connection||'—','green')}</span></div>`+
+    `<div class="vrow"><span class="label">IP address</span><span>${m.status?.deviceIP||m.status?.ip||'—'}</span></div>`+
+    `<div class="vrow"><span class="label">RSSI</span><span>${m.status?.rssi?`${m.status.rssi} dBm`:'—'}</span></div>`+
+    `<div class="vrow"><span class="label">Connected SSID</span><span>${m.status?.ssid||'—'}</span></div>`+
+    `<div class="vrow"><span class="label">Free memory</span><span>${m.status?.freeMemory?`${m.status.freeMemory} KB`:'—'}</span></div>`+
+    `<div class="vrow"><span class="label">Uptime</span><span>${fmtUptime(m.status?.uptime)}</span></div>`+
+    `<div class="vrow"><span class="label">SD card</span><span>${sdBadge}</span></div>`+
+    `<div class="vrow"><span class="label">Config version</span><span>v${m.config_version||0}</span></div>`+
+    `<div class="vrow"><span class="label">Reset reason</span><span>${m.status?.resetReason||'—'}</span></div>`+
+    `<div style="padding:12px 16px"><button class="btn full danger" onclick="if(confirm('Factory reset? This cannot be undone.'))toast('Contact support to factory reset')">Factory reset</button></div>`;
+
+  const logRows = (LOGS.preview||[]).map(l=>`<div class="log-row" style="font-family:var(--mono)"><span style="white-space:pre-wrap;word-break:break-word">${l.replace(/</g,'&lt;')}</span></div>`).join('');
+  const logExplorerContent =
+    `<div class="field"><div class="field-label"><div class="name">Filter logs</div><div class="desc">Search + level filter on latest uploaded SD log bundle</div></div><div style="display:flex;gap:8px;align-items:center"><input id="log_q" type="text" class="wide" placeholder="search text"><select id="log_lvl"><option value="">All</option><option value="ERR">ERR</option><option value="NET">NET</option><option value="CFG">CFG</option><option value="SYS">SYS</option><option value="BG">BG</option><option value="CMD">CMD</option></select><button class="btn" onclick="loadLogs()">Run</button></div></div>`+
+    `<div class="diag-row"><span>Matched lines</span><span style="font-size:12px;color:var(--muted)">${LOGS.total||0}</span></div>`+
+    (logRows||`<div class="diag-row"><span style="color:var(--muted)">No log lines loaded yet</span></div>`);
+
+  const maintContent =
+    `<div class="vrow"><span class="label">Auto reboot</span><span>${MAINT?.rebootSchedule||'Daily 03:00 local'}</span></div>`+
+    `<div class="vrow"><span class="label">Last reset reason</span><span>${MAINT?.lastResetReason||m.status?.resetReason||'—'}</span></div>`+
+    `<div class="vrow"><span class="label">BG fail streak</span><span>${MAINT?.sourceFailStreak??m.status?.bgPollFailStreak??0}</span></div>`+
+    `<div class="vrow"><span class="label">Key rotation due</span><span>${MAINT?.keyRotationDueInMs!==undefined?fmtCountdown(MAINT.keyRotationDueInMs):'—'}</span></div>`+
+    `<div class="vrow"><span class="label">NS secret age</span><span>${MAINT?.nightscoutSecretAgeDays==null?'—':MAINT.nightscoutSecretAgeDays+'d'}</span></div>`+
+    `<div class="vrow"><span class="label">Dexcom pass age</span><span>${MAINT?.dexcomPassAgeDays==null?'—':MAINT.dexcomPassAgeDays+'d'}</span></div>`+
+    `<div class="vrow"><span class="label">Rotation reminders</span><span>${(m.reminders||[]).length?`${m.reminders.length} pending`:'none'}</span></div>`;
+
+  document.getElementById('app').innerHTML = `
+  <div class="grid">
+    ${section('wifi','icon-wifi',wifiIcon,'Wi-Fi','Connection credentials',wifiContent)}
+    ${section('ns','icon-dex',dexIcon,'Data sources','Nightscout primary, Dexcom fallback',nsContent)}
+  </div>
+  <div class="grid">
+    ${section('alerts','icon-alert',alertIcon,'BG alerts','Thresholds and visual alerts',alertContent)}
+    ${section('display','icon-display',displayIcon,'Display','Screen &amp; time settings',displayContent)}
+  </div>
+  <div class="grid">
+    ${section('security','icon-security',secIcon,'Security','API keys, rate limiting, access control',secContent)}
+    ${section('system','icon-system',sysIcon,'System','Device status and information',sysContent)}
+  </div>
+  <div class="grid">
+    ${section('backup','icon-backup',backupIcon,'Backup &amp; restore','Export and import settings',backupContent)}
+    ${section('diag','icon-diag',diagIcon,'Diagnostics','Connection health checks',diagContent)}
+  </div>
+  <div class="grid">
+    ${section('control','icon-system',ctrlIcon,'Device control','Queue reboot or sync commands',controlContent)}
+    ${section('insights','icon-diag',diagIcon,'Cloud insights','Worker-side telemetry and event aggregates',cloudInsightsContent)}
+  </div>
+  <div class="grid">
+    ${section('alerts_cloud','icon-alert',alertIcon,'Alert tuning','Cloud alert thresholds and cooldowns',alertTuningContent)}
+    ${section('logs','icon-diag',diagIcon,'Log explorer','Filter and inspect uploaded SD logs',logExplorerContent)}
+  </div>
+  <div class="grid">
+    ${section('maint','icon-system',sysIcon,'Maintenance center','Reboot/rotation/source health maintenance signals',maintContent)}
+    <div></div>
+  </div>
+  </div>`;
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+async function loadConfig(){
+  const data=await apiGet('/api/admin/config');
+  CONFIG=data.config||{};
+  META={
+    status:data.status,changelog:data.changelog,
+    failedAuthCount:data.failedAuthCount,lastRotated:data.lastRotated,
+    nextAutoRotate:data.nextAutoRotate,keyTail:data.keyTail,
+    pendingRotation:data.pendingRotation,config_version:data.config_version,
+    pendingCommand:data.pendingCommand,lastCommandAck:data.lastCommandAck,
+    lastLogUpload:data.lastLogUpload,
+    reminders:data.reminders||[],
+    secretMeta:data.secretMeta||{},
+  };
+}
+
+async function init(){
+  try{
+    await ensureSession();
+    await loadConfig();
+    await loadMetrics();
+    await loadMaintenance();
+    render();
+  }catch(e){
+    document.getElementById('app').innerHTML=`<div style="text-align:center;padding:3rem;color:var(--red)">Could not reach Worker at <code>${WORKER_URL}</code><br><small style="color:var(--muted);margin-top:8px;display:block">Check that wrangler is deployed and the URL is correct.</small></div>`;
+  }
+}
+init();
+</script>
+</body>
+</html>
