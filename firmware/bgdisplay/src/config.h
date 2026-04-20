@@ -5,6 +5,10 @@
 
 #define FIRMWARE_VERSION "3.0.0-S"
 
+#ifndef ENABLE_OTA
+#define ENABLE_OTA 1
+#endif
+
 enum BGSource { SOURCE_NONE, SOURCE_DEXCOM, SOURCE_NIGHTSCOUT };
 
 struct BGReading {
