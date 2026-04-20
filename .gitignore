@@ -1,0 +1,11 @@
+.DS_Store
+Thumbs.db
+
+# Cloudflare/Wrangler local cache
+**/.wrangler/
+
+# Local secret material
+cloudflare/bgdisplay-device-key.txt
+
+# Node modules if installed later
+**/node_modules/

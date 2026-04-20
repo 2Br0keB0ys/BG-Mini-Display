@@ -1,0 +1,14 @@
+{
+  "name": "bgdisplay-cloudflare",
+  "version": "1.0.0",
+  "private": true,
+  "description": "BGDisplay Cloudflare Worker + Pages deployment helpers",
+  "scripts": {
+    "deploy:worker": "wrangler deploy",
+    "deploy:pages": "cd ../pages && wrangler pages deploy . --project-name bgdisplay-ui",
+    "deploy:all": "npm run deploy:worker && npm run deploy:pages"
+  },
+  "devDependencies": {
+    "wrangler": "^4.83.0"
+  }
+}
