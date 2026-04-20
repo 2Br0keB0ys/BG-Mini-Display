@@ -31,6 +31,8 @@ const DEFAULT_CONFIG = {
   // Security
   rate_limit_per_min: 45, lockout_enabled: true,
   lockout_attempts: 5, lockout_duration_min: 15,
+  device_write_rate_limit_per_min: 20,
+  admin_write_rate_limit_per_min: 15,
   session_timeout_min: 30, ip_allowlist_enabled: false, ip_allowlist: [],
   // Alerts / Monitoring
   alert_offline_min: 15,
@@ -59,6 +61,9 @@ function normalizeConfig(cfg) {
   out.alert_stale_min = Math.max(5, Math.min(240, Number(out.alert_stale_min || 30)));
   out.alert_battery_low_pct = Math.max(5, Math.min(40, Number(out.alert_battery_low_pct || 15)));
   out.alert_cooldown_min = Math.max(5, Math.min(360, Number(out.alert_cooldown_min || 60)));
+  out.rate_limit_per_min = Math.max(10, Math.min(300, Number(out.rate_limit_per_min || 45)));
+  out.device_write_rate_limit_per_min = Math.max(5, Math.min(180, Number(out.device_write_rate_limit_per_min || 20)));
+  out.admin_write_rate_limit_per_min = Math.max(3, Math.min(120, Number(out.admin_write_rate_limit_per_min || 15)));
 
   return out;
 }
@@ -146,6 +151,10 @@ async function verifyDeviceSignature(request, env, keyHash, rawBody = "") {
   const ts = Number(tsStr);
   if (!Number.isFinite(ts)) return { ok: false, error: "Invalid signature timestamp" };
 
+  if (!/^[a-zA-Z0-9_-]{8,80}$/.test(nonce)) {
+    return { ok: false, error: "Invalid nonce format" };
+  }
+
   const nowSec = Math.floor(Date.now() / 1000);
   if (Math.abs(nowSec - ts) > 300) return { ok: false, error: "Signature timestamp out of range" };
 
@@ -172,10 +181,24 @@ async function signCommandEnvelope(cmd, keyHash) {
   return hmacSha256Hex(keyHash, canonical);
 }
 
+async function checkReplayToken(env, scope, token, ttlSec = 600) {
+  if (!token) return { ok: true };
+  if (!/^[a-zA-Z0-9._:-]{8,120}$/.test(token)) {
+    return { ok: false, error: "Invalid request id" };
+  }
+  const key = `reqid:${scope}:${token}`;
+  if (await env.BGDISPLAY_AUTH.get(key)) {
+    return { ok: false, error: "Duplicate request" };
+  }
+  await env.BGDISPLAY_AUTH.put(key, "1", { expirationTtl: ttlSec });
+  return { ok: true };
+}
+
 // ─── Rate Limiting ─────────────────────────────────────────────────────────────
 
-async function checkRateLimit(env, ip, limitPerMin) {
-  const key = `ratelimit:${ip}`, now = Date.now();
+async function checkRateLimit(env, bucket, limitPerMin) {
+  const key = `ratelimit:${bucket}`;
+  const now = Date.now();
   let r = await env.BGDISPLAY_AUTH.get(key, { type: "json" }) || { count: 0, windowStart: now };
   if (now - r.windowStart > 60000) r = { count: 1, windowStart: now }; else r.count++;
   await env.BGDISPLAY_AUTH.put(key, JSON.stringify(r), { expirationTtl: 120 });
@@ -440,7 +463,7 @@ export default {
 
     const configRaw = await env.BGDISPLAY_CONFIG.get("config", { type: "json" });
     const config = normalizeConfig(configRaw);
-    if (!(await checkRateLimit(env, ip, config.rate_limit_per_min || 45))) {
+    if (!(await checkRateLimit(env, `ip:${ip}`, config.rate_limit_per_min || 45))) {
       return json({ error: "Rate limit exceeded" }, 429);
     }
 
@@ -526,11 +549,17 @@ export default {
 
     // ── POST /api/status ──────────────────────────────────────────────────────
     if (path === "/api/status" && method === "POST") {
+      if (!(await checkRateLimit(env, `device-write:${ip}`, config.device_write_rate_limit_per_min || 20))) {
+        return json({ error: "Device write rate limit exceeded" }, 429);
+      }
       const deviceKey = request.headers.get("X-Device-Key");
       if (!deviceKey) return json({ error: "Missing key" }, 401);
       const keyHash = await sha256(deviceKey);
       const valid = keyHash === auth.keyHash || (auth.pendingKeyHash && keyHash === auth.pendingKeyHash);
       if (!valid) return json({ error: "Invalid key" }, 401);
+      const reqId = request.headers.get("X-Request-Id") || "";
+      const replay = await checkReplayToken(env, `status:${keyHash.slice(0, 12)}`, reqId, 900);
+      if (!replay.ok) return json({ error: replay.error }, 409);
       const rawBody = await request.text();
       const sig = await verifyDeviceSignature(request, env, keyHash, rawBody);
       if (!sig.ok) return json({ error: sig.error }, 401);
@@ -543,11 +572,18 @@ export default {
 
     // ── POST /api/log-upload — Device uploads decrypted SD logs ─────────────
     if (path === "/api/log-upload" && method === "POST") {
+      if (!(await checkRateLimit(env, `device-write:${ip}`, config.device_write_rate_limit_per_min || 20))) {
+        return json({ error: "Device write rate limit exceeded" }, 429);
+      }
       const deviceKey = request.headers.get("X-Device-Key");
       if (!deviceKey) return json({ error: "Missing key" }, 401);
       const keyHash = await sha256(deviceKey);
       const valid = keyHash === auth.keyHash || (auth.pendingKeyHash && keyHash === auth.pendingKeyHash);
       if (!valid) return json({ error: "Invalid key" }, 401);
+
+      const reqId = request.headers.get("X-Request-Id") || request.headers.get("X-Command-Id") || "";
+      const replay = await checkReplayToken(env, `log-upload:${keyHash.slice(0, 12)}`, reqId, 1800);
+      if (!replay.ok) return json({ error: replay.error }, 409);
 
       const text = await request.text();
       const sig = await verifyDeviceSignature(request, env, keyHash, text);
@@ -604,6 +640,9 @@ export default {
 
     // ── POST /api/command-ack — Device command ACK ───────────────────────────
     if (path === "/api/command-ack" && method === "POST") {
+      if (!(await checkRateLimit(env, `device-write:${ip}`, config.device_write_rate_limit_per_min || 20))) {
+        return json({ error: "Device write rate limit exceeded" }, 429);
+      }
       const deviceKey = request.headers.get("X-Device-Key");
       if (!deviceKey) return json({ error: "Missing key" }, 401);
 
@@ -617,6 +656,11 @@ export default {
       let body = {};
       try { body = rawBody ? JSON.parse(rawBody) : {}; }
       catch { return json({ error: "Invalid JSON" }, 400); }
+
+      const reqId = request.headers.get("X-Request-Id") || "";
+      const replay = await checkReplayToken(env, `command-ack:${keyHash.slice(0, 12)}`, reqId || (body?.id || ""), 1800);
+      if (!replay.ok) return json({ error: replay.error }, 409);
+
       const cmdId = body?.id;
       if (!cmdId) return json({ error: "Missing command id" }, 400);
 
@@ -705,6 +749,13 @@ export default {
     }
 
     if (path === "/api/admin/config" && method === "POST") {
+      if (!(await checkRateLimit(env, `admin-write:${ip}`, config.admin_write_rate_limit_per_min || 15))) {
+        return json({ error: "Admin write rate limit exceeded" }, 429);
+      }
+      const adminReqId = request.headers.get("X-Request-Id") || "";
+      const adminReplay = await checkReplayToken(env, `admin-config:${ip}`, adminReqId, 900);
+      if (!adminReplay.ok) return json({ error: adminReplay.error }, 409);
+
       const body = await request.json().catch(() => null);
       if (!body) return json({ error: "Invalid JSON" }, 400);
       const merged = normalizeConfig({ ...config, ...body });
@@ -790,6 +841,13 @@ export default {
     }
 
     if (path === "/api/admin/command" && method === "POST") {
+      if (!(await checkRateLimit(env, `admin-write:${ip}`, config.admin_write_rate_limit_per_min || 15))) {
+        return json({ error: "Admin write rate limit exceeded" }, 429);
+      }
+      const adminReqId = request.headers.get("X-Request-Id") || "";
+      const adminReplay = await checkReplayToken(env, `admin-command:${ip}`, adminReqId, 900);
+      if (!adminReplay.ok) return json({ error: adminReplay.error }, 409);
+
       const body = await request.json().catch(() => null);
       if (!body?.type) return json({ error: "Missing command type" }, 400);
 

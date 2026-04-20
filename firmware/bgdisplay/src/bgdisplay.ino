@@ -15,6 +15,7 @@
 #include "dexcom.h"
 #include "wifi_setup.h"
 #include "sd_logger.h"
+#include "ota.h"
 
 Preferences  prefs;
 AppConfig    appConfig;
@@ -312,6 +313,8 @@ void loop() {
       WiFi.reconnect();
     }
   }
+
+  otaTick(appConfig);
 
   updateDisplay(appConfig, lastReading, dispState);
   delay(50);
