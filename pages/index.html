@@ -314,8 +314,10 @@ async function sendCommand(type){
   }
 }
 
-function downloadLatestLogs(){
-  window.open(WORKER_URL + '/api/admin/logs/latest?download=1', '_blank');
+async function downloadLatestLogs(){
+  await ensureSession();
+  const q = new URLSearchParams({ download: '1', session: ADMIN_SESSION || '' });
+  window.open(WORKER_URL + '/api/admin/logs/latest?' + q.toString(), '_blank');
 }
 
 async function loadLogs(){

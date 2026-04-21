@@ -335,7 +335,16 @@ async function issueAdminSession(env, ip) {
 }
 
 async function validateAdminSession(env, request) {
-  const token = request.headers.get("X-Admin-Session") || "";
+  let token = request.headers.get("X-Admin-Session") || "";
+  if (!token) {
+    const u = new URL(request.url);
+    const allowQuerySession = request.method === "GET"
+      && u.pathname === "/api/admin/logs/latest"
+      && u.searchParams.get("download") === "1";
+    if (allowQuerySession) {
+      token = u.searchParams.get("session") || "";
+    }
+  }
   if (!token) return false;
   const s = await env.BGDISPLAY_AUTH.get(`admin_session:${token}`, { type: "json" });
   return !!s;
