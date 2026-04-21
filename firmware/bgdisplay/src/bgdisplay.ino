@@ -169,8 +169,14 @@ void setup() {
   // Init SD (before display so boot screen can show SD status)
   sdInit();
   sdLog("SYS", "Boot start");
+  {
+    char rr[48];
+    snprintf(rr, sizeof(rr), "Reset reason: %s", gResetReason);
+    sdLog("SYS", rr);
+  }
 
   initDisplay(appConfig);
+  dispState.lastTouch = millis();
   showBootScreen();
 
   if (!connectWiFi(appConfig, prefs)) {
@@ -233,10 +239,9 @@ void loop() {
     }
   }
 
-  // HTTPS fast sync — lightweight check up to every 15s.
-  // If configPingMin is smaller than 15s-equivalent, it remains in control.
+  // HTTPS fast sync — cap to once per 60s to reduce long-run network churn.
   unsigned long pingMs = (unsigned long)appConfig.configPingMin * 60000UL;
-  const unsigned long kFastSyncMs = 15000UL;
+  const unsigned long kFastSyncMs = 60000UL;
   if (pingMs > kFastSyncMs) pingMs = kFastSyncMs;
   if (WiFi.status()==WL_CONNECTED && now - lastConfigPing > pingMs) {
     lastConfigPing = now;
@@ -259,6 +264,10 @@ void loop() {
 
   // BG poll — every pollIntervalMin
   unsigned long pollMs = (unsigned long)appConfig.pollIntervalMin * 60000UL;
+  // If all BG sources are failing repeatedly, back off polling to reduce
+  // connection churn and avoid long-run instability under bad network/API states.
+  if (sourceHealth.consecutiveBgFailures >= 3 && pollMs < 180000UL) pollMs = 180000UL;
+  if (sourceHealth.consecutiveBgFailures >= 8 && pollMs < 300000UL) pollMs = 300000UL;
   if (WiFi.status()==WL_CONNECTED && now - lastBGPoll > pollMs) {
     lastBGPoll = now;
     bool ok = false;
@@ -420,6 +429,7 @@ void pullCloudflareConfig(AppConfig& cfg, Preferences& p) {
     if (c.containsKey("show_trend_arrow"))    cfg.showTrendArrow    = c["show_trend_arrow"];
     if (c.containsKey("brightness"))          cfg.brightness        = c["brightness"];
     if (c.containsKey("auto_dim_min"))        cfg.autoDimMin        = c["auto_dim_min"];
+    if (c.containsKey("dim_to_pct"))          cfg.dimToPct          = c["dim_to_pct"];
     if (c.containsKey("clock_24hr"))          cfg.clock24hr         = c["clock_24hr"];
     if (c.containsKey("dnd_enabled"))         cfg.dndEnabled        = c["dnd_enabled"];
     if (c.containsKey("bg_alert_style"))      strlcpy(cfg.bgAlertStyle, c["bg_alert_style"], 16);

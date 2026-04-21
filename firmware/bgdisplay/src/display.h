@@ -402,19 +402,31 @@ void updateDisplay(AppConfig& cfg, BGReading& reading, DisplayState& state) {
   // DND — screen off
   if (cfg.dndEnabled && isDND(cfg.dndFrom, cfg.dndTo)) {
     M5.Display.setBrightness(0);
+    state.dimmed = true;
     return;
   }
+
+  // Outside DND, guarantee screen is visible.
+  int normalPct = cfg.brightness;
+  if (normalPct < 5) normalPct = 5;
+  if (normalPct > 100) normalPct = 100;
+  int dimPct = cfg.dimToPct;
+  if (dimPct < 15) dimPct = 15;
+  if (dimPct > normalPct) dimPct = normalPct;
 
   // Auto-dim logic
   if (cfg.autoDimMin > 0) {
     bool shouldDim = (now - state.lastTouch) > (unsigned long)cfg.autoDimMin * 60000UL;
     if (shouldDim && !state.dimmed) {
-      M5.Display.setBrightness(map(cfg.dimToPct, 0, 100, 0, 255));
+      M5.Display.setBrightness(map(dimPct, 0, 100, 0, 255));
       state.dimmed = true;
     } else if (!shouldDim && state.dimmed) {
-      M5.Display.setBrightness(map(cfg.brightness, 0, 100, 0, 255));
+      M5.Display.setBrightness(map(normalPct, 0, 100, 0, 255));
       state.dimmed = false;
     }
+  } else if (state.dimmed) {
+    M5.Display.setBrightness(map(normalPct, 0, 100, 0, 255));
+    state.dimmed = false;
   }
 
   // Time string
