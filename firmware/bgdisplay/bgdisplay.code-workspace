@@ -1,6 +1,23 @@
 {
 	"folders": [
 		{
+			"name": "bgdisplay-root",
+			"path": "../.."
+		},
+		{
+			"name": "cloudflare",
+			"path": "../../cloudflare"
+		},
+		{
+			"name": "firmware",
+			"path": "../../firmware"
+		},
+		{
+			"name": "pages",
+			"path": "../../pages"
+		},
+		{
+			"name": "firmware-bgdisplay",
 			"path": "."
 		}
 	],
