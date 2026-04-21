@@ -52,8 +52,8 @@ struct AppConfig {
   bool showLastReadingTime=true;
   bool showTrendArrow=true;
   int  brightness=75;
-  int  autoDimMin=10;
-  int  dimToPct=10;
+  int  autoDimMin=5;
+  int  dimToPct=15;
   bool dndEnabled=false;
   char dndFrom[8]="23:00";
   char dndTo[8]="06:00";
@@ -71,9 +71,9 @@ inline void sanitizeConfig(AppConfig& c) {
 
   if (c.brightness < 0) c.brightness = 0;
   if (c.brightness > 100) c.brightness = 100;
-  if (c.dimToPct < 0) c.dimToPct = 0;
+  if (c.dimToPct < 15) c.dimToPct = 15;
   if (c.dimToPct > 100) c.dimToPct = 100;
-  if (c.autoDimMin < 0) c.autoDimMin = 0;
+  if (c.autoDimMin < 5) c.autoDimMin = 5;
 
   if (c.urgentLow < 40) c.urgentLow = 40;
   if (c.low <= c.urgentLow) c.low = c.urgentLow + 1;
