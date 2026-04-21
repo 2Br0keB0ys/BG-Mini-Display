@@ -230,7 +230,7 @@ async function ensureSession(){
 function toast(msg,ms=2500){ const el=document.getElementById('toast'); el.textContent=msg; el.classList.add('show'); setTimeout(()=>el.classList.remove('show'),ms); }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-function fmtTs(ts){ if(!ts) return '—'; const d=new Date(ts),now=new Date(),diff=Date.now()-ts; if(diff<60000) return 'Just now'; if(diff<3600000) return Math.floor(diff/60000)+' min ago'; if(d.toDateString()===now.toDateString()) return 'Today '+d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}); return d.toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}); }
+function fmtTs(ts){ if(!ts) return '—'; const d=new Date(ts),now=new Date(),diff=Date.now()-ts; if(diff<60000) return 'Just now'; if(diff<3600000) return Math.floor(diff/60000)+' min ago'; if(d.toDateString()===now.toDateString()) return 'Today '+d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit',hour12:true}); return d.toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',hour12:true}); }
 function fmtCountdown(ms){ if(ms<=0) return 'Overdue'; const d=Math.floor(ms/86400000),h=Math.floor((ms%86400000)/3600000); return d>0?`${d}d ${h}h remaining`:`${h}h remaining`; }
 function rotateProgress(lastRotated){ const total=7*86400000,elapsed=Date.now()-(lastRotated||0),pct=Math.min(elapsed/total,1),r=15,circ=2*Math.PI*r,used=circ*pct,remain=circ-used,label=Math.max(0,7-Math.floor(elapsed/86400000))+'d',color=pct>0.85?'#E24B4A':pct>0.6?'#f59e0b':'#16a34a'; return{used,remain,label,color}; }
 function fmtUptime(s){ if(!s) return '—'; return `${Math.floor(s/86400)}d ${Math.floor((s%86400)/3600)}h`; }
@@ -487,7 +487,7 @@ function render(){
         </svg>
         ${m.pendingRotation?badge('ACK pending','amber'):badge('Active','green')}
         <div class="rotate-meta">Last rotated: ${fmtTs(m.lastRotated)}</div>
-        <div class="rotate-meta">Next: ${m.nextAutoRotate?new Date(m.nextAutoRotate).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—'}</div>
+        <div class="rotate-meta">Next: ${m.nextAutoRotate?new Date(m.nextAutoRotate).toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',hour12:true}):'—'}</div>
       </div>`)+
     field('Certificate pinning','Core2 rejects non-Cloudflare certs',badge('Active','green'))+
     field('Rate limiting','Max requests to Worker',sel('rate_limit_per_min',[[10,'10 per Minute'],[15,'15 per Minute'],[25,'25 per Minute'],[30,'30 per Minute'],[45,'45 per Minute'],[60,'60 per Minute']],c.rate_limit_per_min))+
