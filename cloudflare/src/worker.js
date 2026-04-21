@@ -11,6 +11,38 @@ const KEY_ROTATE_MS     = 7 * 24 * 60 * 60 * 1000;
 const PENDING_KEY_TTL_MS = 48 * 60 * 60 * 1000;
 const ADMIN_SESSION_TTL_SEC = 8 * 60 * 60;
 
+const DEFAULT_DND_SCHEDULE = {
+  sun: { from: "23:00", to: "06:00" },
+  mon: { from: "23:00", to: "06:00" },
+  tue: { from: "23:00", to: "06:00" },
+  wed: { from: "23:00", to: "06:00" },
+  thu: { from: "23:00", to: "06:00" },
+  fri: { from: "23:00", to: "06:00" },
+  sat: { from: "23:00", to: "06:00" },
+};
+
+function normalizeClock(v, fallback) {
+  if (typeof v !== "string") return fallback;
+  const m = v.trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+  if (!m) return fallback;
+  return `${m[1].padStart(2, "0")}:${m[2]}`;
+}
+
+function normalizeDndSchedule(sched, fallbackFrom, fallbackTo) {
+  const src = (sched && typeof sched === "object") ? sched : {};
+  const out = {};
+  for (const [day, def] of Object.entries(DEFAULT_DND_SCHEDULE)) {
+    const d = src[day] && typeof src[day] === "object" ? src[day] : {};
+    const fromFallback = normalizeClock(fallbackFrom, def.from);
+    const toFallback = normalizeClock(fallbackTo, def.to);
+    out[day] = {
+      from: normalizeClock(d.from, fromFallback),
+      to: normalizeClock(d.to, toFallback),
+    };
+  }
+  return out;
+}
+
 const DEFAULT_CONFIG = {
   // WiFi
   wifi_ssid: "", wifi_pass: "", cellular_fallback: false, reconnect_attempts: 5,
@@ -27,6 +59,8 @@ const DEFAULT_CONFIG = {
   show_last_reading_time: true, show_trend_arrow: true,
   brightness: 75, auto_dim_min: 10, dim_to_pct: 10,
   dnd_enabled: false, dnd_from: "23:00", dnd_to: "06:00",
+  dnd_use_schedule: true,
+  dnd_schedule: DEFAULT_DND_SCHEDULE,
   clock_24hr: false, timezone: "US/Central",
   // Security
   rate_limit_per_min: 45, lockout_enabled: true,
@@ -64,6 +98,8 @@ function normalizeConfig(cfg) {
   out.rate_limit_per_min = Math.max(10, Math.min(300, Number(out.rate_limit_per_min || 45)));
   out.device_write_rate_limit_per_min = Math.max(5, Math.min(180, Number(out.device_write_rate_limit_per_min || 20)));
   out.admin_write_rate_limit_per_min = Math.max(3, Math.min(120, Number(out.admin_write_rate_limit_per_min || 15)));
+  out.dnd_use_schedule = out.dnd_use_schedule !== false;
+  out.dnd_schedule = normalizeDndSchedule(out.dnd_schedule, out.dnd_from, out.dnd_to);
 
   return out;
 }

@@ -244,13 +244,24 @@ function collectConfig(){
   const fields=['wifi_ssid','wifi_pass','nightscout_url','nightscout_secret','dexcom_user','dexcom_pass','dexcom_region',
     'poll_interval_min','stale_data_warn_min','config_ping_min',
     'bg_units','urgent_low','low','high','urgent_high',
-    'show_last_reading_time','show_trend_arrow','brightness','auto_dim_min','dim_to_pct',
+    'show_last_reading_time','show_trend_arrow','brightness',
     'dnd_enabled','dnd_from','dnd_to','clock_24hr','timezone',
     'rate_limit_per_min','lockout_enabled','lockout_attempts','lockout_duration_min',
     'session_timeout_min','ip_allowlist_enabled','auto_backup',
     'alert_offline_min','alert_stale_min','alert_battery_low_pct','alert_cooldown_min'];
   fields.forEach(f=>{ const v=get(f); if(v!==undefined&&v!=='') c[f]=v; });
   const bgAlert=radio('bg_alert_style'); if(bgAlert) c.bg_alert_style=bgAlert;
+
+  const days=['sun','mon','tue','wed','thu','fri','sat'];
+  const dndSchedule={};
+  days.forEach(day=>{
+    const from=(get(`dnd_${day}_from`)||'23:00').trim();
+    const to=(get(`dnd_${day}_to`)||'06:00').trim();
+    dndSchedule[day]={from,to};
+  });
+  c.dnd_use_schedule=true;
+  c.dnd_schedule=dndSchedule;
+
   if(get('wifi_pass')==='') delete c.wifi_pass;
   if(get('dexcom_pass')==='') delete c.dexcom_pass;
   return c;
@@ -439,16 +450,27 @@ function render(){
     field('Alert style','Visual only',`<div class="radio-group">${['pulse','flash','color only'].map(s=>`<label class="radio-opt"><input type="radio" name="bg_alert_style" value="${s}"${(c.bg_alert_style||'pulse')===s?' checked':''}> ${s[0].toUpperCase()+s.slice(1)}</label>`).join('')}</div>`);
 
   // Display section
+  const dndSched = c.dnd_schedule || {};
+  const dndTime = (day, part, fallback) => {
+    if (dndSched[day] && dndSched[day][part]) return dndSched[day][part];
+    if (part === 'from') return c.dnd_from || '23:00';
+    return c.dnd_to || '06:00';
+  };
   const displayContent =
     field('Trend arrow','Show direction indicator next to BG',tog('show_trend_arrow',c.show_trend_arrow!==false))+
     field('Last reading time','Show "X min ago" under BG number',tog('show_last_reading_time',c.show_last_reading_time!==false))+
     field('24-hour clock','Affects time display on device',tog('clock_24hr',c.clock_24hr))+
     field('Timezone','',sel('timezone',[['US/Central','US / Central'],['US/Eastern','US / Eastern'],['US/Mountain','US / Mountain'],['US/Pacific','US / Pacific']],c.timezone))+
-    field('Screen brightness','',sel('brightness',[[25,'25%'],[50,'50%'],[75,'75%'],[100,'100%']],c.brightness))+
-    field('Auto-dim after idle','',sel('auto_dim_min',[[5,'5 min'],[10,'10 min'],[30,'30 min'],[0,'Never']],c.auto_dim_min))+
-    field('Dim to brightness','When idle',sel('dim_to_pct',[[10,'10%'],[25,'25%'],[0,'Off']],c.dim_to_pct))+
+    field('Screen brightness','After 5 minutes of no touching, brightness will drop to 15% until touched.',sel('brightness',[[25,'25%'],[50,'50%'],[75,'75%'],[100,'100%']],c.brightness))+
     field('Do not disturb','Lock screen off overnight',tog('dnd_enabled',c.dnd_enabled))+
-    subfield('From / To',`<div class="time-range"><input type="text" id="dnd_from" value="${c.dnd_from||'23:00'}" style="width:65px"><span>to</span><input type="text" id="dnd_to" value="${c.dnd_to||'06:00'}" style="width:65px"></div>`);
+    subfield('Sunday',`<div class="time-range"><input type="text" id="dnd_sun_from" value="${dndTime('sun','from','23:00')}" style="width:65px"><span>to</span><input type="text" id="dnd_sun_to" value="${dndTime('sun','to','06:00')}" style="width:65px"></div>`)+
+    subfield('Monday',`<div class="time-range"><input type="text" id="dnd_mon_from" value="${dndTime('mon','from','23:00')}" style="width:65px"><span>to</span><input type="text" id="dnd_mon_to" value="${dndTime('mon','to','06:00')}" style="width:65px"></div>`)+
+    subfield('Tuesday',`<div class="time-range"><input type="text" id="dnd_tue_from" value="${dndTime('tue','from','23:00')}" style="width:65px"><span>to</span><input type="text" id="dnd_tue_to" value="${dndTime('tue','to','06:00')}" style="width:65px"></div>`)+
+    subfield('Wednesday',`<div class="time-range"><input type="text" id="dnd_wed_from" value="${dndTime('wed','from','23:00')}" style="width:65px"><span>to</span><input type="text" id="dnd_wed_to" value="${dndTime('wed','to','06:00')}" style="width:65px"></div>`)+
+    subfield('Thursday',`<div class="time-range"><input type="text" id="dnd_thu_from" value="${dndTime('thu','from','23:00')}" style="width:65px"><span>to</span><input type="text" id="dnd_thu_to" value="${dndTime('thu','to','06:00')}" style="width:65px"></div>`)+
+    subfield('Friday',`<div class="time-range"><input type="text" id="dnd_fri_from" value="${dndTime('fri','from','23:00')}" style="width:65px"><span>to</span><input type="text" id="dnd_fri_to" value="${dndTime('fri','to','06:00')}" style="width:65px"></div>`)+
+    subfield('Saturday',`<div class="time-range"><input type="text" id="dnd_sat_from" value="${dndTime('sat','from','23:00')}" style="width:65px"><span>to</span><input type="text" id="dnd_sat_to" value="${dndTime('sat','to','06:00')}" style="width:65px"></div>`)+
+    `<input type="hidden" id="dnd_from" value="${c.dnd_from||'23:00'}"><input type="hidden" id="dnd_to" value="${c.dnd_to||'06:00'}">`;
 
   // Security section
   const secContent =
