@@ -234,6 +234,8 @@ function fmtTs(ts){ if(!ts) return '—'; const d=new Date(ts),now=new Date(),di
 function fmtCountdown(ms){ if(ms<=0) return 'Overdue'; const d=Math.floor(ms/86400000),h=Math.floor((ms%86400000)/3600000); return d>0?`${d}d ${h}h remaining`:`${h}h remaining`; }
 function rotateProgress(lastRotated){ const total=7*86400000,elapsed=Date.now()-(lastRotated||0),pct=Math.min(elapsed/total,1),r=15,circ=2*Math.PI*r,used=circ*pct,remain=circ-used,label=Math.max(0,7-Math.floor(elapsed/86400000))+'d',color=pct>0.85?'#E24B4A':pct>0.6?'#f59e0b':'#16a34a'; return{used,remain,label,color}; }
 function fmtUptime(s){ if(!s) return '—'; return `${Math.floor(s/86400)}d ${Math.floor((s%86400)/3600)}h`; }
+function to12h(hhmm){ const m=String(hhmm||'').trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/); if(!m) return hhmm||''; let h=parseInt(m[1],10); const min=m[2]; const ap=h>=12?'PM':'AM'; h=h%12; if(h===0) h=12; return `${h}:${min} ${ap}`; }
+function to24h(v,fallback='23:00'){ const s=String(v||'').trim(); const m12=s.match(/^(1[0-2]|0?[1-9]):([0-5]\d)\s*([AaPp][Mm])$/); if(m12){ let h=parseInt(m12[1],10)%12; if(m12[3].toUpperCase()==='PM') h+=12; return `${String(h).padStart(2,'0')}:${m12[2]}`; } const m24=s.match(/^([01]?\d|2[0-3]):([0-5]\d)$/); if(m24) return `${String(parseInt(m24[1],10)).padStart(2,'0')}:${m24[2]}`; return fallback; }
 
 // ── Collect Config ────────────────────────────────────────────────────────────
 function get(id){ const el=document.getElementById(id); if(!el) return undefined; if(el.type==='checkbox') return el.checked; if(el.type==='number') return parseFloat(el.value); return el.value; }
@@ -255,12 +257,14 @@ function collectConfig(){
   const days=['sun','mon','tue','wed','thu','fri','sat'];
   const dndSchedule={};
   days.forEach(day=>{
-    const from=(get(`dnd_${day}_from`)||'23:00').trim();
-    const to=(get(`dnd_${day}_to`)||'06:00').trim();
+    const from=to24h(get(`dnd_${day}_from`)||'11:00 PM','23:00');
+    const to=to24h(get(`dnd_${day}_to`)||'6:00 AM','06:00');
     dndSchedule[day]={from,to};
   });
   c.dnd_use_schedule=true;
   c.dnd_schedule=dndSchedule;
+  c.dnd_from=dndSchedule.sun.from;
+  c.dnd_to=dndSchedule.sun.to;
 
   if(get('wifi_pass')==='') delete c.wifi_pass;
   if(get('dexcom_pass')==='') delete c.dexcom_pass;
@@ -463,13 +467,13 @@ function render(){
     field('Timezone','',sel('timezone',[['US/Central','US / Central'],['US/Eastern','US / Eastern'],['US/Mountain','US / Mountain'],['US/Pacific','US / Pacific']],c.timezone))+
     field('Screen brightness','After 5 minutes of no touching, brightness will drop to 15% until touched.',sel('brightness',[[25,'25%'],[50,'50%'],[75,'75%'],[100,'100%']],c.brightness))+
     field('Do not disturb','Lock screen off overnight',tog('dnd_enabled',c.dnd_enabled))+
-    subfield('Sunday',`<div class="time-range"><input type="text" id="dnd_sun_from" value="${dndTime('sun','from','23:00')}" style="width:65px"><span>to</span><input type="text" id="dnd_sun_to" value="${dndTime('sun','to','06:00')}" style="width:65px"></div>`)+
-    subfield('Monday',`<div class="time-range"><input type="text" id="dnd_mon_from" value="${dndTime('mon','from','23:00')}" style="width:65px"><span>to</span><input type="text" id="dnd_mon_to" value="${dndTime('mon','to','06:00')}" style="width:65px"></div>`)+
-    subfield('Tuesday',`<div class="time-range"><input type="text" id="dnd_tue_from" value="${dndTime('tue','from','23:00')}" style="width:65px"><span>to</span><input type="text" id="dnd_tue_to" value="${dndTime('tue','to','06:00')}" style="width:65px"></div>`)+
-    subfield('Wednesday',`<div class="time-range"><input type="text" id="dnd_wed_from" value="${dndTime('wed','from','23:00')}" style="width:65px"><span>to</span><input type="text" id="dnd_wed_to" value="${dndTime('wed','to','06:00')}" style="width:65px"></div>`)+
-    subfield('Thursday',`<div class="time-range"><input type="text" id="dnd_thu_from" value="${dndTime('thu','from','23:00')}" style="width:65px"><span>to</span><input type="text" id="dnd_thu_to" value="${dndTime('thu','to','06:00')}" style="width:65px"></div>`)+
-    subfield('Friday',`<div class="time-range"><input type="text" id="dnd_fri_from" value="${dndTime('fri','from','23:00')}" style="width:65px"><span>to</span><input type="text" id="dnd_fri_to" value="${dndTime('fri','to','06:00')}" style="width:65px"></div>`)+
-    subfield('Saturday',`<div class="time-range"><input type="text" id="dnd_sat_from" value="${dndTime('sat','from','23:00')}" style="width:65px"><span>to</span><input type="text" id="dnd_sat_to" value="${dndTime('sat','to','06:00')}" style="width:65px"></div>`)+
+    subfield('Sunday',`<div class="time-range"><input type="text" id="dnd_sun_from" value="${to12h(dndTime('sun','from','23:00'))}" style="width:88px"><span>to</span><input type="text" id="dnd_sun_to" value="${to12h(dndTime('sun','to','06:00'))}" style="width:88px"></div>`)+
+    subfield('Monday',`<div class="time-range"><input type="text" id="dnd_mon_from" value="${to12h(dndTime('mon','from','23:00'))}" style="width:88px"><span>to</span><input type="text" id="dnd_mon_to" value="${to12h(dndTime('mon','to','06:00'))}" style="width:88px"></div>`)+
+    subfield('Tuesday',`<div class="time-range"><input type="text" id="dnd_tue_from" value="${to12h(dndTime('tue','from','23:00'))}" style="width:88px"><span>to</span><input type="text" id="dnd_tue_to" value="${to12h(dndTime('tue','to','06:00'))}" style="width:88px"></div>`)+
+    subfield('Wednesday',`<div class="time-range"><input type="text" id="dnd_wed_from" value="${to12h(dndTime('wed','from','23:00'))}" style="width:88px"><span>to</span><input type="text" id="dnd_wed_to" value="${to12h(dndTime('wed','to','06:00'))}" style="width:88px"></div>`)+
+    subfield('Thursday',`<div class="time-range"><input type="text" id="dnd_thu_from" value="${to12h(dndTime('thu','from','23:00'))}" style="width:88px"><span>to</span><input type="text" id="dnd_thu_to" value="${to12h(dndTime('thu','to','06:00'))}" style="width:88px"></div>`)+
+    subfield('Friday',`<div class="time-range"><input type="text" id="dnd_fri_from" value="${to12h(dndTime('fri','from','23:00'))}" style="width:88px"><span>to</span><input type="text" id="dnd_fri_to" value="${to12h(dndTime('fri','to','06:00'))}" style="width:88px"></div>`)+
+    subfield('Saturday',`<div class="time-range"><input type="text" id="dnd_sat_from" value="${to12h(dndTime('sat','from','23:00'))}" style="width:88px"><span>to</span><input type="text" id="dnd_sat_to" value="${to12h(dndTime('sat','to','06:00'))}" style="width:88px"></div>`)+
     `<input type="hidden" id="dnd_from" value="${c.dnd_from||'23:00'}"><input type="hidden" id="dnd_to" value="${c.dnd_to||'06:00'}">`;
 
   // Security section
