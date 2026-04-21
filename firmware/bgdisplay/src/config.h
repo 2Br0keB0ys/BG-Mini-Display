@@ -57,6 +57,9 @@ struct AppConfig {
   bool dndEnabled=false;
   char dndFrom[8]="23:00";
   char dndTo[8]="06:00";
+  bool dndUseSchedule=true;
+  char dndFromByDay[7][8]={{"23:00"},{"23:00"},{"23:00"},{"23:00"},{"23:00"},{"23:00"},{"23:00"}};
+  char dndToByDay[7][8]={{"06:00"},{"06:00"},{"06:00"},{"06:00"},{"06:00"},{"06:00"},{"06:00"}};
   bool clock24hr=false;
   char timezone[32]="US/Central";
 
@@ -92,6 +95,15 @@ inline void saveConfig(Preferences& p, const AppConfig& c) {
   p.putString("bgAlert",    c.bgAlertStyle);
   p.putString("dndFrom",    c.dndFrom);
   p.putString("dndTo",      c.dndTo);
+  p.putBool("dndPerDay",    c.dndUseSchedule);
+  for (int i = 0; i < 7; i++) {
+    char kf[8];
+    char kt[8];
+    snprintf(kf, sizeof(kf), "dndF%d", i);
+    snprintf(kt, sizeof(kt), "dndT%d", i);
+    p.putString(kf, c.dndFromByDay[i]);
+    p.putString(kt, c.dndToByDay[i]);
+  }
   p.putInt("pollMin",       c.pollIntervalMin);
   p.putInt("staleMin",      c.staleDataWarnMin);
   p.putInt("pingMin",       c.configPingMin);
@@ -126,6 +138,17 @@ inline void loadConfig(Preferences& p, AppConfig& c) {
   strlcpy(c.bgAlertStyle, p.getString("bgAlert","pulse").c_str(),16);
   strlcpy(c.dndFrom,      p.getString("dndFrom","23:00").c_str(),8);
   strlcpy(c.dndTo,        p.getString("dndTo","06:00").c_str(),8);
+  c.dndUseSchedule     = p.getBool("dndPerDay", true);
+  for (int i = 0; i < 7; i++) {
+    char kf[8];
+    char kt[8];
+    snprintf(kf, sizeof(kf), "dndF%d", i);
+    snprintf(kt, sizeof(kt), "dndT%d", i);
+    String from = p.getString(kf, c.dndFrom);
+    String to = p.getString(kt, c.dndTo);
+    strlcpy(c.dndFromByDay[i], from.c_str(), 8);
+    strlcpy(c.dndToByDay[i], to.c_str(), 8);
+  }
   c.pollIntervalMin    = p.getInt("pollMin",5);
   c.staleDataWarnMin   = p.getInt("staleMin",15);
   c.configPingMin      = p.getInt("pingMin",1);

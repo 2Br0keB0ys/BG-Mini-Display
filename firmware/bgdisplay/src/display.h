@@ -130,6 +130,21 @@ bool isDND(const char* from, const char* to) {
   return (f > e) ? (cur >= f || cur < e) : (cur >= f && cur < e);
 }
 
+void getTodayDndWindow(const AppConfig& cfg, char* from, size_t fromSz, char* to, size_t toSz) {
+  strlcpy(from, cfg.dndFrom, fromSz);
+  strlcpy(to, cfg.dndTo, toSz);
+  if (!cfg.dndUseSchedule) return;
+
+  time_t now = time(nullptr);
+  struct tm t;
+  localtime_r(&now, &t);
+  int idx = t.tm_wday;
+  if (idx < 0 || idx > 6) return;
+
+  strlcpy(from, cfg.dndFromByDay[idx], fromSz);
+  strlcpy(to, cfg.dndToByDay[idx], toSz);
+}
+
 int rssiToBars(int rssi) {
   if (rssi >= -55) return 4;
   if (rssi >= -65) return 3;
@@ -400,7 +415,10 @@ void updateDisplay(AppConfig& cfg, BGReading& reading, DisplayState& state) {
   pushBgHistory(state, reading);
 
   // DND — screen off
-  if (cfg.dndEnabled && isDND(cfg.dndFrom, cfg.dndTo)) {
+  char dndFrom[8];
+  char dndTo[8];
+  getTodayDndWindow(cfg, dndFrom, sizeof(dndFrom), dndTo, sizeof(dndTo));
+  if (cfg.dndEnabled && isDND(dndFrom, dndTo)) {
     M5.Display.setBrightness(0);
     state.dimmed = true;
     return;

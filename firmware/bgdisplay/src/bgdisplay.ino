@@ -432,11 +432,24 @@ void pullCloudflareConfig(AppConfig& cfg, Preferences& p) {
     if (c.containsKey("dim_to_pct"))          cfg.dimToPct          = c["dim_to_pct"];
     if (c.containsKey("clock_24hr"))          cfg.clock24hr         = c["clock_24hr"];
     if (c.containsKey("dnd_enabled"))         cfg.dndEnabled        = c["dnd_enabled"];
+    if (c.containsKey("dnd_use_schedule"))    cfg.dndUseSchedule    = c["dnd_use_schedule"];
     if (c.containsKey("bg_alert_style"))      strlcpy(cfg.bgAlertStyle, c["bg_alert_style"], 16);
     if (c.containsKey("bg_units"))            strlcpy(cfg.bgUnits,      c["bg_units"],       8);
     if (c.containsKey("timezone"))            strlcpy(cfg.timezone,     c["timezone"],       32);
     if (c.containsKey("dnd_from"))            strlcpy(cfg.dndFrom,      c["dnd_from"],       8);
     if (c.containsKey("dnd_to"))              strlcpy(cfg.dndTo,        c["dnd_to"],         8);
+
+    if (c.containsKey("dnd_schedule") && c["dnd_schedule"].is<JsonObject>()) {
+      static const char* kDays[7] = {"sun", "mon", "tue", "wed", "thu", "fri", "sat"};
+      JsonObject sched = c["dnd_schedule"].as<JsonObject>();
+      for (int i = 0; i < 7; i++) {
+        if (!sched.containsKey(kDays[i]) || !sched[kDays[i]].is<JsonObject>()) continue;
+        JsonObject day = sched[kDays[i]].as<JsonObject>();
+        if (day.containsKey("from")) strlcpy(cfg.dndFromByDay[i], day["from"], 8);
+        if (day.containsKey("to")) strlcpy(cfg.dndToByDay[i], day["to"], 8);
+      }
+      cfg.dndUseSchedule = true;
+    }
 
     // Sensitive fields — store encrypted
     if (c.containsKey("nightscout_url"))    strlcpy(cfg.nightscoutUrl,    c["nightscout_url"],    128);
