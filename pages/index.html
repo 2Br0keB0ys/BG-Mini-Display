@@ -266,7 +266,14 @@ function collectConfig(){
   c.dnd_from=dndSchedule.sun.from;
   c.dnd_to=dndSchedule.sun.to;
 
-  if(get('wifi_pass')==='') delete c.wifi_pass;
+  const wifiOpen = !!get('wifi_open');
+  const wifiPass = get('wifi_pass');
+  if (wifiOpen) {
+    c.wifi_pass = '';
+  } else if (wifiPass === '') {
+    delete c.wifi_pass;
+  }
+
   if(get('dexcom_pass')==='') delete c.dexcom_pass;
   return c;
 }
@@ -277,9 +284,19 @@ async function saveConfig(){
   if(btn){ btn.textContent='Saving...'; btn.disabled=true; }
   try{
     const updates=collectConfig();
+    const prevSsid = CONFIG.wifi_ssid || '';
+    const wifiOpen = !!document.getElementById('wifi_open')?.checked;
+    const wifiPassTyped = (document.getElementById('wifi_pass')?.value || '') !== '';
+    const wifiSsidChanged = typeof updates.wifi_ssid === 'string' && updates.wifi_ssid !== prevSsid;
+    const wifiPassChanged = updates.wifi_pass === '' || wifiPassTyped;
+
     await apiPost('/api/admin/config',updates);
     CONFIG={...CONFIG,...updates};
-    toast('✓ Saved. Reboot device to apply now (or wait for 3AM auto reboot).', 4500);
+    if (wifiSsidChanged || wifiPassChanged || wifiOpen) {
+      toast('✓ Saved. Wi-Fi settings changed and the device will reboot to apply.', 5000);
+    } else {
+      toast('✓ Saved. Reboot device to apply now (or wait for 3AM auto reboot).', 4500);
+    }
     await loadConfig();
     await loadMetrics();
     render();
@@ -319,7 +336,7 @@ async function sendCommand(type){
     await apiPost('/api/admin/command',{type});
     const msg = type==='reboot'
       ? '✓ Reboot command queued'
-      : (type==='upload-logs' ? '✓ Pull SD logs command queued' : '✓ Sync-now command queued');
+      : (type==='upload-logs' ? '✓ Pull SD logs command queued' : (type==='factory-reset' ? '✓ Factory reset command queued' : '✓ Sync-now command queued'));
     toast(msg);
     await loadConfig();
     await loadMetrics();
@@ -429,9 +446,11 @@ function render(){
   const ctrlIcon=`<svg viewBox="0 0 24 24" stroke-width="2"><path d="M12 2v10"/><path d="M6.2 6.2a8 8 0 1011.3 0"/></svg>`;
 
   // WiFi section
+  const wifiOpen = !c.wifi_pass;
   const wifiContent =
     field('Network (SSID)',`Current: ${c.wifi_ssid||'Not set'}`,inp('wifi_ssid','text',c.wifi_ssid,'Wi-Fi name'))+
-    field('Password','',inp('wifi_pass','password','','••••••••'));
+    field('Password','Leave blank to keep existing password. For open Wi-Fi, enable Open network below.',inp('wifi_pass','password','','Enter new Wi-Fi password'))+
+    field('Open network','Use this only for unsecured Wi-Fi with no password.',`<label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="wifi_open"${wifiOpen?' checked':''}> <span style="font-size:12px;color:var(--muted)">No password required</span></label>`);
 
   // Data sources section
   const nsContent =
@@ -522,7 +541,7 @@ function render(){
   const ack = m.lastCommandAck;
   const logMeta = m.lastLogUpload;
   const controlContent =
-    field('Immediate actions','Queue a one-time command for the device',`<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" onclick="sendCommand('sync-now')">Sync now</button><button class="btn" onclick="sendCommand('upload-logs')">Pull SD logs</button><button class="btn danger" onclick="sendCommand('reboot')">Reboot now</button></div>`)+
+    field('Immediate actions','Queue a one-time command for the device',`<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" onclick="sendCommand('sync-now')">Sync now</button><button class="btn" onclick="sendCommand('upload-logs')">Pull SD logs</button><button class="btn danger" onclick="sendCommand('reboot')">Reboot now</button><button class="btn danger" onclick="if(confirm('Queue factory reset? Device will wipe local config and return to setup mode.'))sendCommand('factory-reset')">Factory reset</button></div>`)+
     field('Latest SD log upload','Most recent device log bundle in Worker',
       logMeta
         ? `<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end"><span style="font-size:12px;color:var(--muted)">${logMeta.lineCount||0} lines, ${logMeta.bytes||0} bytes (${fmtTs(logMeta.uploadedAt)})</span><button class="btn" onclick="downloadLatestLogs()">Download logs</button></div>`
@@ -562,7 +581,7 @@ function render(){
     `<div class="vrow"><span class="label">SD card</span><span>${sdBadge}</span></div>`+
     `<div class="vrow"><span class="label">Config version</span><span>v${m.config_version||0}</span></div>`+
     `<div class="vrow"><span class="label">Reset reason</span><span>${m.status?.resetReason||'—'}</span></div>`+
-    `<div style="padding:12px 16px"><button class="btn full danger" onclick="if(confirm('Factory reset? This cannot be undone.'))toast('Contact support to factory reset')">Factory reset</button></div>`;
+    `<div style="padding:12px 16px"><button class="btn full danger" onclick="if(confirm('Factory reset? Device will wipe local config and return to setup mode.'))sendCommand('factory-reset')">Factory reset</button></div>`;
 
   const logRows = (LOGS.preview||[]).map(l=>`<div class="log-row" style="font-family:var(--mono)"><span style="white-space:pre-wrap;word-break:break-word">${l.replace(/</g,'&lt;')}</span></div>`).join('');
   const logExplorerContent =

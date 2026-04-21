@@ -896,7 +896,7 @@ export default {
       const body = await request.json().catch(() => null);
       if (!body?.type) return json({ error: "Missing command type" }, 400);
 
-      const allowed = ["reboot", "sync-now", "upload-logs"];
+      const allowed = ["reboot", "sync-now", "upload-logs", "factory-reset"];
       if (!allowed.includes(body.type)) return json({ error: "Unsupported command" }, 400);
 
       const cmd = {

@@ -31,10 +31,10 @@ border-radius:8px;font-size:16px;font-weight:600;margin-top:24px;cursor:pointer}
 <label>Network (SSID)</label>
 <input name="ssid" required placeholder="Wi-Fi network name" autocomplete="off">
 <label>Password</label>
-<input name="pass" type="password" placeholder="Wi-Fi password" autocomplete="off">
+<input name="pass" type="password" placeholder="Leave blank for open networks" autocomplete="off">
 <button type="submit">Connect</button>
 </form>
-<p class="note">Your credentials are stored encrypted on the device.</p>
+<p class="note">For open networks, leave password empty. Credentials are stored encrypted on device.</p>
 </div></body></html>)";
 
 const char SAVED_HTML[] PROGMEM = R"(<!DOCTYPE html><html>

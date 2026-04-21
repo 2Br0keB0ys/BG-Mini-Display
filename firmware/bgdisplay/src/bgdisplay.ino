@@ -51,6 +51,7 @@ void pollCloudflareCommand(AppConfig&, Preferences&);
 void ackCloudflareCommand(AppConfig&, const char* cmdId, bool ok, const char* message);
 bool uploadSdLogs(AppConfig&, const char* cmdId, int maxLines = 700, size_t maxBytes = 120000, bool failIfEmpty = true);
 bool setupUnlockPressedDuringBoot(unsigned long windowMs = 6000UL);
+void factoryResetToInitialSetup(AppConfig&, Preferences&);
 
 String toHex(const uint8_t* data, size_t len) {
   static const char* hex = "0123456789abcdef";
@@ -179,9 +180,13 @@ void setup() {
   dispState.lastTouch = millis();
   showBootScreen();
 
+  bool hasStoredWifi = strlen(appConfig.wifiSSID) > 0;
   if (!connectWiFi(appConfig, prefs)) {
     sdLogError("WiFi connect failed, entering AP setup");
-    if (setupUnlockPressedDuringBoot()) {
+    if (!hasStoredWifi) {
+      sdLog("NET", "No saved WiFi; entering initial setup AP");
+      startAPMode(appConfig, prefs);
+    } else if (setupUnlockPressedDuringBoot()) {
       startAPMode(appConfig, prefs);
     } else {
       sdLogError("AP setup locked; hold power during boot to unlock");
@@ -404,6 +409,8 @@ void pullCloudflareConfig(AppConfig& cfg, Preferences& p) {
   if (!strlen(cfg.workerUrl) || !strlen(cfg.deviceKey)) return;
 
   char prevTimezone[32];  strlcpy(prevTimezone, cfg.timezone, sizeof(prevTimezone));
+  char prevWifiSSID[64];  strlcpy(prevWifiSSID, cfg.wifiSSID, sizeof(prevWifiSSID));
+  char prevWifiPass[64];  strlcpy(prevWifiPass, cfg.wifiPass, sizeof(prevWifiPass));
 
   HTTPClient http;
   String path = "/api/config";
@@ -452,6 +459,24 @@ void pullCloudflareConfig(AppConfig& cfg, Preferences& p) {
     }
 
     // Sensitive fields — store encrypted
+    if (c.containsKey("wifi_ssid") || c.containsKey("wifiSSID")) {
+      String ssid = c.containsKey("wifi_ssid")
+        ? c["wifi_ssid"].as<String>()
+        : c["wifiSSID"].as<String>();
+      strlcpy(cfg.wifiSSID, ssid.c_str(), 64);
+    }
+    if (c.containsKey("wifi_pass") || c.containsKey("wifi_password") || c.containsKey("wifiPass")) {
+      String pass = "";
+      if (c.containsKey("wifi_pass") && !c["wifi_pass"].isNull()) {
+        pass = c["wifi_pass"].as<String>();
+      } else if (c.containsKey("wifi_password") && !c["wifi_password"].isNull()) {
+        pass = c["wifi_password"].as<String>();
+      } else if (c.containsKey("wifiPass") && !c["wifiPass"].isNull()) {
+        pass = c["wifiPass"].as<String>();
+      }
+      strlcpy(cfg.wifiPass, pass.c_str(), 64);
+    }
+
     if (c.containsKey("nightscout_url"))    strlcpy(cfg.nightscoutUrl,    c["nightscout_url"],    128);
     if (c.containsKey("nightscout_secret")) strlcpy(cfg.nightscoutSecret, c["nightscout_secret"], 64);
     if (c.containsKey("dexcom_user"))       strlcpy(cfg.dexcomUser,       c["dexcom_user"],       64);
@@ -484,6 +509,17 @@ void pullCloudflareConfig(AppConfig& cfg, Preferences& p) {
       Serial.println("Timezone changed — resyncing NTP");
       sdLog("SYS", "Timezone changed, NTP resync");
       syncTime(cfg.timezone);
+    }
+
+    bool wifiCredsChanged =
+      strcmp(prevWifiSSID, cfg.wifiSSID) != 0 ||
+      strcmp(prevWifiPass, cfg.wifiPass) != 0;
+    if (wifiCredsChanged) {
+      sdLog("NET", "WiFi credentials changed via cloud config");
+      setDisplayBanner(dispState, "WiFi updated, rebooting", CLR_MUTED, 2500UL);
+      delay(500);
+      ESP.restart();
+      return;
     }
 
     dispState.showKeyError = false;
@@ -598,6 +634,13 @@ void pollCloudflareCommand(AppConfig& cfg, Preferences& p) {
     ackCloudflareCommand(cfg, cmdId, true, "rebooting");
     delay(300);
     ESP.restart();
+    return;
+  }
+
+  if (!strcmp(cmdType, "factory-reset")) {
+    sdLog("CMD", "Executing command: factory-reset");
+    ackCloudflareCommand(cfg, cmdId, true, "factory reset started");
+    factoryResetToInitialSetup(cfg, p);
     return;
   }
 
@@ -721,4 +764,26 @@ bool setupUnlockPressedDuringBoot(unsigned long windowMs) {
     delay(20);
   }
   return false;
+}
+
+void factoryResetToInitialSetup(AppConfig& cfg, Preferences& p) {
+  sdLog("CMD", "Factory reset initiated");
+  setDisplayBanner(dispState, "Factory reset...", CLR_ORANGE, 3000UL);
+
+  WiFi.disconnect(true, true);
+  delay(200);
+
+  p.clear();
+  cfg = AppConfig();
+
+  // Re-apply bootstrap defaults after wiping stored configuration.
+  strlcpy(cfg.workerUrl, "https://bgdisplay-worker.zanebaize.workers.dev", 128);
+  String dk = "bg_ro_REDACTED_POSSIBLE_SECRET";
+  strlcpy(cfg.deviceKey, dk.c_str(), 64);
+  strlcpy(cfg.timezone, "US/Central", 32);
+  saveConfig(p, cfg);
+
+  sdLog("CMD", "Factory reset complete; entering setup AP");
+  startAPMode(cfg, p);
+  ESP.restart();
 }
