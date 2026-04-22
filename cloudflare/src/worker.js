@@ -3,7 +3,7 @@
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, X-Device-Key, X-Command-Id, X-Log-Lines, X-Admin-Session, CF-Access-Jwt-Assertion",
 };
 
@@ -215,6 +215,13 @@ async function verifyDeviceSignature(request, env, keyHash, rawBody = "") {
 async function signCommandEnvelope(cmd, keyHash) {
   const canonical = `${cmd.id}|${cmd.type}|${cmd.createdAt}|${cmd.expiresAt}`;
   return hmacSha256Hex(keyHash, canonical);
+}
+
+function isDeviceKeyValid(auth, keyHash) {
+  if (!auth || !keyHash) return false;
+  return keyHash === auth.keyHash
+    || (auth.pendingKeyHash && keyHash === auth.pendingKeyHash)
+    || (auth.recoveryKeyHash && keyHash === auth.recoveryKeyHash);
 }
 
 async function checkReplayToken(env, scope, token, ttlSec = 600) {
@@ -526,7 +533,7 @@ export default {
         await promoteKey(env, auth);
         return json({ ok: true, keyConfirmed: true });
       }
-      if (keyHash !== auth.keyHash) {
+      if (!isDeviceKeyValid(auth, keyHash)) {
         await recordFailedAuth(env, ip, config.lockout_attempts||5, config.lockout_duration_min||15);
         await incrementFailedAuthCount(env);
         return json({ error: "Invalid key" }, 401);
@@ -559,7 +566,7 @@ export default {
         const version = await getConfigVersion(env);
         return json({ config, config_version: version, ts: Date.now(), keyConfirmed: true });
       }
-      if (keyHash !== auth.keyHash) {
+      if (!isDeviceKeyValid(auth, keyHash)) {
         await recordFailedAuth(env, ip, config.lockout_attempts||5, config.lockout_duration_min||15);
         await incrementFailedAuthCount(env);
         return json({ error: "Invalid key" }, 401);
@@ -588,7 +595,7 @@ export default {
       if (auth.pendingKeyHash && keyHash === auth.pendingKeyHash) {
         await promoteKey(env, auth); return json({ ok: true });
       }
-      if (keyHash === auth.keyHash) return json({ ok: true });
+      if (isDeviceKeyValid(auth, keyHash)) return json({ ok: true });
       return json({ error: "Key mismatch" }, 401);
     }
 
@@ -600,7 +607,7 @@ export default {
       const deviceKey = request.headers.get("X-Device-Key");
       if (!deviceKey) return json({ error: "Missing key" }, 401);
       const keyHash = await sha256(deviceKey);
-      const valid = keyHash === auth.keyHash || (auth.pendingKeyHash && keyHash === auth.pendingKeyHash);
+      const valid = isDeviceKeyValid(auth, keyHash);
       if (!valid) return json({ error: "Invalid key" }, 401);
       const reqId = request.headers.get("X-Request-Id") || "";
       const replay = await checkReplayToken(env, `status:${keyHash.slice(0, 12)}`, reqId, 900);
@@ -623,7 +630,7 @@ export default {
       const deviceKey = request.headers.get("X-Device-Key");
       if (!deviceKey) return json({ error: "Missing key" }, 401);
       const keyHash = await sha256(deviceKey);
-      const valid = keyHash === auth.keyHash || (auth.pendingKeyHash && keyHash === auth.pendingKeyHash);
+      const valid = isDeviceKeyValid(auth, keyHash);
       if (!valid) return json({ error: "Invalid key" }, 401);
 
       const reqId = request.headers.get("X-Request-Id") || request.headers.get("X-Command-Id") || "";
@@ -662,7 +669,7 @@ export default {
       if (!deviceKey) return json({ error: "Missing key" }, 401);
 
       const keyHash = await sha256(deviceKey);
-      const valid = keyHash === auth.keyHash || (auth.pendingKeyHash && keyHash === auth.pendingKeyHash);
+      const valid = isDeviceKeyValid(auth, keyHash);
       if (!valid) return json({ error: "Invalid key" }, 401);
       const sig = await verifyDeviceSignature(request, env, keyHash, "");
       if (!sig.ok) return json({ error: sig.error }, 401);
@@ -692,7 +699,7 @@ export default {
       if (!deviceKey) return json({ error: "Missing key" }, 401);
 
       const keyHash = await sha256(deviceKey);
-      const valid = keyHash === auth.keyHash || (auth.pendingKeyHash && keyHash === auth.pendingKeyHash);
+      const valid = isDeviceKeyValid(auth, keyHash);
       if (!valid) return json({ error: "Invalid key" }, 401);
 
       const rawBody = await request.text();
@@ -786,6 +793,9 @@ export default {
         lastRotated:      auth.lastRotated,
         nextAutoRotate:   (auth.lastRotated || 0) + KEY_ROTATE_MS,
         keyTail:          auth.keyHash ? auth.keyHash.slice(-4) : "????",
+        recoveryKeyEnabled: !!auth.recoveryKeyHash,
+        recoveryKeyTail: auth.recoveryKeyHash ? auth.recoveryKeyHash.slice(-4) : "",
+        recoveryKeyUpdatedAt: auth.recoveryKeyUpdatedAt || null,
         rotateDays:       7,
         pendingRotation:  !!(auth.pendingKeyHash),
         config_version:   version,
@@ -912,6 +922,44 @@ export default {
       await appendWorkerEvent(env, { type: "command-queue", command: cmd.type });
 
       return json({ ok: true, command: cmd });
+    }
+
+    if (path === "/api/admin/recovery-key" && method === "POST") {
+      if (!(await checkRateLimit(env, `admin-write:${ip}`, config.admin_write_rate_limit_per_min || 15))) {
+        return json({ error: "Admin write rate limit exceeded" }, 429);
+      }
+
+      const body = await request.json().catch(() => null);
+      if (!body || typeof body.recovery_device_key !== "string") {
+        return json({ error: "Missing recovery_device_key" }, 400);
+      }
+
+      const key = body.recovery_device_key.trim();
+      if (!key || key.length < 16 || key.length > 96 || !key.startsWith("bg_ro_")) {
+        return json({ error: "Invalid recovery key format" }, 400);
+      }
+
+      auth.recoveryKeyHash = await sha256(key);
+      auth.recoveryKeyUpdatedAt = Date.now();
+      await env.BGDISPLAY_CONFIG.put("auth", JSON.stringify(auth));
+      await appendChangeLog(env, "Recovery firmware key updated");
+      await appendWorkerEvent(env, { type: "recovery-key-update" });
+
+      return json({ ok: true, recoveryKeyTail: auth.recoveryKeyHash.slice(-4), recoveryKeyUpdatedAt: auth.recoveryKeyUpdatedAt });
+    }
+
+    if (path === "/api/admin/recovery-key" && method === "DELETE") {
+      if (!(await checkRateLimit(env, `admin-write:${ip}`, config.admin_write_rate_limit_per_min || 15))) {
+        return json({ error: "Admin write rate limit exceeded" }, 429);
+      }
+
+      delete auth.recoveryKeyHash;
+      delete auth.recoveryKeyUpdatedAt;
+      await env.BGDISPLAY_CONFIG.put("auth", JSON.stringify(auth));
+      await appendChangeLog(env, "Recovery firmware key cleared");
+      await appendWorkerEvent(env, { type: "recovery-key-clear" });
+
+      return json({ ok: true });
     }
 
     if (path === "/api/admin/clear-log" && method === "POST") {

@@ -32,6 +32,10 @@ void sdInit() {
 }
 
 void sdLog(const char* level, const char* msg) {
+  if (level && msg && (!strcmp(level, "ERR") || !strcmp(level, "HB"))) {
+    Serial.printf("[%s] %s\n", level, msg);
+  }
+
   if (!sdAvailable) return;
 
   time_t now = time(nullptr);

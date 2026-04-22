@@ -21,6 +21,7 @@
 // ─── Display State ────────────────────────────────────────────────────────────
 struct DisplayState {
   unsigned long lastTouch  = 0;
+  unsigned long dndWakeUntilMs = 0;
   unsigned long lastPulse  = 0;
   bool          dimmed     = false;
   bool          showKeyError = false;
@@ -414,26 +415,36 @@ void updateDisplay(AppConfig& cfg, BGReading& reading, DisplayState& state) {
   unsigned long now = millis();
   pushBgHistory(state, reading);
 
+  int normalPct = cfg.brightness;
+  if (normalPct < 5) normalPct = 5;
+  if (normalPct > 100) normalPct = 100;
+
   // DND — screen off
   char dndFrom[8];
   char dndTo[8];
   getTodayDndWindow(cfg, dndFrom, sizeof(dndFrom), dndTo, sizeof(dndTo));
-  if (cfg.dndEnabled && isDND(dndFrom, dndTo)) {
-    M5.Display.setBrightness(0);
-    state.dimmed = true;
-    return;
+  bool dndNow = cfg.dndEnabled && isDND(dndFrom, dndTo);
+  if (dndNow) {
+    // Never hard-blackout in DND: keep data visible with low brightness.
+    // This avoids "device looks dead" reports while BG updates continue.
+    int dimPct = cfg.dimToPct;
+    if (dimPct < 25) dimPct = 25;
+    if (dimPct > normalPct) dimPct = normalPct;
+
+    // Startup and manual wake use normal brightness for readability.
+    bool wakeActive = (now <= 600000UL) || (now <= state.dndWakeUntilMs);
+    int targetPct = wakeActive ? normalPct : dimPct;
+    M5.Display.setBrightness(map(targetPct, 0, 100, 0, 255));
+    state.dimmed = !wakeActive;
   }
 
   // Outside DND, guarantee screen is visible.
-  int normalPct = cfg.brightness;
-  if (normalPct < 5) normalPct = 5;
-  if (normalPct > 100) normalPct = 100;
   int dimPct = cfg.dimToPct;
   if (dimPct < 15) dimPct = 15;
   if (dimPct > normalPct) dimPct = normalPct;
 
   // Auto-dim logic
-  if (cfg.autoDimMin > 0) {
+  if (!dndNow && cfg.autoDimMin > 0) {
     bool shouldDim = (now - state.lastTouch) > (unsigned long)cfg.autoDimMin * 60000UL;
     if (shouldDim && !state.dimmed) {
       M5.Display.setBrightness(map(dimPct, 0, 100, 0, 255));
@@ -442,7 +453,7 @@ void updateDisplay(AppConfig& cfg, BGReading& reading, DisplayState& state) {
       M5.Display.setBrightness(map(normalPct, 0, 100, 0, 255));
       state.dimmed = false;
     }
-  } else if (state.dimmed) {
+  } else if (!dndNow && state.dimmed) {
     M5.Display.setBrightness(map(normalPct, 0, 100, 0, 255));
     state.dimmed = false;
   }

@@ -217,6 +217,13 @@ async function apiPost(p,d){
   if(!r.ok) throw new Error(r.status);
   return r.json();
 }
+async function apiDelete(p){
+  const headers={};
+  if(ADMIN_SESSION) headers['X-Admin-Session']=ADMIN_SESSION;
+  const r=await fetch(WORKER_URL+p,{method:'DELETE',headers});
+  if(!r.ok) throw new Error(r.status);
+  return r.json();
+}
 
 async function ensureSession(){
   if(ADMIN_SESSION) return;
@@ -343,6 +350,33 @@ async function sendCommand(type){
     render();
   }catch(e){
     toast('❌ Failed to queue command');
+  }
+}
+
+async function setRecoveryKey(){
+  const el=document.getElementById('recovery_device_key');
+  const key=(el?.value||'').trim();
+  if(!key){ toast('Enter a recovery key first'); return; }
+  if(!key.startsWith('bg_ro_')){ toast('Recovery key must start with bg_ro_'); return; }
+  try{
+    await apiPost('/api/admin/recovery-key',{recovery_device_key:key});
+    if(el) el.value='';
+    await loadConfig();
+    render();
+    toast('✓ Recovery key saved');
+  }catch(e){
+    toast('❌ Failed to save recovery key');
+  }
+}
+
+async function clearRecoveryKey(){
+  try{
+    await apiDelete('/api/admin/recovery-key');
+    await loadConfig();
+    render();
+    toast('✓ Recovery key cleared');
+  }catch(e){
+    toast('❌ Failed to clear recovery key');
   }
 }
 
@@ -515,6 +549,18 @@ function render(){
     field('Session timeout','Auto-logout from this UI',sel('session_timeout_min',[[15,'15 min'],[30,'30 min'],[60,'1 hour'],[240,'4 hours']],c.session_timeout_min))+
     field('IP allowlist','Restrict Worker access by IP',tog('ip_allowlist_enabled',c.ip_allowlist_enabled))+
     field('Device API key','Read-only key used by Core2',`<span class="key-display">bg_ro_••••••••${m.keyTail||'????'}</span>`)+
+    field('Firmware recovery key','Optional fallback key accepted after local flash wipe',
+      `<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+        <div style="display:flex;gap:8px;align-items:center">
+          <input id="recovery_device_key" type="password" class="wide" placeholder="bg_ro_..." style="width:210px">
+          <button class="btn" onclick="setRecoveryKey()">Set</button>
+          <button class="btn danger" onclick="if(confirm('Clear firmware recovery key?'))clearRecoveryKey()">Clear</button>
+        </div>
+        <div style="font-size:11px;color:var(--muted)">
+          ${m.recoveryKeyEnabled ? `Enabled (hash tail ${m.recoveryKeyTail||'????'})` : 'Disabled'}
+          ${m.recoveryKeyUpdatedAt ? ` • Updated ${fmtTs(m.recoveryKeyUpdatedAt)}` : ''}
+        </div>
+      </div>`)+
     field('Auto key rotate',`${fmtCountdown(nextMs)} — fully automated, zero manual steps<br><span style="font-size:11px;background:var(--amber-bg);color:var(--amber);padding:1px 7px;border-radius:99px;font-weight:600;display:inline-block;margin-top:3px">Locked — 7 days</span>`,
       `<div class="rotate-block">
         <svg width="36" height="36" viewBox="0 0 36 36">
@@ -654,6 +700,9 @@ async function loadConfig(){
     status:data.status,changelog:data.changelog,
     failedAuthCount:data.failedAuthCount,lastRotated:data.lastRotated,
     nextAutoRotate:data.nextAutoRotate,keyTail:data.keyTail,
+    recoveryKeyEnabled:!!data.recoveryKeyEnabled,
+    recoveryKeyTail:data.recoveryKeyTail||'',
+    recoveryKeyUpdatedAt:data.recoveryKeyUpdatedAt||null,
     pendingRotation:data.pendingRotation,config_version:data.config_version,
     pendingCommand:data.pendingCommand,lastCommandAck:data.lastCommandAck,
     lastLogUpload:data.lastLogUpload,
