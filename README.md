@@ -51,6 +51,8 @@ cd apps/cloudflare
 npm run deploy:pages
 ```
 
+`deploy:pages` is pinned to the `production` branch so direct uploads go to the live Pages environment rather than Preview.
+
 Optional but recommended: protect the Pages domain with Cloudflare Access.
 
 ## 3) Flash Firmware (PlatformIO)

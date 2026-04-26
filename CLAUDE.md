@@ -30,7 +30,7 @@ Flash requires USB-C connection to M5Stack Core2 at 1500000 baud. OTA is impleme
 ```bash
 cd apps/cloudflare
 npm run deploy:worker           # wrangler deploy (worker)
-npm run deploy:pages            # wrangler pages deploy (UI)
+npm run deploy:pages            # wrangler pages deploy to Pages production branch (UI)
 npm run deploy:all              # both in sequence
 node --check src/worker.js      # syntax check (no validate script)
 ```
