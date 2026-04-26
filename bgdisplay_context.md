@@ -48,7 +48,7 @@ HiveMQ Cloud MQTT (5a2bf35ae7ae4900ad04ff78ed4db6bd.s1.eu.hivemq.cloud:8883)
 | **KV: Config** | `c86909e122f0453a978dda571eebac25` (BGDISPLAY_CONFIG) |
 | **KV: Auth** | `1e7f3aa136174b6eacdbd78bd4ce7a45` (BGDISPLAY_AUTH) |
 | **Account subdomain** | `zanebaize.workers.dev` |
-| **Wrangler project path** | `C:\Users\zaneb\Downloads\bgdisplay\cloudflare` |
+| **Wrangler project path** | `C:\Users\zaneb\Downloads\bgdisplay\apps\cloudflare` |
 
 ### Worker Endpoints
 - `GET /api/ping?v=N` — lightweight version check (device calls every 1 min)
@@ -202,11 +202,12 @@ session_timeout_min, ip_allowlist_enabled, auto_backup
 
 ```
 C:\Users\zaneb\Downloads\bgdisplay\
-├── cloudflare\
-│   ├── wrangler.toml          (KV IDs configured)
-│   └── src\worker.js          (v2.0 Worker)
-├── pages\
-│   └── index.html             (v2.0 dark UI)
+├── apps\
+│   ├── cloudflare\
+│   │   ├── wrangler.toml          (KV IDs configured)
+│   │   └── src\worker.js          (v2.0 Worker)
+│   └── pages\
+│       └── index.html             (v2.0 dark UI)
 └── firmware\bgdisplay\
     ├── platformio.ini         (m5stack-core2, PubSubClient added)
     └── src\
@@ -227,11 +228,11 @@ C:\Users\zaneb\Downloads\bgdisplay\
 
 ```powershell
 # Deploy Worker
-cd C:\Users\zaneb\Downloads\bgdisplay\cloudflare
+cd C:\Users\zaneb\Downloads\bgdisplay\apps\cloudflare
 wrangler deploy
 
 # Deploy Pages UI
-wrangler pages deploy C:\Users\zaneb\Downloads\bgdisplay\pages --project-name bgdisplay-ui
+wrangler pages deploy C:\Users\zaneb\Downloads\bgdisplay\apps\pages --project-name bgdisplay-ui
 
 # Flash firmware (VS Code PlatformIO)
 # Left sidebar → PlatformIO → m5stack-core2 → General → Upload

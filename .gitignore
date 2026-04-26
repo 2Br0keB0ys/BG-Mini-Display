@@ -12,10 +12,10 @@ firmware/bgdisplay/.pio/
 **/.idea/
 
 # Local secret material
-cloudflare/bgdisplay-device-key.txt
+apps/cloudflare/bgdisplay-device-key.txt
 
 # Node modules if installed later
 **/node_modules/
 
 # Cloudflare local secrets
-cloudflare/.dev.vars
+apps/cloudflare/.dev.vars

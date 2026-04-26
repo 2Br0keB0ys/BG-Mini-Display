@@ -36,8 +36,8 @@ jobs:
           node-version: "20"
 
       - name: Install dependencies
-        working-directory: cloudflare
+        working-directory: apps/cloudflare
         run: npm ci
 
       - name: Validate worker syntax
-        run: node --check cloudflare/src/worker.js
+        run: node --check apps/cloudflare/src/worker.js
