@@ -11,4 +11,23 @@ binding = "BGDISPLAY_AUTH"
 id = "1e7f3aa136174b6eacdbd78bd4ce7a45"
 
 [vars]
-WORKER_VERSION = "1.0.0"
+WORKER_VERSION = "2.0.0"
+
+# Feature 1: Durable Object WebSocket relay for instant config push
+[[durable_objects.bindings]]
+name = "CONFIG_SYNC"
+class_name = "ConfigSyncRelay"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["ConfigSyncRelay"]
+
+# Feature 2: Workers AI binding for daily digest generation
+[ai]
+binding = "AI"
+
+# Cron triggers:
+#   Feature 2 — daily digest at 6 AM CST (12 UTC) and 6 AM CDT (11 UTC); guard inside prevents double-run
+#   Feature 4 — Pushover BG alert check every 5 minutes
+[triggers]
+crons = ["0 11,12 * * *", "*/5 * * * *"]
