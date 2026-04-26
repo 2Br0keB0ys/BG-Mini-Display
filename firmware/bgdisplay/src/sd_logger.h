@@ -5,6 +5,7 @@
 #pragma once
 #include <Arduino.h>
 #include <SD.h>
+#include <stdarg.h>
 #include "crypto.h"
 
 #define LOG_FILE "/bgdisplay.log"
@@ -12,39 +13,29 @@
 
 bool sdAvailable = false;
 
-void sdInit() {
-  // M5Stack Core2 SD pin
-  if (SD.begin(4)) {
-    sdAvailable = true;
-    Serial.println("SD: mounted");
-    // Write init marker
-    File f = SD.open(LOG_FILE, FILE_APPEND);
-    if (f) {
-      String entry = "{\"t\":" + String(millis()) + ",\"msg\":\"BGDisplay started\",\"fw\":\"" + String(FIRMWARE_VERSION) + "\"}";
-      String enc = aesEncrypt(entry, "BGDisplay_SD_v1");
-      f.println(enc);
-      f.close();
+inline String sdJsonEscape(const char* in) {
+  if (!in) return String("");
+  String out;
+  while (*in) {
+    char c = *in++;
+    if (c == '"' || c == '\\') {
+      out += '\\';
+      out += c;
+    } else if (c == '\n') {
+      out += "\\n";
+    } else if (c == '\r') {
+      out += "\\r";
+    } else if ((uint8_t)c < 0x20) {
+      out += ' ';
+    } else {
+      out += c;
     }
-  } else {
-    Serial.println("SD: not found or failed");
-    sdAvailable = false;
   }
+  return out;
 }
 
-void sdLog(const char* level, const char* msg) {
-  if (level && msg && (!strcmp(level, "ERR") || !strcmp(level, "HB"))) {
-    Serial.printf("[%s] %s\n", level, msg);
-  }
-
+inline void sdLogRawJson(const String& entry) {
   if (!sdAvailable) return;
-
-  time_t now = time(nullptr);
-  struct tm t; localtime_r(&now, &t);
-  char ts[32];
-  snprintf(ts, sizeof(ts), "%04d-%02d-%02dT%02d:%02d:%02d",
-    t.tm_year+1900, t.tm_mon+1, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec);
-
-  String entry = "{\"ts\":\"" + String(ts) + "\",\"lvl\":\"" + level + "\",\"msg\":\"" + msg + "\"}";
   String enc = aesEncrypt(entry, "BGDisplay_SD_v1");
 
   File f = SD.open(LOG_FILE, FILE_APPEND);
@@ -66,18 +57,71 @@ void sdLog(const char* level, const char* msg) {
   }
 }
 
+inline void sdLogEx(const char* level, const char* feature, const char* msg) {
+  if (level && msg && (!strcmp(level, "ERR") || !strcmp(level, "HB") || !strcmp(level, "SEC"))) {
+    Serial.printf("[%s/%s] %s\n", level, feature ? feature : "GEN", msg);
+  }
+
+  if (!sdAvailable) return;
+
+  time_t now = time(nullptr);
+  struct tm t; localtime_r(&now, &t);
+  char ts[32];
+  snprintf(ts, sizeof(ts), "%04d-%02d-%02dT%02d:%02d:%02d",
+    t.tm_year+1900, t.tm_mon+1, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec);
+
+  String entry =
+    String("{\"ts\":\"") + ts +
+    "\",\"ms\":" + String(millis()) +
+    ",\"lvl\":\"" + sdJsonEscape(level) +
+    "\",\"feat\":\"" + sdJsonEscape(feature ? feature : "GEN") +
+    "\",\"msg\":\"" + sdJsonEscape(msg) +
+    "\"}";
+  sdLogRawJson(entry);
+}
+
+inline void sdLogfEx(const char* level, const char* feature, const char* fmt, ...) {
+  if (!fmt) return;
+  char buf[220];
+  va_list args;
+  va_start(args, fmt);
+  vsnprintf(buf, sizeof(buf), fmt, args);
+  va_end(args);
+  sdLogEx(level, feature, buf);
+}
+
+void sdInit() {
+  // M5Stack Core2 SD pin
+  if (SD.begin(4)) {
+    sdAvailable = true;
+    Serial.println("SD: mounted");
+    // Write init marker
+    File f = SD.open(LOG_FILE, FILE_APPEND);
+    if (f) {
+      String entry =
+        String("{\"t\":") + String(millis()) +
+        ",\"msg\":\"BGDisplay started\",\"fw\":\"" + String(FIRMWARE_VERSION) + "\"}";
+      f.println(aesEncrypt(entry, "BGDisplay_SD_v1"));
+      f.close();
+    }
+  } else {
+    Serial.println("SD: not found or failed");
+    sdAvailable = false;
+  }
+}
+
+void sdLog(const char* level, const char* msg) {
+  sdLogEx(level, "GEN", msg);
+}
+
 void sdLogBG(int value, int trend, const char* source) {
   if (!sdAvailable) return;
-  char msg[64];
-  snprintf(msg, sizeof(msg), "BG:%d trend:%d src:%s", value, trend, source);
-  sdLog("BG", msg);
+  sdLogfEx("BG", "BG", "value:%d trend:%d src:%s", value, trend, source ? source : "unknown");
 }
 
 void sdLogWifi(const char* ssid, int rssi) {
   if (!sdAvailable) return;
-  char msg[64];
-  snprintf(msg, sizeof(msg), "WiFi:%s RSSI:%d", ssid, rssi);
-  sdLog("NET", msg);
+  sdLogfEx("NET", "WIFI", "ssid:%s rssi:%d", ssid ? ssid : "", rssi);
 }
 
 void sdLogError(const char* msg) {

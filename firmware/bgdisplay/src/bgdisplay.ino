@@ -228,7 +228,7 @@ void logHttpFailure(const char* label, int code) {
   } else {
     snprintf(msg, sizeof(msg), "%s HTTP %d", label ? label : "HTTP", code);
   }
-  sdLogError(msg);
+  sdLogEx("ERR", "HTTP", msg);
 }
 
 void logRuntimeSnapshot(const char* stage, const AppConfig& cfg, const BGReading& reading) {
@@ -468,6 +468,7 @@ void loop() {
   // Command poll — low-frequency control channel (reboot/sync-now)
   if (WiFi.status()==WL_CONNECTED && now - lastCommandPoll > 60000UL) {
     lastCommandPoll = now;
+    sdLogEx("CMD", "CMD", "poll_tick");
     pollCloudflareCommand(appConfig, prefs);
   }
 
@@ -475,6 +476,7 @@ void loop() {
   // Lower payload than manual command upload to reduce bandwidth.
   if (WiFi.status()==WL_CONNECTED && now - lastLogUpload > 120000UL) {
     lastLogUpload = now;
+    sdLogEx("SYS", "LOG_UPLOAD", "cadence_upload_tick");
     uploadSdLogs(appConfig, nullptr, 160, 28000, false);
   }
 
@@ -560,7 +562,7 @@ void loop() {
     if (now - lastReconnect > 30000UL) {
       lastReconnect = now;
       Serial.println("WiFi lost — reconnecting...");
-      sdLogError("WiFi lost, reconnecting");
+      sdLogEx("ERR", "WIFI", "link_lost_reconnect");
       WiFi.reconnect();
     }
   }
@@ -592,7 +594,7 @@ void checkDailyAutoReboot() {
   if (lastStamp == dayStamp) return;
 
   prefs.putInt("autoRbDay", dayStamp);
-  sdLog("SYS", "Daily 3AM auto reboot");
+  sdLogfEx("SYS", "SYS", "daily_auto_reboot dayStamp:%d", dayStamp);
   Serial.println("Daily auto reboot at 3AM");
   delay(300);
   ESP.restart();
@@ -639,14 +641,14 @@ void pingCloudflare(AppConfig& cfg, Preferences& p) {
           pullCloudflareConfig(cfg, p);
           return;
         }
-        sdLog("CFG", "Config ping: no changes");
+        sdLogfEx("CFG", "CFG", "ping_no_changes remoteV:%d localV:%d", version, cfg.lastConfigVersion);
       }
     }
     http.end();
   }
 
   if (code < 0 && defaultBase.length() > 0 && base != defaultBase) {
-    sdLogError("CF ping failed on primary URL, trying default worker URL");
+    sdLogEx("ERR", "CFG", "ping_primary_failed_try_default");
     HTTPClient retry;
     retry.begin(defaultBase + path);
     retry.addHeader("X-Device-Key", cfg.deviceKey);
@@ -673,7 +675,7 @@ void pingCloudflare(AppConfig& cfg, Preferences& p) {
           pullCloudflareConfig(cfg, p);
           return;
         }
-        sdLog("CFG", "Config ping: no changes");
+        sdLogfEx("CFG", "CFG", "ping_no_changes_default remoteV:%d localV:%d", version, cfg.lastConfigVersion);
       }
     }
     retry.end();
@@ -688,7 +690,7 @@ void pingCloudflare(AppConfig& cfg, Preferences& p) {
   if (usedDefaultBase && code >= 0) {
     strlcpy(cfg.workerUrl, defaultBase.c_str(), sizeof(cfg.workerUrl));
     saveConfig(p, cfg);
-    sdLog("CFG", "Worker URL healed to default");
+    sdLogEx("CFG", "CFG", "worker_url_healed_default");
   }
 
   if (code == 401) {
@@ -727,6 +729,7 @@ void pullCloudflareConfig(AppConfig& cfg, Preferences& p) {
   http.setTimeout(8000);
 
   int code = http.GET();
+  sdLogfEx("CFG", "CFG", "config_pull_http:%d localV:%d", code, cfg.lastConfigVersion);
   {
     char pullMsg[80];
     snprintf(pullMsg, sizeof(pullMsg), "Pull HTTP:%d priorV:%d", code, cfg.lastConfigVersion);
@@ -739,7 +742,7 @@ void pullCloudflareConfig(AppConfig& cfg, Preferences& p) {
     if (derr) {
       char errMsg[96];
       snprintf(errMsg, sizeof(errMsg), "Config parse failed: %s", derr.c_str());
-      sdLogError(errMsg);
+      sdLogEx("ERR", "CFG", errMsg);
 
       String preview = resp.substring(0, 180);
       preview.replace("\n", " ");
@@ -860,7 +863,7 @@ void pullCloudflareConfig(AppConfig& cfg, Preferences& p) {
       strlcpy(cfg.nightscoutSecret, prevNightscoutSecret, sizeof(cfg.nightscoutSecret));
       strlcpy(cfg.dexcomUser, prevDexcomUser, sizeof(cfg.dexcomUser));
       strlcpy(cfg.dexcomPass, prevDexcomPass, sizeof(cfg.dexcomPass));
-      sdLogError("Cloud config omitted BG creds; kept previous values");
+      sdLogEx("ERR", "CFG", "bg_creds_missing_preserved_previous");
     }
 
     // Update config version
@@ -888,7 +891,7 @@ void pullCloudflareConfig(AppConfig& cfg, Preferences& p) {
 
     if (strcmp(prevTimezone, cfg.timezone) != 0) {
       Serial.println("Timezone changed — resyncing NTP");
-      sdLog("SYS", "Timezone changed, NTP resync");
+      sdLogfEx("SYS", "TIME", "timezone_changed %s->%s", prevTimezone, cfg.timezone);
       syncTime(cfg.timezone);
     }
 
@@ -896,7 +899,7 @@ void pullCloudflareConfig(AppConfig& cfg, Preferences& p) {
       strcmp(prevWifiSSID, cfg.wifiSSID) != 0 ||
       strcmp(prevWifiPass, cfg.wifiPass) != 0;
     if (wifiCredsChanged) {
-      sdLog("NET", "WiFi credentials changed via cloud config");
+      sdLogEx("NET", "CFG", "wifi_credentials_changed_rebooting");
       setDisplayBanner(dispState, "WiFi updated, rebooting", CLR_MUTED, 2500UL);
       delay(500);
       ESP.restart();
@@ -905,7 +908,7 @@ void pullCloudflareConfig(AppConfig& cfg, Preferences& p) {
 
     dispState.showKeyError = false;
     Serial.printf("Config synced (v%d)\n", cfg.lastConfigVersion);
-    sdLog("CFG", "Config synced");
+    sdLogfEx("CFG", "CFG", "config_synced v:%d", cfg.lastConfigVersion);
 
   } else if (code == 401) {
     if (!hasValidClock()) {
@@ -965,10 +968,12 @@ bool pushStatus(AppConfig& cfg) {
     addSignedHeaders(http, "POST", path, body, cfg);
   int code = http.POST(body);
   if (code < 200 || code >= 300) {
+    sdLogfEx("ERR", "STATUS", "push_fail http:%d", code);
     logHttpFailure("Status push", code);
     http.end();
     return false;
   }
+  sdLogfEx("SYS", "STATUS", "push_ok bg:%d src:%d cfgV:%d", lastReading.value, (int)lastReading.source, cfg.lastConfigVersion);
   http.end();
   return true;
 }
@@ -986,18 +991,21 @@ void pollCloudflareCommand(AppConfig& cfg, Preferences& p) {
 
   int code = http.GET();
   if (code != 200) {
+    sdLogfEx("ERR", "CMD", "poll_http:%d", code);
     http.end();
     return;
   }
 
   StaticJsonDocument<512> doc;
   if (deserializeJson(doc, http.getString())) {
+    sdLogEx("ERR", "CMD", "poll_parse_failed");
     http.end();
     return;
   }
   http.end();
 
   bool pending = doc["pending"] | false;
+  sdLogfEx("CMD", "CMD", "poll_ok pending:%d", pending ? 1 : 0);
   if (!pending) return;
 
   const char* cmdId = doc["command"]["id"] | "";
@@ -1008,10 +1016,12 @@ void pollCloudflareCommand(AppConfig& cfg, Preferences& p) {
 
   if (!strlen(cmdId) || !strlen(cmdType)) return;
   if (!verifyCommandSignature(cfg, cmdId, cmdType, createdAt, expiresAt, cmdSig)) {
-    sdLogError("Command signature verification failed");
+    sdLogfEx("ERR", "CMD", "signature_invalid id:%s type:%s", cmdId, cmdType);
     ackCloudflareCommand(cfg, cmdId, false, "invalid signature");
     return;
   }
+
+  sdLogfEx("CMD", "CMD", "execute id:%s type:%s", cmdId, cmdType);
 
   if (!strcmp(cmdType, "sync-now")) {
     sdLog("CMD", "Executing command: sync-now");
@@ -1067,7 +1077,8 @@ void ackCloudflareCommand(AppConfig& cfg, const char* cmdId, bool ok, const char
   serializeJson(body, payload);
 
   addSignedHeaders(http, "POST", path, payload, cfg);
-  http.POST(payload);
+  int code = http.POST(payload);
+  sdLogfEx("CMD", "CMD_ACK", "id:%s ok:%d http:%d msg:%s", cmdId, ok ? 1 : 0, code, message ? message : "");
   http.end();
 }
 
@@ -1079,9 +1090,11 @@ bool uploadSdLogs(AppConfig& cfg, const char* cmdId, int maxLines, size_t maxByt
   int lineCount = 0;
   bool haveLogs = sdCollectLogsForUpload(logs, lineCount, maxLines, maxBytes);
   if (!haveLogs) {
-    if (failIfEmpty) sdLogError("No SD logs available to upload");
+    if (failIfEmpty) sdLogEx("ERR", "LOG_UPLOAD", "no_logs_available");
     return false;
   }
+
+  sdLogfEx("SYS", "LOG_UPLOAD", "prepare lines:%d bytes:%u cmd:%d", lineCount, (unsigned)logs.length(), (cmdId && strlen(cmdId)) ? 1 : 0);
 
   HTTPClient http;
   String path = "/api/log-upload";
@@ -1099,10 +1112,11 @@ bool uploadSdLogs(AppConfig& cfg, const char* cmdId, int maxLines, size_t maxByt
   http.end();
 
   if (code >= 200 && code < 300) {
-    sdLog("SYS", "SD logs uploaded to cloud");
+    sdLogfEx("SYS", "LOG_UPLOAD", "upload_ok http:%d lines:%d bytes:%u", code, lineCount, (unsigned)logs.length());
     return true;
   }
 
+  sdLogfEx("ERR", "LOG_UPLOAD", "upload_fail http:%d lines:%d", code, lineCount);
   logHttpFailure("Log upload", code);
   return false;
 }
@@ -1121,14 +1135,17 @@ void fetchDigest(AppConfig& cfg) {
   http.setTimeout(5000);
 
   int code = http.GET();
+  sdLogfEx("AI", "DIGEST", "fetch_http:%d", code);
   if (code == 200) {
     StaticJsonDocument<1536> doc;
     if (!deserializeJson(doc, http.getString())) {
       const char* txt = doc["text"] | "";
       if (strlen(txt) > 0) {
         strlcpy(gDigestText, txt, sizeof(gDigestText));
-        sdLog("AI", "Digest fetched");
+        sdLogfEx("AI", "DIGEST", "fetched len:%u", (unsigned)strlen(gDigestText));
       }
+    } else {
+      sdLogEx("ERR", "DIGEST", "parse_failed");
     }
   } else if (code == 204) {
     // No digest available today — not an error
@@ -1136,7 +1153,7 @@ void fetchDigest(AppConfig& cfg) {
   } else {
     char msg[40];
     snprintf(msg, sizeof(msg), "Digest HTTP %d", code);
-    sdLog("AI", msg);
+    sdLogEx("AI", "DIGEST", msg);
   }
   http.end();
 }

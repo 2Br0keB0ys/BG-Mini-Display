@@ -18,6 +18,7 @@ bool fetchNightscout(AppConfig& cfg, BGReading& reading) {
   http.begin(url);
   http.setTimeout(8000);
   int code = http.GET();
+  sdLogfEx("NS", "NS_FETCH", "http:%d token:%d", code, strlen(cfg.nightscoutSecret) > 0 ? 1 : 0);
 
   bool ok = false;
   if (code == 200) {
@@ -51,13 +52,19 @@ bool fetchNightscout(AppConfig& cfg, BGReading& reading) {
 
       ok = (reading.value > 0);
       Serial.printf("NS: BG=%d trend=%d\n", reading.value, reading.trend);
-      if (ok) sdLog("NS", "Fetch success");
+      if (ok) {
+        sdLogfEx("NS", "NS_FETCH", "ok bg:%d trend:%d ts:%lu", reading.value, reading.trend, (unsigned long)reading.timestamp);
+      } else {
+        sdLogfEx("ERR", "NS_FETCH", "invalid_bg value:%d", reading.value);
+      }
+    } else {
+      sdLogfEx("ERR", "NS_FETCH", "parse_or_empty err:%s", err.c_str());
     }
   } else {
     Serial.printf("NS: HTTP %d\n", code);
     char msg[40];
     snprintf(msg, sizeof(msg), "Nightscout HTTP %d", code);
-    sdLogError(msg);
+    sdLogfEx("ERR", "NS_FETCH", "%s", msg);
   }
   http.end();
   return ok;
