@@ -21,5 +21,8 @@
 			"path": "."
 		}
 	],
-	"settings": {}
+	"settings": {
+		"claudeCode.useTerminal": true,
+		"debug.terminal.clearBeforeReusing": true
+	}
 }
