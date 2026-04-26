@@ -244,6 +244,87 @@ function fmtUptime(s){ if(!s) return '—'; return `${Math.floor(s/86400)}d ${Ma
 function to12h(hhmm){ const m=String(hhmm||'').trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/); if(!m) return hhmm||''; let h=parseInt(m[1],10); const min=m[2]; const ap=h>=12?'PM':'AM'; h=h%12; if(h===0) h=12; return `${h}:${min} ${ap}`; }
 function to24h(v,fallback='23:00'){ const s=String(v||'').trim(); const m12=s.match(/^(1[0-2]|0?[1-9]):([0-5]\d)\s*([AaPp][Mm])$/); if(m12){ let h=parseInt(m12[1],10)%12; if(m12[3].toUpperCase()==='PM') h+=12; return `${String(h).padStart(2,'0')}:${m12[2]}`; } const m24=s.match(/^([01]?\d|2[0-3]):([0-5]\d)$/); if(m24) return `${String(parseInt(m24[1],10)).padStart(2,'0')}:${m24[2]}`; return fallback; }
 
+const PUMP_CATALOG = [
+  {
+    brand: 'No pump',
+    models: [
+      { model: 'No pump', type: 'none', modes: ['No automation'] },
+    ],
+  },
+  {
+    brand: 'Tandem Diabetes Care',
+    models: [
+      { model: 't:slim X2', type: 'pump', modes: ['Control-IQ', 'Basal-IQ', 'Manual Mode'] },
+      { model: 't:slim Mobi', type: 'pump', modes: ['Control-IQ', 'Manual Mode'] },
+    ],
+  },
+  {
+    brand: 'Insulet (Omnipod)',
+    models: [
+      { model: 'Omnipod 5', type: 'patch-pump', modes: ['Automated Mode', 'Manual Mode'] },
+      { model: 'Omnipod DASH', type: 'patch-pump', modes: ['Manual Mode'] },
+      { model: 'Omnipod Eros', type: 'patch-pump', modes: ['Manual Mode'] },
+    ],
+  },
+  {
+    brand: 'Medtronic',
+    models: [
+      { model: 'MiniMed 780G', type: 'pump', modes: ['SmartGuard', 'Manual Mode'] },
+      { model: 'MiniMed 770G', type: 'pump', modes: ['Auto Mode', 'Manual Mode'] },
+      { model: 'MiniMed 670G', type: 'pump', modes: ['Auto Mode', 'Manual Mode'] },
+    ],
+  },
+  {
+    brand: 'Beta Bionics',
+    models: [
+      { model: 'iLet Bionic Pancreas', type: 'pump', modes: ['Bionic Mode'] },
+    ],
+  },
+  {
+    brand: 'Ypsomed',
+    models: [
+      { model: 'mylife YpsoPump', type: 'pump', modes: ['CamAPS FX Auto Mode', 'Manual Mode'] },
+    ],
+  },
+  {
+    brand: 'Roche',
+    models: [
+      { model: 'Accu-Chek Solo', type: 'patch-pump', modes: ['Manual Mode'] },
+    ],
+  },
+  {
+    brand: 'Other',
+    models: [
+      { model: 'Other', type: 'pump', modes: ['Manual Mode', 'Hybrid Closed Loop', 'Closed Loop'] },
+    ],
+  },
+];
+
+function findPumpBrand(brand){
+  return PUMP_CATALOG.find(b=>b.brand===brand) || PUMP_CATALOG[0];
+}
+
+function syncPumpProfileUi(){
+  const brandEl = document.getElementById('insulin_pump_brand');
+  const modelEl = document.getElementById('insulin_pump_model');
+  const modeEl = document.getElementById('insulin_pump_loop_mode');
+  const typeEl = document.getElementById('insulin_pump_type');
+  if(!brandEl || !modelEl || !modeEl || !typeEl) return;
+
+  const prevModel = modelEl.value;
+  const prevMode = modeEl.value;
+  const brand = findPumpBrand(brandEl.value);
+
+  modelEl.innerHTML = brand.models.map(m=>`<option value="${m.model}">${m.model}</option>`).join('');
+  const model = brand.models.find(m=>m.model===prevModel) || brand.models[0];
+  modelEl.value = model.model;
+
+  modeEl.innerHTML = model.modes.map(m=>`<option value="${m}">${m}</option>`).join('');
+  modeEl.value = model.modes.includes(prevMode) ? prevMode : model.modes[0];
+
+  typeEl.value = model.type;
+}
+
 // ── Collect Config ────────────────────────────────────────────────────────────
 function get(id){ const el=document.getElementById(id); if(!el) return undefined; if(el.type==='checkbox') return el.checked; if(el.type==='number') return parseFloat(el.value); return el.value; }
 function radio(name){ const el=document.querySelector(`input[name="${name}"]:checked`); return el?el.value:undefined; }
@@ -549,11 +630,14 @@ function render(){
     field('On-device behavior','','<span style="font-size:12px;color:var(--muted)">Shown at boot for 10 seconds. Tap bottom-left on the main screen to replay.</span>');
 
   // Pump Profile section
+  const selectedPumpBrand = findPumpBrand(c.insulin_pump_brand || 'No pump');
+  const selectedPumpModel = selectedPumpBrand.models.find(m => m.model === (c.insulin_pump_model || '')) || selectedPumpBrand.models[0];
+  const selectedPumpMode = selectedPumpModel.modes.includes(c.insulin_pump_loop_mode || '') ? c.insulin_pump_loop_mode : selectedPumpModel.modes[0];
   const pumpContent =
-    field('Insulin delivery type','Used by AI summary to tailor context and recommendations.',sel('insulin_pump_type',[["none","No pump"],["pump","Tubed pump"],["patch-pump","Patch pump"]],c.insulin_pump_type||'none'))+
-    field('Pump brand','Optional. Example: Tandem, Medtronic, Omnipod.',inp('insulin_pump_brand','text',c.insulin_pump_brand||'','Optional'))+
-    field('Pump model','Optional. Example: t:slim X2, 780G, Omnipod 5.',inp('insulin_pump_model','text',c.insulin_pump_model||'','Optional'))+
-    field('Automation mode','Lets AI adjust wording for manual vs hybrid closed-loop behavior.',sel('insulin_pump_loop_mode',[["none","No automation"],["manual","Manual mode"],["hybrid-closed-loop","Hybrid closed loop"],["closed-loop","Closed loop"]],c.insulin_pump_loop_mode||'none'))+
+    field('Pump brand','Select your pump brand so model and automation terms stay accurate.',`<select id="insulin_pump_brand" onchange="syncPumpProfileUi()">${PUMP_CATALOG.map(b=>`<option value="${b.brand}"${b.brand===selectedPumpBrand.brand?' selected':''}>${b.brand}</option>`).join('')}</select>`)+
+    field('Pump model','Models are filtered by selected brand.',`<select id="insulin_pump_model" onchange="syncPumpProfileUi()">${selectedPumpBrand.models.map(m=>`<option value="${m.model}"${m.model===selectedPumpModel.model?' selected':''}>${m.model}</option>`).join('')}</select>`)+
+    field('Automation mode','Terminology adjusts to the selected brand and model.',`<select id="insulin_pump_loop_mode">${selectedPumpModel.modes.map(m=>`<option value="${m}"${m===selectedPumpMode?' selected':''}>${m}</option>`).join('')}</select>`)+
+    `<input type="hidden" id="insulin_pump_type" value="${selectedPumpModel.type}">`+
     field('Additional notes','Optional context for AI (e.g., exercise pattern, meal timing, known overnight trends).',inp('insulin_pump_notes','text',c.insulin_pump_notes||'','Optional', 'wide'));
 
   // Display section
@@ -737,6 +821,7 @@ function render(){
   </div>`;
 
   syncWifiOpenUi();
+  syncPumpProfileUi();
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────

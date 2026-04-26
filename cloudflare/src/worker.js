@@ -111,11 +111,10 @@ function normalizeConfig(cfg) {
   out.pushover_alert_cooldown_min = Math.max(5, Math.min(60, Number(out.pushover_alert_cooldown_min || 15)));
 
   const pumpType = String(out.insulin_pump_type || "none").trim().toLowerCase();
-  const loopMode = String(out.insulin_pump_loop_mode || "none").trim().toLowerCase();
   out.insulin_pump_type = ["none", "pump", "patch-pump"].includes(pumpType) ? pumpType : "none";
-  out.insulin_pump_loop_mode = ["none", "manual", "hybrid-closed-loop", "closed-loop"].includes(loopMode) ? loopMode : "none";
   out.insulin_pump_brand = String(out.insulin_pump_brand || "").trim().slice(0, 40);
   out.insulin_pump_model = String(out.insulin_pump_model || "").trim().slice(0, 40);
+  out.insulin_pump_loop_mode = String(out.insulin_pump_loop_mode || "No automation").trim().slice(0, 60);
   out.insulin_pump_notes = String(out.insulin_pump_notes || "").trim().slice(0, 180);
 
   return out;
