@@ -412,7 +412,7 @@ void loop() {
 
   checkDailyAutoReboot();
 
-  // Touch — top-right gear icon
+  // Touch — top-right gear icon, bottom-left digest replay
   if (M5.Touch.getCount()) {
     auto tp = M5.Touch.getDetail();
     if (tp.wasPressed()) {
@@ -422,6 +422,28 @@ void loop() {
         showSettingsMenu(appConfig, prefs);
       } else if (tp.x < 160 && tp.y > 170 && strlen(gDigestText)) {
         showDigestScreen(gDigestText, 10000UL);
+      }
+    }
+  }
+
+  // Middle hardware button — fetch fresh AI digest from server and display it
+  if (M5.BtnB.wasClicked()) {
+    dispState.dndWakeUntilMs = now + 300000UL;
+    if (WiFi.status() == WL_CONNECTED) {
+      sdLog("AI", "BtnB: fetching digest");
+      setDisplayBanner(dispState, "Fetching digest...", CLR_MUTED);
+      fetchDigest(appConfig);
+      if (strlen(gDigestText)) {
+        showDigestScreen(gDigestText, 30000UL);
+      } else {
+        setDisplayBanner(dispState, "No digest available", CLR_DIM, 2500UL);
+      }
+    } else {
+      // Offline — show cached digest if available, otherwise error
+      if (strlen(gDigestText)) {
+        showDigestScreen(gDigestText, 30000UL);
+      } else {
+        setDisplayBanner(dispState, "Offline — no digest", CLR_ORANGE, 2500UL);
       }
     }
   }

@@ -576,7 +576,7 @@ void showDigestScreen(const char* text, unsigned long durationMs = 10000) {
   canvas.setFont(&fonts::FreeSans9pt7b);
   canvas.setTextColor(CLR_DIM);
   canvas.setTextDatum(middle_center);
-  canvas.drawString("Tap to close", W / 2, H - 8);
+  canvas.drawString("Tap screen or press \u25BC to close", W / 2, H - 8);
   canvas.pushSprite(0, 0);
 
   unsigned long start = millis();
@@ -584,6 +584,10 @@ void showDigestScreen(const char* text, unsigned long durationMs = 10000) {
     M5.update();
     if (M5.Touch.getCount() && M5.Touch.getDetail().wasPressed()) {
       delay(200);
+      break;
+    }
+    if (M5.BtnB.wasClicked()) {
+      delay(100);
       break;
     }
     delay(50);
