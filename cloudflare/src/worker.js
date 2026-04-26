@@ -414,7 +414,7 @@ async function generateDailyDigest(env, force = false) {
   if (env.AI) {
     try {
       const aiResp = await env.AI.run("@cf/meta/llama-3.1-8b-instruct", {
-        max_tokens: 180,
+        max_tokens: 280,
         messages: [
           {
             role: "system",
@@ -426,7 +426,7 @@ async function generateDailyDigest(env, force = false) {
           },
         ],
       });
-      digestText = (aiResp?.response || "").trim().slice(0, 500) || "AI returned empty response.";
+      digestText = (aiResp?.response || "").trim().slice(0, 950) || "AI returned empty response.";
     } catch (e) {
       digestText = `AI error: ${String(e).slice(0, 120)}`;
     }

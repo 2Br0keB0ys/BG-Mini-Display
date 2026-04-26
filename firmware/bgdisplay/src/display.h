@@ -562,33 +562,100 @@ void showDigestScreen(const char* text, unsigned long durationMs = 10000) {
   if (!text || !strlen(text)) return;
   int W = M5.Display.width(), H = M5.Display.height();
 
-  canvas.fillScreen(CLR_BG);
-  canvas.setFont(&fonts::FreeSansBold9pt7b);
-  canvas.setTextDatum(middle_center);
-  canvas.setTextColor(CLR_TEXT);
-  canvas.drawString("Morning Digest", W / 2, 16);
-  canvas.drawLine(10, 30, W - 10, 30, CLR_SEP);
+  // ── Word-wrap text into a line array ──────────────────────────────────────
+  static const int MAX_LINES = 70;
+  static char wlines[MAX_LINES][80];
+  int numLines = 0;
 
   canvas.setFont(&fonts::FreeSans9pt7b);
-  canvas.setTextColor(CLR_MUTED);
-  _drawWrappedText(8, 38, W - 16, 18, text);
 
-  canvas.setFont(&fonts::FreeSans9pt7b);
-  canvas.setTextColor(CLR_DIM);
-  canvas.setTextDatum(middle_center);
-  canvas.drawString("Tap screen or press \u25BC to close", W / 2, H - 8);
-  canvas.pushSprite(0, 0);
+  char curLine[80] = "";
+  char word[64]    = "";
+  const char* p = text;
 
+  auto flushLine = [&]() {
+    if (numLines < MAX_LINES && strlen(curLine) > 0) {
+      strlcpy(wlines[numLines++], curLine, 80);
+      curLine[0] = '\0';
+    }
+  };
+
+  while (*p && numLines < MAX_LINES) {
+    size_t wi = 0;
+    while (*p && *p != ' ' && *p != '\n' && wi < sizeof(word) - 2) word[wi++] = *p++;
+    word[wi] = '\0';
+    bool nl = (*p == '\n');
+    if (*p == ' ' || *p == '\n') p++;
+    if (!strlen(word) && nl) { flushLine(); continue; }
+    if (!strlen(word)) continue;
+    if (!strlen(curLine)) {
+      strlcpy(curLine, word, sizeof(curLine));
+    } else {
+      char trial[80];
+      snprintf(trial, sizeof(trial), "%s %s", curLine, word);
+      if (canvas.textWidth(trial) <= W - 16) {
+        strlcpy(curLine, trial, sizeof(curLine));
+      } else {
+        flushLine();
+        strlcpy(curLine, word, sizeof(curLine));
+      }
+    }
+    if (nl) flushLine();
+  }
+  flushLine();  // flush any remaining text
+
+  // ── Paginated rendering ────────────────────────────────────────────────────
+  const int LINE_H   = 18;
+  const int HEADER_H = 32;
+  const int FOOTER_H = 16;
+  const int VISIBLE  = (H - HEADER_H - FOOTER_H) / LINE_H;
+
+  int scrollLine = 0;
   unsigned long start = millis();
+
+  auto renderPage = [&]() {
+    canvas.fillScreen(CLR_BG);
+    canvas.setFont(&fonts::FreeSansBold9pt7b);
+    canvas.setTextDatum(middle_center);
+    canvas.setTextColor(CLR_TEXT);
+    canvas.drawString("Morning Digest", W / 2, 16);
+    canvas.drawLine(10, 30, W - 10, 30, CLR_SEP);
+    canvas.setFont(&fonts::FreeSans9pt7b);
+    canvas.setTextColor(CLR_MUTED);
+    canvas.setTextDatum(top_left);
+    int y = HEADER_H + 2;
+    int end = scrollLine + VISIBLE;
+    if (end > numLines) end = numLines;
+    for (int i = scrollLine; i < end; i++, y += LINE_H) {
+      canvas.drawString(wlines[i], 8, y);
+    }
+    bool hasMore = (scrollLine + VISIBLE) < numLines;
+    canvas.setFont(&fonts::FreeSans9pt7b);
+    canvas.setTextDatum(middle_center);
+    if (hasMore) {
+      canvas.setTextColor(CLR_TEXT);
+      canvas.drawString("Tap for more  \u25BC", W / 2, H - 8);
+    } else {
+      canvas.setTextColor(CLR_DIM);
+      canvas.drawString("Tap or \u25BC to close", W / 2, H - 8);
+    }
+    canvas.pushSprite(0, 0);
+  };
+
+  renderPage();
+
   while (millis() - start < durationMs) {
     M5.update();
+    if (M5.BtnB.wasClicked()) { delay(100); break; }
     if (M5.Touch.getCount() && M5.Touch.getDetail().wasPressed()) {
-      delay(200);
-      break;
-    }
-    if (M5.BtnB.wasClicked()) {
-      delay(100);
-      break;
+      delay(150);
+      if (scrollLine + VISIBLE < numLines) {
+        scrollLine += VISIBLE;
+        start = millis();  // reset timeout on each page turn
+        renderPage();
+      } else {
+        break;  // last page — tap closes
+      }
     }
     delay(50);
   }

@@ -61,7 +61,7 @@ struct SourceHealthStats {
 
 SourceHealthStats sourceHealth;
 char gResetReason[20] = "unknown";
-char gDigestText[512] = "";
+char gDigestText[1024] = "";
 bool gFactoryResetArmed = false;
 unsigned long gFactoryResetArmMs = 0;
 
@@ -1099,7 +1099,7 @@ void fetchDigest(AppConfig& cfg) {
 
   int code = http.GET();
   if (code == 200) {
-    StaticJsonDocument<640> doc;
+    StaticJsonDocument<1536> doc;
     if (!deserializeJson(doc, http.getString())) {
       const char* txt = doc["text"] | "";
       if (strlen(txt) > 0) {
