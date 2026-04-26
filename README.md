@@ -6,13 +6,14 @@ bgdisplay/
 ├── .github/workflows/      # CI
 ├── CLAUDE.md               # Architecture and operations reference
 ├── bgdisplay_context.md    # Session/context notes
-├── cloudflare/
-│   ├── package.json        # Worker deployment scripts
-│   ├── wrangler.toml       # Worker config + cron schedules
-│   └── src/worker.js       # API backend
-├── pages/
-│   ├── index.html          # Config web UI
-│   └── _headers            # Pages headers
+├── apps/
+│   ├── cloudflare/
+│   │   ├── package.json        # Worker deployment scripts
+│   │   ├── wrangler.toml       # Worker config + cron schedules
+│   │   └── src/worker.js       # API backend
+│   └── pages/
+│       ├── index.html          # Config web UI
+│       └── _headers            # Pages headers
 └── firmware/
     └── bgdisplay/
         ├── platformio.ini          # PlatformIO project config
@@ -46,7 +47,7 @@ Copy the IDs output and paste them into `wrangler.toml`.
 
 ### 1c. Deploy the Worker
 ```bash
-cd cloudflare
+cd apps/cloudflare
 npm install
 npm run deploy:worker
 ```
@@ -63,7 +64,7 @@ Copy the `initialKey` from the response — you need it for the firmware.
 
 ## Step 2 — Cloudflare Pages (Config UI)
 
-### 2a. Edit pages/index.html
+### 2a. Edit apps/pages/index.html
 Set the `WORKER_URL` variable at the top of the `<script>` block:
 ```js
 const WORKER_URL = "https://bgdisplay-worker.YOURNAME.workers.dev";
@@ -71,12 +72,12 @@ const WORKER_URL = "https://bgdisplay-worker.YOURNAME.workers.dev";
 
 ### 2b. Deploy to Cloudflare Pages
 ```bash
-cd cloudflare
+cd apps/cloudflare
 npm install
 npm run deploy:pages
 ```
 
-This deploy runs from the `pages/` directory so Wrangler does not try to parse the Worker config in `cloudflare/wrangler.toml`.
+This deploy runs from the `apps/pages/` directory so Wrangler does not try to parse the Worker config in `apps/cloudflare/wrangler.toml`.
 
 Then set your custom domain (e.g. `bgdisplay.yourdomain.com`) in the Cloudflare dashboard.
 

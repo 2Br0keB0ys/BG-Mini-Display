@@ -28,7 +28,7 @@ Flash requires USB-C connection to M5Stack Core2 at 1500000 baud. OTA is impleme
 
 ### Cloudflare Worker & Pages
 ```bash
-cd cloudflare
+cd apps/cloudflare
 npm run deploy:worker           # wrangler deploy (worker)
 npm run deploy:pages            # wrangler pages deploy (UI)
 npm run deploy:all              # both in sequence
@@ -78,7 +78,7 @@ The main sketch is `bgdisplay.ino`. All modules are header-only files included b
 - **AI Daily Digest:** On boot (after WiFi + config), firmware calls `GET /api/digest`. If a digest is available, `showDigestScreen()` displays it for 10 s. Bottom-left tap (x<160, y>170) on the main screen replays the digest. Global `gDigestText[512]` holds it in memory.
 - **WebSocket reconnect:** `ws_sync.h` uses 8 s reconnect interval. WS event handler is flag-only (sets `_wsTriggerPull`); the actual config pull happens in `wsTick()` after `_wsClient.loop()` returns to avoid re-entrancy.
 
-### Cloudflare Worker (`cloudflare/src/worker.js`)
+### Cloudflare Worker (`apps/cloudflare/src/worker.js`)
 
 Current worker version: `2.0.0` (set in `wrangler.toml` `WORKER_VERSION` var).
 
@@ -140,7 +140,7 @@ Security features: replay protection (nonce + ±5min timestamp), IP-based rate l
 
 `normalizeConfig()` strips retired MQTT fields (`mqtt_host`, `mqtt_user`, `mqtt_pass`, `config_ping_sec`) from old backups on load.
 
-### Config UI (`pages/index.html`)
+### Config UI (`apps/pages/index.html`)
 
 Single HTML file — no build step. Dark mode only. `WORKER_URL` is hardcoded at the top of the `<script>` block and must be edited before deploying. Section open/closed state persists in `localStorage`. Render is fully string-template based — `render()` rebuilds the entire `#app` innerHTML each call. DND times are displayed and stored in 12-hour format in the UI, converted to 24-hour on save.
 
