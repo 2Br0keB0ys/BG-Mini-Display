@@ -54,13 +54,17 @@ const DEFAULT_CONFIG = {
   dexcom_user: "", dexcom_pass: "", dexcom_region: "US",
   // Glooko (optional BG source)
   glooko_email: "", glooko_password: "", glooko_env: "default", glooko_server: "",
+  // Omnipod source credentials
+  tandem_username: "", tandem_password: "",
+  medtronic_username: "", medtronic_password: "",
+  tidepool_username: "", tidepool_password: "",
   // Omnipod bridge (optional)
   glooko_enabled: false,
   glooko_omnipod_url: "",
   glooko_token: "",
   glooko_poll_min: 30,
-  // Preferred provider path (Nightscout-Connect style bridge)
-  omnipod_source: "nightscout_connect",
+  // Preferred Omnipod source
+  omnipod_source: "glooko",
   omnipod_connect_url: "",
   omnipod_connect_token: "",
   // Polling
@@ -131,10 +135,20 @@ function normalizeConfig(cfg) {
   out.glooko_password = String(out.glooko_password || "");
   out.glooko_env = String(out.glooko_env || "default").toLowerCase();
   out.glooko_server = String(out.glooko_server || "").trim().toLowerCase();
+  out.tandem_username = String(out.tandem_username || "").trim();
+  out.tandem_password = String(out.tandem_password || "");
+  out.medtronic_username = String(out.medtronic_username || "").trim();
+  out.medtronic_password = String(out.medtronic_password || "");
+  out.tidepool_username = String(out.tidepool_username || "").trim();
+  out.tidepool_password = String(out.tidepool_password || "");
 
-  // Omnipod provider normalization + migration
+  // Omnipod source normalization + legacy migration
   const src = String(out.omnipod_source || "").trim().toLowerCase();
-  out.omnipod_source = (src === "glooko" || src === "glooko_direct") ? "glooko_direct" : "nightscout_connect";
+  if (src === "nightscout_connect" || src === "glooko_direct") {
+    out.omnipod_source = "glooko";
+  } else {
+    out.omnipod_source = ["tandem", "glooko", "medtronic", "tidepool"].includes(src) ? src : "glooko";
+  }
   if (!out.omnipod_connect_url && out.glooko_omnipod_url) out.omnipod_connect_url = out.glooko_omnipod_url;
   if (!out.omnipod_connect_token && out.glooko_token) out.omnipod_connect_token = out.glooko_token;
 
@@ -363,13 +377,10 @@ async function fetchNightscoutHistory(config, count = 24) {
 async function fetchOmnipodBridge(config) {
   if (!config.glooko_enabled) return null;
   try {
-    const useLegacyGlooko = (config.omnipod_source || "nightscout_connect") === "glooko_direct";
-    const endpoint = useLegacyGlooko
-      ? (config.glooko_omnipod_url || "")
-      : (config.omnipod_connect_url || config.glooko_omnipod_url || "");
-    const token = useLegacyGlooko
-      ? (config.glooko_token || "")
-      : (config.omnipod_connect_token || config.glooko_token || "");
+    const source = String(config.omnipod_source || "glooko").toLowerCase();
+    // Legacy bridge settings remain supported for backwards compatibility while source-credential fetchers are added.
+    const endpoint = config.omnipod_connect_url || config.glooko_omnipod_url || "";
+    const token = config.omnipod_connect_token || config.glooko_token || "";
     if (!endpoint) return null;
 
     const headers = { "Accept": "application/json" };
@@ -397,6 +408,7 @@ async function fetchOmnipodBridge(config) {
     const tsSec = rawTs > 1000000000000 ? Math.floor(rawTs / 1000) : rawTs;
 
     return {
+      source,
       pod_active: active,
       insulin_on_board: Number.isFinite(iob) ? iob : -1,
       reservoir_units: Number.isFinite(reservoir) ? reservoir : -1,
@@ -701,7 +713,13 @@ const MCP_TOOLS = [
 
 function redactConfig(config) {
   const redacted = { ...config };
-  for (const k of ["wifi_pass", "nightscout_secret", "dexcom_pass", "dexcom_user", "glooko_password", "glooko_email", "glooko_token", "omnipod_connect_token"]) {
+  for (const k of [
+    "wifi_pass", "nightscout_secret", "dexcom_pass", "dexcom_user",
+    "glooko_password", "glooko_email", "glooko_token", "omnipod_connect_token",
+    "tandem_username", "tandem_password",
+    "medtronic_username", "medtronic_password",
+    "tidepool_username", "tidepool_password",
+  ]) {
     if (redacted[k]) redacted[k] = "••••••••";
   }
   return redacted;
@@ -822,8 +840,17 @@ async function handleMCP(request, env, config, auth) {
       if (typeof args.fields.dexcom_pass === "string" && args.fields.dexcom_pass !== config.dexcom_pass) {
         secretMeta.dexcomPassUpdatedAt = nowTs;
       }
-      if (typeof args.fields.omnipod_connect_token === "string" && args.fields.omnipod_connect_token !== config.omnipod_connect_token) {
-        secretMeta.omnipodConnectTokenUpdatedAt = nowTs;
+      if (typeof args.fields.glooko_password === "string" && args.fields.glooko_password !== config.glooko_password) {
+        secretMeta.glookoPasswordUpdatedAt = nowTs;
+      }
+      if (typeof args.fields.tandem_password === "string" && args.fields.tandem_password !== config.tandem_password) {
+        secretMeta.tandemPasswordUpdatedAt = nowTs;
+      }
+      if (typeof args.fields.medtronic_password === "string" && args.fields.medtronic_password !== config.medtronic_password) {
+        secretMeta.medtronicPasswordUpdatedAt = nowTs;
+      }
+      if (typeof args.fields.tidepool_password === "string" && args.fields.tidepool_password !== config.tidepool_password) {
+        secretMeta.tidepoolPasswordUpdatedAt = nowTs;
       }
       await env.BGDISPLAY_CONFIG.put("secret_meta", JSON.stringify(secretMeta));
 
@@ -1244,6 +1271,12 @@ export default {
         delete deviceConfig.glooko_email;
         delete deviceConfig.glooko_password;
         delete deviceConfig.glooko_server;
+        delete deviceConfig.tandem_username;
+        delete deviceConfig.tandem_password;
+        delete deviceConfig.medtronic_username;
+        delete deviceConfig.medtronic_password;
+        delete deviceConfig.tidepool_username;
+        delete deviceConfig.tidepool_password;
         delete deviceConfig.glooko_omnipod_url;
         delete deviceConfig.omnipod_connect_token;
         delete deviceConfig.omnipod_connect_url;
@@ -1265,6 +1298,12 @@ export default {
       delete deviceConfig.glooko_email;
       delete deviceConfig.glooko_password;
       delete deviceConfig.glooko_server;
+      delete deviceConfig.tandem_username;
+      delete deviceConfig.tandem_password;
+      delete deviceConfig.medtronic_username;
+      delete deviceConfig.medtronic_password;
+      delete deviceConfig.tidepool_username;
+      delete deviceConfig.tidepool_password;
       delete deviceConfig.glooko_omnipod_url;
       delete deviceConfig.omnipod_connect_token;
       delete deviceConfig.omnipod_connect_url;
@@ -1479,11 +1518,17 @@ export default {
       if (secretMeta.dexcomPassUpdatedAt && now - secretMeta.dexcomPassUpdatedAt > 30 * 86400000) {
         reminders.push({ key: "dexcom_pass", msg: "Dexcom password older than 30 days" });
       }
-      if (secretMeta.glookoTokenUpdatedAt && now - secretMeta.glookoTokenUpdatedAt > 30 * 86400000) {
-        reminders.push({ key: "glooko_token", msg: "Glooko token older than 30 days" });
+      if (secretMeta.glookoPasswordUpdatedAt && now - secretMeta.glookoPasswordUpdatedAt > 30 * 86400000) {
+        reminders.push({ key: "glooko_password", msg: "Glooko password older than 30 days" });
       }
-      if (secretMeta.omnipodConnectTokenUpdatedAt && now - secretMeta.omnipodConnectTokenUpdatedAt > 30 * 86400000) {
-        reminders.push({ key: "omnipod_connect_token", msg: "Omnipod bridge token older than 30 days" });
+      if (secretMeta.tandemPasswordUpdatedAt && now - secretMeta.tandemPasswordUpdatedAt > 30 * 86400000) {
+        reminders.push({ key: "tandem_password", msg: "Tandem password older than 30 days" });
+      }
+      if (secretMeta.medtronicPasswordUpdatedAt && now - secretMeta.medtronicPasswordUpdatedAt > 30 * 86400000) {
+        reminders.push({ key: "medtronic_password", msg: "Medtronic password older than 30 days" });
+      }
+      if (secretMeta.tidepoolPasswordUpdatedAt && now - secretMeta.tidepoolPasswordUpdatedAt > 30 * 86400000) {
+        reminders.push({ key: "tidepool_password", msg: "Tidepool password older than 30 days" });
       }
 
       const configUpdatedAt = Number(await env.BGDISPLAY_CONFIG.get("config_updated_at") || 0) || null;
@@ -1555,11 +1600,17 @@ export default {
       if (typeof body.dexcom_pass === "string" && body.dexcom_pass !== config.dexcom_pass) {
         secretMeta.dexcomPassUpdatedAt = Date.now();
       }
-      if (typeof body.glooko_token === "string" && body.glooko_token !== config.glooko_token) {
-        secretMeta.glookoTokenUpdatedAt = Date.now();
+      if (typeof body.glooko_password === "string" && body.glooko_password !== config.glooko_password) {
+        secretMeta.glookoPasswordUpdatedAt = Date.now();
       }
-      if (typeof body.omnipod_connect_token === "string" && body.omnipod_connect_token !== config.omnipod_connect_token) {
-        secretMeta.omnipodConnectTokenUpdatedAt = Date.now();
+      if (typeof body.tandem_password === "string" && body.tandem_password !== config.tandem_password) {
+        secretMeta.tandemPasswordUpdatedAt = Date.now();
+      }
+      if (typeof body.medtronic_password === "string" && body.medtronic_password !== config.medtronic_password) {
+        secretMeta.medtronicPasswordUpdatedAt = Date.now();
+      }
+      if (typeof body.tidepool_password === "string" && body.tidepool_password !== config.tidepool_password) {
+        secretMeta.tidepoolPasswordUpdatedAt = Date.now();
       }
 
       const nowTs = Date.now();

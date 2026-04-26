@@ -326,6 +326,44 @@ function syncPumpProfileUi(){
   typeEl.value = model.type;
 }
 
+function getOmnipodSourceCredentialDefs(source){
+  const s = String(source || '').toLowerCase();
+  if (s === 'tandem') {
+    return [
+      { id: 'tandem_username', label: 'Tandem username', type: 'text', placeholder: 'email or username' },
+      { id: 'tandem_password', label: 'Tandem password', type: 'password', placeholder: 'leave blank to keep current password', sensitive: true },
+    ];
+  }
+  if (s === 'medtronic') {
+    return [
+      { id: 'medtronic_username', label: 'Medtronic username', type: 'text', placeholder: 'CareLink username' },
+      { id: 'medtronic_password', label: 'Medtronic password', type: 'password', placeholder: 'leave blank to keep current password', sensitive: true },
+    ];
+  }
+  if (s === 'tidepool') {
+    return [
+      { id: 'tidepool_username', label: 'Tidepool username', type: 'text', placeholder: 'email or username' },
+      { id: 'tidepool_password', label: 'Tidepool password', type: 'password', placeholder: 'leave blank to keep current password', sensitive: true },
+    ];
+  }
+  return [
+    { id: 'glooko_email', label: 'Glooko email', type: 'text', placeholder: 'name@example.com' },
+    { id: 'glooko_password', label: 'Glooko password', type: 'password', placeholder: 'leave blank to keep current password', sensitive: true },
+  ];
+}
+
+function syncOmnipodSourceUi(){
+  const sourceEl = document.getElementById('omnipod_source');
+  const wrapEl = document.getElementById('omnipod_source_creds');
+  if (!sourceEl || !wrapEl) return;
+  const source = sourceEl.value || 'glooko';
+  const defs = getOmnipodSourceCredentialDefs(source);
+  wrapEl.innerHTML = defs.map(def=>{
+    const existingValue = (CONFIG && typeof CONFIG[def.id] === 'string' && !def.sensitive) ? CONFIG[def.id] : '';
+    return subfield(def.label, inp(def.id, def.type, existingValue, def.placeholder));
+  }).join('');
+}
+
 // ── Collect Config ────────────────────────────────────────────────────────────
 function get(id){ const el=document.getElementById(id); if(!el) return undefined; if(el.type==='checkbox') return el.checked; if(el.type==='number') return parseFloat(el.value); return el.value; }
 function radio(name){ const el=document.querySelector(`input[name="${name}"]:checked`); return el?el.value:undefined; }
@@ -333,7 +371,11 @@ function radio(name){ const el=document.querySelector(`input[name="${name}"]:che
 function collectConfig(){
   const c={};
   const fields=['wifi_ssid','wifi_pass','nightscout_url','nightscout_secret','dexcom_user','dexcom_pass','dexcom_region',
-    'glooko_enabled','glooko_poll_min','omnipod_source','omnipod_connect_url','omnipod_connect_token',
+    'glooko_enabled','glooko_poll_min','omnipod_source',
+    'glooko_email','glooko_password','glooko_env','glooko_server',
+    'tandem_username','tandem_password',
+    'medtronic_username','medtronic_password',
+    'tidepool_username','tidepool_password',
     'poll_interval_min','stale_data_warn_min','config_ping_min',
     'bg_units','urgent_low','low','high','urgent_high',
     'insulin_pump_type','insulin_pump_brand','insulin_pump_model','insulin_pump_loop_mode','insulin_pump_notes',
@@ -368,10 +410,13 @@ function collectConfig(){
   }
 
   if(get('dexcom_pass')==='') delete c.dexcom_pass;
-  if(get('omnipod_connect_token')==='') delete c.omnipod_connect_token;
+  const sensitiveSourceFields = ['glooko_password','tandem_password','medtronic_password','tidepool_password'];
+  sensitiveSourceFields.forEach(f=>{ if(get(f)==='') delete c[f]; });
   // Keep backward compatibility with older configs that still use legacy key names.
   delete c.glooko_omnipod_url;
   delete c.glooko_token;
+  delete c.omnipod_connect_url;
+  delete c.omnipod_connect_token;
   const po_user=get('pushover_user_key'); if(po_user) c.pushover_user_key=po_user;
   const po_token=get('pushover_api_token'); if(po_token) c.pushover_api_token=po_token;
   return c;
@@ -621,10 +666,9 @@ function render(){
     field('Dexcom username','',inp('dexcom_user','text',c.dexcom_user,'email or +1xxxxxxxxxx'))+
     field('Dexcom password','Leave blank to keep the current password.',inp('dexcom_pass','password','','••••••••'))+
     field('Dexcom region','Set this to match your Dexcom account region.',sel('dexcom_region',[['US','US'],['Non-US','Non-US']],c.dexcom_region))+
-    field('Enable Omnipod bridge sync','Fetch Omnipod-only status through your Nightscout-Connect style bridge endpoint.',tog('glooko_enabled',c.glooko_enabled))+
-    field('Omnipod provider','Select bridge mode. Use Nightscout-Connect unless you need legacy direct mode.',sel('omnipod_source',[["nightscout_connect","Nightscout-Connect bridge"],["glooko_direct","Legacy direct endpoint"]],c.omnipod_source||'nightscout_connect'))+
-    field('Omnipod bridge endpoint','HTTPS endpoint returning Omnipod-only JSON payload.',inp('omnipod_connect_url','url',c.omnipod_connect_url||c.glooko_omnipod_url||'','https://.../omnipod'))+
-    field('Omnipod bridge token','Optional token. Worker sends it as Bearer + api-secret headers for compatibility.',inp('omnipod_connect_token','password','','leave blank to keep current token'))+
+    field('Enable Omnipod source sync','Fetch Omnipod-related status using your selected provider credentials.',tog('glooko_enabled',c.glooko_enabled))+
+    field('Omnipod source','Select which source account to use for Omnipod-related data.',sel('omnipod_source',[["tandem","Tandem"],["glooko","Glooko"],["medtronic","Medtronic"],["tidepool","Tidepool"]],c.omnipod_source||'glooko'))+
+    `<div id="omnipod_source_creds"></div>`+
     field('Omnipod poll interval','Status refresh interval (minimum 30 minutes).',sel('glooko_poll_min',[[30,'30 minutes'],[60,'60 minutes'],[120,'120 minutes']],c.glooko_poll_min||30))+
     field('Reading refresh interval','How often the device checks for new readings.',sel('poll_interval_min',[[1,'1 minute'],[5,'5 minutes'],[10,'10 minutes']],c.poll_interval_min))+
     field('Stale reading warning','Show stale status after no new reading for this long.',sel('stale_data_warn_min',[[5,'5 minutes'],[10,'10 minutes'],[15,'15 minutes'],[20,'20 minutes']],c.stale_data_warn_min))+
@@ -858,6 +902,11 @@ function render(){
 
   syncWifiOpenUi();
   syncPumpProfileUi();
+  syncOmnipodSourceUi();
+  const omSourceEl = document.getElementById('omnipod_source');
+  if (omSourceEl) {
+    omSourceEl.addEventListener('change', syncOmnipodSourceUi);
+  }
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
