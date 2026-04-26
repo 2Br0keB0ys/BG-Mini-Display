@@ -1208,6 +1208,27 @@ export default {
       return json({ available: true, text: digest.text, generatedAt: digest.generatedAt, date: digest.date, stats: digest.stats || null });
     }
 
+    // ── /mcp — MCP server (JSON-RPC 2.0, device-key or admin-session auth) ────
+    // Key can be passed as X-Device-Key header OR ?key= query param (for Claude connector URL).
+    if (path === "/mcp" && (method === "POST" || method === "GET")) {
+      // Accept key from header OR query param (query param needed for Claude connector URL)
+      const mcpDeviceKey = request.headers.get("X-Device-Key") || url.searchParams.get("key");
+      if (mcpDeviceKey) {
+        const mcpKeyHash = await sha256(mcpDeviceKey);
+        if (!isDeviceKeyValid(auth, mcpKeyHash)) return json({ error: "Invalid device key" }, 401);
+        if (method === "GET") {
+          return json({
+            name: "bgdisplay-mcp", version: "1.0.0",
+            description: "BGDisplay Model Context Protocol server",
+            endpoint: `${url.origin}/mcp`,
+            tools: MCP_TOOLS.map(t => ({ name: t.name, description: t.description })),
+          });
+        }
+        return handleMCP(request, env, config, auth);
+      }
+      // No device key — fall through to admin auth gate below
+    }
+
     // ── Admin auth gate ───────────────────────────────────────────────────────
     const cfJwt = request.headers.get("CF-Access-Jwt-Assertion");
     const hasSession = await validateAdminSession(env, request);
@@ -1216,16 +1237,8 @@ export default {
       return json({ error: "Unauthorized. Cloudflare Access is required." }, 401);
     }
 
-    // ── POST /mcp — MCP server (JSON-RPC 2.0) ────────────────────────────────
-    if (path === "/mcp" && (method === "POST" || method === "GET")) {
-      if (method === "GET") {
-        return json({
-          name: "bgdisplay-mcp", version: "1.0.0",
-          description: "BGDisplay Model Context Protocol server",
-          endpoint: `${url.origin}/mcp`,
-          tools: MCP_TOOLS.map(t => ({ name: t.name, description: t.description })),
-        });
-      }
+    // ── POST /mcp — admin-session fallback (when no X-Device-Key) ────────────
+    if (path === "/mcp" && method === "POST") {
       return handleMCP(request, env, config, auth);
     }
 

@@ -386,9 +386,9 @@ async function saveConfig(){
     await apiPost('/api/admin/config',updates);
     CONFIG={...CONFIG,...updates};
     if (wifiSsidChanged || wifiPassChanged || wifiOpen) {
-      toast('✓ Saved. Wi-Fi was updated, so the device will reboot to reconnect.', 5000);
+      toast('✓ Saved. Wi-Fi was updated — device will reboot to reconnect.', 5000);
     } else {
-      toast('✓ Saved. Changes are stored. Reboot now to apply immediately, or wait for auto reboot at 3:00 AM.', 4500);
+      toast('✓ Saved. Device will sync automatically within a few seconds.', 4000);
     }
     await loadConfig();
     await loadMetrics();
