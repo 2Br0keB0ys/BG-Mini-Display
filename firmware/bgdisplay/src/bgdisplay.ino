@@ -65,6 +65,23 @@ char gDigestText[512] = "";
 bool gFactoryResetArmed = false;
 unsigned long gFactoryResetArmMs = 0;
 
+String normalizeWorkerBase(const char* raw) {
+  String base = raw ? String(raw) : String("");
+  base.trim();
+  if (!base.length()) return base;
+  if (!base.startsWith("https://") && !base.startsWith("http://")) {
+    base = String("https://") + base;
+  }
+  while (base.endsWith("/")) {
+    base.remove(base.length() - 1);
+  }
+  return base;
+}
+
+String getDefaultWorkerBase() {
+  return normalizeWorkerBase(BGDISPLAY_DEFAULT_WORKER_URL);
+}
+
 // Forward declarations
 void fetchDigest(AppConfig&);
 void pullCloudflareConfig(AppConfig&, Preferences&);
@@ -289,6 +306,12 @@ void setup() {
   if (!strlen(appConfig.timezone)) {
     strlcpy(appConfig.timezone, BGDISPLAY_DEFAULT_TIMEZONE, 32);
   }
+
+  String normalizedWorker = normalizeWorkerBase(appConfig.workerUrl);
+  if (normalizedWorker.length() > 0) {
+    strlcpy(appConfig.workerUrl, normalizedWorker.c_str(), sizeof(appConfig.workerUrl));
+  }
+
   saveConfig(prefs, appConfig);
   logConfigDiagnostics("after-bootstrap", appConfig);
 
@@ -552,46 +575,95 @@ void pingCloudflare(AppConfig& cfg, Preferences& p) {
     }
   }
 
-  HTTPClient http;
   String path = String("/api/ping?v=") + String(cfg.lastConfigVersion);
-  String pingUrl = String(cfg.workerUrl) + path;
-  http.begin(pingUrl);
-  http.addHeader("X-Device-Key", cfg.deviceKey);
-  addSignedHeaders(http, "GET", path, "", cfg);
-  http.setTimeout(5000);
+  String base = normalizeWorkerBase(cfg.workerUrl);
+  String defaultBase = getDefaultWorkerBase();
+  int code = -1;
+  bool usedDefaultBase = false;
 
-  int code = http.GET();
+  {
+    HTTPClient http;
+    http.begin(base + path);
+    http.addHeader("X-Device-Key", cfg.deviceKey);
+    addSignedHeaders(http, "GET", path, "", cfg);
+    http.setTimeout(5000);
+    code = http.GET();
+
+    if (code == 200) {
+      StaticJsonDocument<64> doc;
+      if (!deserializeJson(doc, http.getString())) {
+        bool changed = doc["changed"] | false;
+        int  version = doc["v"]       | 0;
+        if (changed || version > cfg.lastConfigVersion) {
+          Serial.printf("Config changed (v%d -> v%d) — pulling full config\n",
+            cfg.lastConfigVersion, version);
+          sdLog("CFG", "Config change detected via ping");
+          http.end();
+          pullCloudflareConfig(cfg, p);
+          return;
+        }
+        sdLog("CFG", "Config ping: no changes");
+      }
+    }
+    http.end();
+  }
+
+  if (code < 0 && defaultBase.length() > 0 && base != defaultBase) {
+    sdLogError("CF ping failed on primary URL, trying default worker URL");
+    HTTPClient retry;
+    retry.begin(defaultBase + path);
+    retry.addHeader("X-Device-Key", cfg.deviceKey);
+    addSignedHeaders(retry, "GET", path, "", cfg);
+    retry.setTimeout(5000);
+    code = retry.GET();
+    usedDefaultBase = (code >= 0);
+
+    if (code == 200) {
+      StaticJsonDocument<64> doc;
+      if (!deserializeJson(doc, retry.getString())) {
+        bool changed = doc["changed"] | false;
+        int  version = doc["v"]       | 0;
+        if (changed || version > cfg.lastConfigVersion) {
+          Serial.printf("Config changed (v%d -> v%d) — pulling full config\n",
+            cfg.lastConfigVersion, version);
+          sdLog("CFG", "Config change detected via ping");
+          retry.end();
+          if (usedDefaultBase) {
+            strlcpy(cfg.workerUrl, defaultBase.c_str(), sizeof(cfg.workerUrl));
+            saveConfig(p, cfg);
+            sdLog("CFG", "Worker URL healed to default");
+          }
+          pullCloudflareConfig(cfg, p);
+          return;
+        }
+        sdLog("CFG", "Config ping: no changes");
+      }
+    }
+    retry.end();
+  }
+
   {
     char pingMsg[64];
     snprintf(pingMsg, sizeof(pingMsg), "Ping HTTP:%d localV:%d", code, cfg.lastConfigVersion);
     if (kVerboseDiagLogs) sdLog("DBG", pingMsg);
   }
-  if (code == 200) {
-    StaticJsonDocument<64> doc;
-    if (!deserializeJson(doc, http.getString())) {
-      bool changed = doc["changed"] | false;
-      int  version = doc["v"]       | 0;
-      if (changed || version > cfg.lastConfigVersion) {
-        Serial.printf("Config changed (v%d -> v%d) — pulling full config\n",
-          cfg.lastConfigVersion, version);
-        sdLog("CFG", "Config change detected via ping");
-        http.end();
-        pullCloudflareConfig(cfg, p);
-        return;
-      }
-      sdLog("CFG", "Config ping: no changes");
-    }
-  } else if (code == 401) {
+
+  if (usedDefaultBase && code >= 0) {
+    strlcpy(cfg.workerUrl, defaultBase.c_str(), sizeof(cfg.workerUrl));
+    saveConfig(p, cfg);
+    sdLog("CFG", "Worker URL healed to default");
+  }
+
+  if (code == 401) {
     if (!hasValidClock()) {
       sdLogError("CF ping 401; clock not synced");
     } else {
       dispState.showKeyError = true;
       sdLogError("CF: invalid device key");
     }
-  } else {
+  } else if (code != 200) {
     logHttpFailure("CF ping", code);
   }
-  http.end();
 }
 
 // ─── Full Config Pull ─────────────────────────────────────────────────────────
