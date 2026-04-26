@@ -1016,7 +1016,8 @@ async function handleMCP(request, env, config, auth) {
 
     if (toolName === "get_device_status") {
       const status = await env.BGDISPLAY_CONFIG.get("device_status", { type: "json" }) || {};
-      const online = status.lastSeen && Date.now() - status.lastSeen < 3 * 60000;
+      const offlineMin = Number(config?.alert_offline_min || 15);
+      const online = status.lastSeen && Date.now() - status.lastSeen < offlineMin * 60000;
       const uptimeTxt = status.uptime ? `${Math.floor(status.uptime / 86400)}d ${Math.floor((status.uptime % 86400) / 3600)}h` : "—";
       const txt = [
         `Status: ${online ? "ONLINE" : "OFFLINE"}`,

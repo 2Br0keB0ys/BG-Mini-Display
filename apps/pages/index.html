@@ -667,7 +667,8 @@ async function loadMetrics(){
 // ── Render ────────────────────────────────────────────────────────────────────
 function render(){
   const c=CONFIG, m=META;
-  const online=m.status&&(Date.now()-m.status.lastSeen<180000);
+  const offlineMin = Math.max(5, Number(c.alert_offline_min || 15));
+  const online=m.status&&m.status.lastSeen&&(Date.now()-m.status.lastSeen<offlineMin*60000);
   document.getElementById('statusPill').className='status-pill '+(online?'online':'offline');
   document.getElementById('statusPill').innerHTML=`<span class="dot"></span>${online?'Device online':'Device offline'}`;
   const cm=document.getElementById('configMeta');
@@ -910,11 +911,7 @@ function render(){
   </div>
   <div class="grid">
     ${section('pump_data','icon-display',pumpIcon,'Pump data source','Provider credentials and sync settings for pump-only data',pumpDataContent)}
-    <div></div>
-  </div>
-  <div class="grid">
     ${section('pump','icon-display',pumpIcon,'Pump profile','Optional AI context about insulin delivery setup',pumpContent)}
-    <div></div>
   </div>
   <div class="grid">
     ${section('alerts','icon-alert',alertIcon,'Glucose targets','Thresholds and on-device visual alerts',alertContent)}
@@ -938,11 +935,7 @@ function render(){
   </div>
   <div class="grid">
     ${section('maint','icon-system',sysIcon,'Maintenance center','Automation, rotations, and source health',maintContent)}
-    <div></div>
-  </div>
-  <div class="grid">
     ${section('logs','icon-diag',diagIcon,'Log explorer','Search and inspect uploaded SD logs',logExplorerContent)}
-    <div></div>
   </div>
   </div>`;
 

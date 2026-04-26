@@ -294,6 +294,9 @@ void showBootScreen() {
 void drawFrame(AppConfig& cfg, BGReading& reading, DisplayState& state) {
   int W = M5.Display.width(), H = M5.Display.height();
   extern OmnipodStatus gOmnipodStatus;
+  const int leftPanelX = 8;
+  const int leftPanelW = 132;
+  const int rightCenterX = 226;
 
   // Fill background — happens off-screen, no visible flash
   canvas.fillScreen(CLR_BG);
@@ -339,7 +342,10 @@ void drawFrame(AppConfig& cfg, BGReading& reading, DisplayState& state) {
     canvas.drawString("KEY ERROR", W/2, 14);
   }
 
-  // ── BG Number (centered vertically between status bar and bottom bar) ───────
+  // Split the main area into a left pump panel and right BG panel.
+  canvas.drawLine(leftPanelX + leftPanelW + 4, 34, leftPanelX + leftPanelW + 4, H - 46, CLR_SEP);
+
+  // ── BG Number (right panel) ─────────────────────────────────────────────────
 
   uint16_t color = CLR_MUTED;
   if (reading.value > 0) {
@@ -363,11 +369,11 @@ void drawFrame(AppConfig& cfg, BGReading& reading, DisplayState& state) {
   bool hasTrend = (reading.value > 0 && cfg.showTrendArrow && reading.trend > 0);
   if (hasTrend) {
     canvas.setTextDatum(middle_center);
-    canvas.drawString(bgStr.c_str(), W/2 - 22, centerY);
-    drawTrendArrow(W/2 + 38, centerY - 4, reading.trend, color);
+    canvas.drawString(bgStr.c_str(), rightCenterX - 22, centerY);
+    drawTrendArrow(rightCenterX + 38, centerY - 4, reading.trend, color);
   } else {
     canvas.setTextDatum(middle_center);
-    canvas.drawString(bgStr.c_str(), W/2, centerY);
+    canvas.drawString(bgStr.c_str(), rightCenterX, centerY);
   }
 
   // Last reading time / stale
@@ -377,82 +383,71 @@ void drawFrame(AppConfig& cfg, BGReading& reading, DisplayState& state) {
     (time(nullptr) - reading.timestamp) > (cfg.staleDataWarnMin * 60);
   if (isStale || reading.stale) {
     canvas.setTextColor(CLR_ORANGE);
-    canvas.drawString("STALE DATA", W/2, centerY + 30);
+    canvas.drawString("STALE DATA", rightCenterX, centerY + 30);
   } else if (cfg.showLastReadingTime && reading.timestamp > 0) {
     canvas.setTextColor(CLR_MUTED);
-    canvas.drawString(timeSince(reading.timestamp).c_str(), W/2, centerY + 30);
+    canvas.drawString(timeSince(reading.timestamp).c_str(), rightCenterX, centerY + 30);
   }
 
   // Mini trend history for quick context beyond the single trend arrow.
-  drawBgSparkline(W / 2, centerY + 50, state, color);
+  drawBgSparkline(rightCenterX, centerY + 50, state, color);
 
-  // Omnipod summary line (if available)
+  // ── Left panel: Glooko/pump status ─────────────────────────────────────────
+  canvas.setTextDatum(middle_left);
+  canvas.setFont(&fonts::FreeSans9pt7b);
+  canvas.setTextColor(CLR_MUTED);
+  canvas.drawString("GLOOKO", leftPanelX + 2, 44);
+  canvas.drawLine(leftPanelX, 56, leftPanelX + leftPanelW, 56, CLR_DIM);
+
   if (gOmnipodStatus.valid) {
-    char podLine[72];
     char exp[12] = "--";
     if (gOmnipodStatus.minutesToExpiry >= 0) {
       int hrs = gOmnipodStatus.minutesToExpiry / 60;
       int mins = gOmnipodStatus.minutesToExpiry % 60;
       snprintf(exp, sizeof(exp), "%dh%02dm", hrs, mins);
     }
-    snprintf(
-      podLine,
-      sizeof(podLine),
-      "%s IOB %.1fU Res %.1fU Exp %s",
-      gOmnipodStatus.podActive ? "Pod ON" : "Pod OFF",
-      gOmnipodStatus.insulinOnBoard,
-      gOmnipodStatus.reservoirUnits,
-      exp
-    );
-    
-    // Determine color based on clinical thresholds
-    uint16_t podColor = CLR_MUTED;  // default fallback
+
     uint16_t reservoirColor = CLR_MUTED;
     uint16_t expiryColor = CLR_MUTED;
-    
-    // Evaluate reservoir level (units threshold)
     if (gOmnipodStatus.reservoirUnits >= 0) {
-      if (gOmnipodStatus.reservoirUnits > 25) {
-        reservoirColor = CLR_GREEN;  // Normal operation
-      } else if (gOmnipodStatus.reservoirUnits > 15) {
-        reservoirColor = CLR_YELLOW;  // Low-approaching, consider prep
-      } else if (gOmnipodStatus.reservoirUnits > 5) {
-        reservoirColor = CLR_ORANGE;  // Critical prep window
-      } else {
-        reservoirColor = CLR_RED;  // Imminent change required
-      }
+      if (gOmnipodStatus.reservoirUnits > 25) reservoirColor = CLR_GREEN;
+      else if (gOmnipodStatus.reservoirUnits > 15) reservoirColor = CLR_YELLOW;
+      else if (gOmnipodStatus.reservoirUnits > 5) reservoirColor = CLR_ORANGE;
+      else reservoirColor = CLR_RED;
     }
-    
-    // Evaluate pod expiry (time threshold)
     if (gOmnipodStatus.minutesToExpiry >= 0) {
       int expiryHours = gOmnipodStatus.minutesToExpiry / 60;
-      if (expiryHours < 1) {
-        expiryColor = CLR_RED;  // Critical: pod change NOW
-      } else if (expiryHours < 4) {
-        expiryColor = CLR_ORANGE;  // Final hours
-      } else if (expiryHours < 8) {
-        expiryColor = CLR_YELLOW;  // Expiry window open
-      } else {
-        expiryColor = CLR_GREEN;  // Normal
-      }
+      if (expiryHours < 1) expiryColor = CLR_RED;
+      else if (expiryHours < 4) expiryColor = CLR_ORANGE;
+      else if (expiryHours < 8) expiryColor = CLR_YELLOW;
+      else expiryColor = CLR_GREEN;
     }
-    
-    // Use the more critical (higher severity) color
-    // Severity order: RED > ORANGE > YELLOW > GREEN > MUTED
-    if (reservoirColor == CLR_RED || expiryColor == CLR_RED) {
-      podColor = CLR_RED;
-    } else if (reservoirColor == CLR_ORANGE || expiryColor == CLR_ORANGE) {
-      podColor = CLR_ORANGE;
-    } else if (reservoirColor == CLR_YELLOW || expiryColor == CLR_YELLOW) {
-      podColor = CLR_YELLOW;
-    } else if (reservoirColor == CLR_GREEN || expiryColor == CLR_GREEN) {
-      podColor = CLR_GREEN;
+
+    char line[40];
+    canvas.setTextColor(CLR_TEXT);
+    snprintf(line, sizeof(line), "Pod: %s", gOmnipodStatus.podActive ? "ON" : "OFF");
+    canvas.drawString(line, leftPanelX + 2, 78);
+
+    snprintf(line, sizeof(line), "IOB: %.1f U", gOmnipodStatus.insulinOnBoard);
+    canvas.drawString(line, leftPanelX + 2, 102);
+
+    canvas.setTextColor(reservoirColor);
+    snprintf(line, sizeof(line), "Res: %.1f U", gOmnipodStatus.reservoirUnits);
+    canvas.drawString(line, leftPanelX + 2, 126);
+
+    canvas.setTextColor(expiryColor);
+    snprintf(line, sizeof(line), "Exp: %s", exp);
+    canvas.drawString(line, leftPanelX + 2, 150);
+
+    if (gOmnipodStatus.lastBolusUnits >= 0) {
+      canvas.setTextColor(CLR_MUTED);
+      snprintf(line, sizeof(line), "Bolus: %.1f U", gOmnipodStatus.lastBolusUnits);
+      canvas.drawString(line, leftPanelX + 2, 174);
     }
-    
-    canvas.setFont(&fonts::FreeSans9pt7b);
-    canvas.setTextColor(podColor);
-    canvas.setTextDatum(middle_center);
-    canvas.drawString(podLine, W / 2, H - 56);
+  } else {
+    canvas.setTextColor(CLR_DIM);
+    canvas.drawString("No pump data", leftPanelX + 2, 94);
+    canvas.drawString("yet", leftPanelX + 2, 116);
   }
 
   // ── Bottom bar ───────────────────────────────────────────────────────────────
