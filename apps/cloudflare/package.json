@@ -5,7 +5,7 @@
   "description": "BGDisplay Cloudflare Worker + Pages deployment helpers",
   "scripts": {
     "deploy:worker": "wrangler deploy",
-    "deploy:pages": "cd ../pages && wrangler pages deploy . --project-name bgdisplay-ui",
+    "deploy:pages": "cd ../pages && wrangler pages deploy . --project-name bgdisplay-ui --branch production --commit-dirty=true",
     "deploy:all": "npm run deploy:worker && npm run deploy:pages"
   },
   "devDependencies": {
