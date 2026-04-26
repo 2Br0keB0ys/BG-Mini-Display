@@ -53,6 +53,7 @@ The main sketch is `bgdisplay.ino`. All modules are header-only files included b
 | `crypto.h` | AES-128-CBC via mbedTLS; key derived from unique ESP32 chip ID — stolen device = unreadable data |
 | `nightscout.h` | Polls `/api/v1/entries.json`, extracts sgv + trend + timestamp |
 | `dexcom.h` | Two-step Share API auth (email or phone), 4h session TTL, US/international regions |
+| `glooko.h` | Optional Glooko Omnipod status fetch (pod-focused data only) |
 | `wifi_setup.h` | AP mode captive portal on 192.168.4.1 for first-boot WiFi setup only; generates WiFi QR code |
 | `sd_logger.h` | Encrypted JSON log rotation at 100KB; uses same chip-derived key (different salt: `BGDisplay_SD_v1`) |
 | `ota.h` | `ArduinoOTA` — active when `ENABLE_OTA=1` (default) |
@@ -68,6 +69,8 @@ The main sketch is `bgdisplay.ino`. All modules are header-only files included b
 - **Log upload:** Firmware uploads decrypted SD logs to `/api/log-upload` every 2 minutes (small payload) and on `upload-logs` command.
 - **Auth:** Requests signed with HMAC-SHA256 (method + path + timestamp + nonce + body hash). API keys auto-rotate every 7 days with 48h overlap window.
 - **BG poll backoff:** On 3+ consecutive failures, poll interval is floored to 3 min; on 8+, floored to 5 min.
+- **Omnipod data poll:** Optional Worker-proxied Glooko Omnipod fetch every 30+ minutes (`glooko_poll_min`, clamped to 30-240).
+- **Credential handling:** Glooko endpoint/token are stored in cloud config and never sent to firmware `/api/config` payloads.
 - **Daily auto-reboot:** At 3:00 AM local time, once per calendar day, after device has been up 10+ min.
 - **Power button:** Single click → immediate config sync (DND wake). Hold once → arms factory reset; hold again within 10s → confirms factory reset.
 - **Factory reset:** Clears all NVS except `workerUrl`, `deviceKey`, and `timezone` (cloud identity preserved so device can pull config again after WiFi re-setup).
@@ -104,6 +107,7 @@ Single file handling all backend logic. Two KV namespaces:
 | POST | `/api/command-ack` | ACK command execution |
 | POST | `/api/log-upload` | Upload decrypted SD logs |
 | GET | `/api/digest` | Fetch today's AI digest text (204 = none yet) |
+| GET | `/api/omnipod` | Fetch proxied Omnipod status from Worker-side Glooko integration |
 
 **Admin endpoints** (Cloudflare Access JWT + scoped session token):
 

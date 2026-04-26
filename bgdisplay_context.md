@@ -10,6 +10,7 @@ BGDisplay is an M5Stack Core2 bedside/desk glucose display.
 
 - Primary source: Dexcom Share
 - Fallback source: Nightscout
+- Optional Omnipod source: Glooko pod-status endpoint (30-minute cadence)
 - Cloud backend: Cloudflare Worker + KV + Durable Object WebSocket relay
 - Setup/admin UI: single-page Cloudflare Pages app
 
@@ -35,6 +36,7 @@ Nightscout (fallback) --->                            \              \
 ## Key Behaviors
 
 - Device tries Dexcom first, then Nightscout on failure.
+- Device optionally polls Glooko Omnipod data every 30+ minutes.
 - Config saves from UI trigger immediate WebSocket push (`config-changed`) to the device.
 - Device still performs HTTPS ping fallback when WebSocket is unavailable.
 - Sensitive values in NVS are AES-encrypted using a chip-derived key.

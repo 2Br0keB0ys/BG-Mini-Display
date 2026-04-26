@@ -5,6 +5,7 @@
 #include <M5Unified.h>
 #include <HTTPClient.h>
 #include "config.h"
+#include "glooko.h"
 #include <time.h>
 
 // ─── Colors ───────────────────────────────────────────────────────────────────
@@ -292,6 +293,7 @@ void showBootScreen() {
 
 void drawFrame(AppConfig& cfg, BGReading& reading, DisplayState& state) {
   int W = M5.Display.width(), H = M5.Display.height();
+  extern OmnipodStatus gOmnipodStatus;
 
   // Fill background — happens off-screen, no visible flash
   canvas.fillScreen(CLR_BG);
@@ -383,6 +385,61 @@ void drawFrame(AppConfig& cfg, BGReading& reading, DisplayState& state) {
 
   // Mini trend history for quick context beyond the single trend arrow.
   drawBgSparkline(W / 2, centerY + 50, state, color);
+
+  // Omnipod summary line (if available)
+  if (gOmnipodStatus.valid) {
+    char podLine[72];
+    char exp[12] = "--";
+    if (gOmnipodStatus.minutesToExpiry >= 0) {
+      int hrs = gOmnipodStatus.minutesToExpiry / 60;
+      int mins = gOmnipodStatus.minutesToExpiry % 60;
+      snprintf(exp, sizeof(exp), "%dh%02dm", hrs, mins);
+    }
+    snprintf(
+      podLine,
+      sizeof(podLine),
+      "%s IOB %.1fU Res %.1fU Exp %s",
+      gOmnipodStatus.podActive ? "Pod ON" : "Pod OFF",
+      gOmnipodStatus.insulinOnBoard,
+      gOmnipodStatus.reservoirUnits,
+      exp
+    );
+    
+    // Determine color based on clinical thresholds
+    uint16_t podColor = CLR_MUTED;  // default fallback
+    
+    // Evaluate reservoir level (units threshold)
+    if (gOmnipodStatus.reservoirUnits >= 0) {
+      if (gOmnipodStatus.reservoirUnits > 25) {
+        podColor = CLR_GREEN;  // Normal operation
+      } else if (gOmnipodStatus.reservoirUnits > 15) {
+        podColor = CLR_YELLOW;  // Low-approaching, consider prep
+      } else if (gOmnipodStatus.reservoirUnits > 5) {
+        podColor = CLR_ORANGE;  // Critical prep window
+      } else {
+        podColor = CLR_RED;  // Imminent change required
+      }
+    }
+    
+    // Evaluate pod expiry (time threshold) — escalate color if more critical
+    if (gOmnipodStatus.minutesToExpiry >= 0) {
+      int expiryHours = gOmnipodStatus.minutesToExpiry / 60;
+      if (expiryHours < 1) {
+        podColor = CLR_RED;  // Critical: pod change NOW
+      } else if (expiryHours < 4) {
+        // Escalate to orange if not already red
+        if (podColor != CLR_RED) podColor = CLR_ORANGE;
+      } else if (expiryHours < 8) {
+        // Escalate to yellow if not already orange/red
+        if (podColor == CLR_MUTED) podColor = CLR_YELLOW;
+      }
+    }
+    
+    canvas.setFont(&fonts::FreeSans9pt7b);
+    canvas.setTextColor(podColor);
+    canvas.setTextDatum(middle_center);
+    canvas.drawString(podLine, W / 2, H - 56);
+  }
 
   // ── Bottom bar ───────────────────────────────────────────────────────────────
 
@@ -669,6 +726,7 @@ void showDigestScreen(const char* text, unsigned long durationMs = 10000) {
 
 void showSettingsMenu(AppConfig& cfg, Preferences& prefs) {
   int W = M5.Display.width(), H = M5.Display.height();
+  extern OmnipodStatus gOmnipodStatus;
 
 
   auto checkDexcom = [&](bool& configured) -> bool {
@@ -695,6 +753,13 @@ void showSettingsMenu(AppConfig& cfg, Preferences& prefs) {
     return code == 200;
   };
 
+  auto checkGlooko = [&](bool& configured) -> bool {
+    configured = cfg.glookoEnabled;
+    if (!configured || WiFi.status() != WL_CONNECTED) return false;
+    unsigned long freshnessMs = (unsigned long)(cfg.glookoPollMin + 5) * 60000UL;
+    return gOmnipodStatus.valid && gOmnipodStatus.fetchedAtMs > 0 && (millis() - gOmnipodStatus.fetchedAtMs) <= freshnessMs;
+  };
+
   auto drawStatus = [&](const char* name, int y, bool ok, bool configured) {
     canvas.setTextDatum(middle_left);
     canvas.setFont(&fonts::FreeSans9pt7b);
@@ -711,7 +776,7 @@ void showSettingsMenu(AppConfig& cfg, Preferences& prefs) {
     canvas.drawString(ok ? "Connected" : "Not Connected", W - 12, y);
   };
 
-  auto drawSettingsScreen = [&](bool dexOk, bool dexCfg, bool nsOk, bool nsCfg) {
+  auto drawSettingsScreen = [&](bool dexOk, bool dexCfg, bool nsOk, bool nsCfg, bool gkOk, bool gkCfg) {
     canvas.fillScreen(CLR_BG);
     canvas.setFont(&fonts::FreeSansBold9pt7b);
     canvas.setTextColor(CLR_TEXT);
@@ -740,13 +805,14 @@ void showSettingsMenu(AppConfig& cfg, Preferences& prefs) {
 
     drawStatus("Dexcom Share", 124, dexOk, dexCfg);
     drawStatus("Nightscout", 142, nsOk, nsCfg);
+    drawStatus("Glooko Omnipod", 160, gkOk, gkCfg);
 
-    canvas.drawLine(10, 174, W-10, 174, CLR_SEP);
+    canvas.drawLine(10, 186, W-10, 186, CLR_SEP);
     canvas.setTextColor(CLR_MUTED);
     canvas.setTextDatum(middle_left);
-    canvas.drawString("Setup at", 12, 190);
+    canvas.drawString("Setup at", 12, 202);
     canvas.setTextColor(CLR_GREEN);
-    canvas.drawString("setup.2brokeboys.uk", 12, 208);
+    canvas.drawString("setup.2brokeboys.uk", 12, 220);
 
     canvas.setTextColor(CLR_DIM);
     canvas.setTextDatum(middle_center);
@@ -763,9 +829,11 @@ void showSettingsMenu(AppConfig& cfg, Preferences& prefs) {
       lastRefresh = millis();
       bool dexCfg = false;
       bool nsCfg = false;
+      bool gkCfg = false;
       bool dexOk = checkDexcom(dexCfg);
       bool nsOk = checkNightscout(nsCfg);
-      drawSettingsScreen(dexOk, dexCfg, nsOk, nsCfg);
+      bool gkOk = checkGlooko(gkCfg);
+      drawSettingsScreen(dexOk, dexCfg, nsOk, nsCfg, gkOk, gkCfg);
     }
 
     if (M5.Touch.getCount() && M5.Touch.getDetail().wasPressed()) {

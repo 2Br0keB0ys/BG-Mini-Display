@@ -84,6 +84,7 @@ From plain Windows shell, `pio` may need full path:
 Use the Cloudflare Pages UI for:
 - Display preferences
 - Dexcom and Nightscout credentials
+- Glooko Omnipod endpoint/token and 30-minute pod status polling
 - Alert thresholds and DND
 - Pushover alerts and daily digest push
 - Security and advanced options
@@ -102,4 +103,5 @@ Use the Cloudflare Pages UI for:
 
 - OTA is implemented via `ArduinoOTA` when enabled in firmware.
 - Cellular fallback is a planned hardware path and not currently active.
+- There is no supported public direct Omnipod cloud API in this project; Omnipod data is integrated via Glooko endpoint polling.
 - See `CLAUDE.md` for endpoint lists, auth model, and full architecture details.

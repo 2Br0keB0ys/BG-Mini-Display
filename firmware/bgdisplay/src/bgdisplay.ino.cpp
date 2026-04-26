@@ -1,4 +1,7 @@
-// BGDisplay v3.0.0-S — Dexcom primary, Nightscout fallback, encrypted, smart config sync
+# 1 "C:\\Users\\zaneb\\AppData\\Local\\Temp\\tmpwta8d5bm"
+#include <Arduino.h>
+# 1 "N:/vsCode/bgdisplay/firmware/bgdisplay/src/bgdisplay.ino"
+
 #include <M5Unified.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
@@ -35,19 +38,19 @@
 #define BGDISPLAY_DEFAULT_TIMEZONE "US/Central"
 #endif
 
-Preferences  prefs;
-AppConfig    appConfig;
-BGReading    lastReading;
+Preferences prefs;
+AppConfig appConfig;
+BGReading lastReading;
 DisplayState dispState;
 
-unsigned long lastBGPoll      = 0;
-unsigned long lastConfigPing  = 0;
-unsigned long lastStatusPush  = 0;
+unsigned long lastBGPoll = 0;
+unsigned long lastConfigPing = 0;
+unsigned long lastStatusPush = 0;
 unsigned long lastCommandPoll = 0;
-unsigned long lastLogUpload   = 0;
-unsigned long lastGlookoPoll  = 0;
-unsigned long lastTimeDraw    = 0;
-unsigned long bootTime        = millis();
+unsigned long lastLogUpload = 0;
+unsigned long lastGlookoPoll = 0;
+unsigned long lastTimeDraw = 0;
+unsigned long bootTime = millis();
 unsigned long lastNoSourceWarn = 0;
 unsigned long lastHeartbeatMs = 0;
 
@@ -67,7 +70,29 @@ char gDigestText[1024] = "";
 bool gFactoryResetArmed = false;
 unsigned long gFactoryResetArmMs = 0;
 OmnipodStatus gOmnipodStatus;
-
+String normalizeWorkerBase(const char* raw);
+String getDefaultWorkerBase();
+String toHex(const uint8_t* data, size_t len);
+String sha256HexStr(const String& in);
+String hmacSha256Hex(const String& key, const String& msg);
+String makeNonce();
+void addSignedHeaders(HTTPClient& http, const char* method, const String& pathWithQuery, const String& body, AppConfig& cfg);
+bool verifyCommandSignature(AppConfig& cfg, const char* id, const char* type, unsigned long long createdAt, unsigned long long expiresAt, const char* sig);
+const char* resetReasonStr(esp_reset_reason_t r);
+void logHttpFailure(const char* label, int code);
+void setup();
+void loop();
+void pingCloudflare(AppConfig& cfg, Preferences& p);
+void pullCloudflareConfig(AppConfig& cfg, Preferences& p);
+bool pushStatus(AppConfig& cfg);
+void pollCloudflareCommand(AppConfig& cfg, Preferences& p);
+void ackCloudflareCommand(AppConfig& cfg, const char* cmdId, bool ok, const char* message);
+bool uploadSdLogs(AppConfig& cfg, const char* cmdId, int maxLines, size_t maxBytes, bool failIfEmpty);
+void fetchDigest(AppConfig& cfg);
+void syncTime(const char* tz);
+bool setupUnlockPressedDuringBoot(unsigned long windowMs);
+void factoryResetToInitialSetup(AppConfig& cfg, Preferences& p);
+#line 71 "N:/vsCode/bgdisplay/firmware/bgdisplay/src/bgdisplay.ino"
 String normalizeWorkerBase(const char* raw) {
   String base = raw ? String(raw) : String("");
   base.trim();
@@ -85,7 +110,7 @@ String getDefaultWorkerBase() {
   return normalizeWorkerBase(BGDISPLAY_DEFAULT_WORKER_URL);
 }
 
-// Forward declarations
+
 void fetchDigest(AppConfig&);
 void pullCloudflareConfig(AppConfig&, Preferences&);
 void pingCloudflare(AppConfig&, Preferences&);
@@ -297,12 +322,12 @@ void setup() {
   loadConfig(prefs, appConfig);
   logConfigDiagnostics("after-load", appConfig);
 
-  // Bootstrap — first flash only, AP setup overwrites
+
   if (!strlen(appConfig.workerUrl)) {
     strlcpy(appConfig.workerUrl, BGDISPLAY_DEFAULT_WORKER_URL, 128);
   }
   if (!strlen(appConfig.deviceKey)) {
-    // Store encrypted
+
     String dk = BGDISPLAY_DEFAULT_DEVICE_KEY;
     strlcpy(appConfig.deviceKey, dk.c_str(), 64);
   }
@@ -318,7 +343,7 @@ void setup() {
   saveConfig(prefs, appConfig);
   logConfigDiagnostics("after-bootstrap", appConfig);
 
-  // Init SD (before display so boot screen can show SD status)
+
   sdInit();
   sdLog("SYS", "Boot start");
   {
@@ -353,7 +378,7 @@ void setup() {
     pullCloudflareConfig(appConfig, prefs);
     logConfigDiagnostics("after-config-pull", appConfig);
     wsInit(appConfig);
-    // Try Dexcom first, fall back to Nightscout
+
     bool ok = false;
     if (strlen(appConfig.dexcomUser) > 0) {
       ok = fetchDexcomShare(appConfig, lastReading);
@@ -386,7 +411,7 @@ void loop() {
     gFactoryResetArmed = false;
   }
 
-  // Single press on hardware power button = immediate settings sync.
+
   if (M5.BtnPWR.wasClicked()) {
     dispState.dndWakeUntilMs = now + 300000UL;
     if (WiFi.status() == WL_CONNECTED) {
@@ -401,8 +426,8 @@ void loop() {
     }
   }
 
-  // Local emergency reset gesture: hold power twice within 10 seconds.
-  // This allows a true reset even if Cloudflare command path is unavailable.
+
+
   if (M5.BtnPWR.wasHold()) {
     if (gFactoryResetArmed && (now - gFactoryResetArmMs <= 10000UL)) {
       gFactoryResetArmed = false;
@@ -418,7 +443,7 @@ void loop() {
 
   checkDailyAutoReboot();
 
-  // Touch — top-right gear icon, bottom-left digest replay
+
   if (M5.Touch.getCount()) {
     auto tp = M5.Touch.getDetail();
     if (tp.wasPressed()) {
@@ -432,7 +457,7 @@ void loop() {
     }
   }
 
-  // Middle hardware button — fetch fresh AI digest from server and display it
+
   if (M5.BtnB.wasClicked()) {
     dispState.dndWakeUntilMs = now + 300000UL;
     if (WiFi.status() == WL_CONNECTED) {
@@ -445,7 +470,7 @@ void loop() {
         setDisplayBanner(dispState, "No digest available", CLR_DIM, 2500UL);
       }
     } else {
-      // Offline — show cached digest if available, otherwise error
+
       if (strlen(gDigestText)) {
         showDigestScreen(gDigestText, 30000UL);
       } else {
@@ -454,31 +479,31 @@ void loop() {
     }
   }
 
-  // HTTPS config ping — 30s fallback when WebSocket is down; configured interval when WS active.
+
   unsigned long pingMs = wsIsConnected()
     ? (unsigned long)appConfig.configPingMin * 60000UL
     : 30000UL;
-  if (pingMs > 300000UL) pingMs = 300000UL;  // hard cap at 5 min
+  if (pingMs > 300000UL) pingMs = 300000UL;
   if (WiFi.status()==WL_CONNECTED && now - lastConfigPing > pingMs) {
     lastConfigPing = now;
     sdLog("CFG", "Running HTTPS fast-sync ping");
     pingCloudflare(appConfig, prefs);
   }
 
-  // Command poll — low-frequency control channel (reboot/sync-now)
+
   if (WiFi.status()==WL_CONNECTED && now - lastCommandPoll > 60000UL) {
     lastCommandPoll = now;
     pollCloudflareCommand(appConfig, prefs);
   }
 
-  // Log upload cadence — keep worker log explorer close to live.
-  // Lower payload than manual command upload to reduce bandwidth.
+
+
   if (WiFi.status()==WL_CONNECTED && now - lastLogUpload > 120000UL) {
     lastLogUpload = now;
     uploadSdLogs(appConfig, nullptr, 160, 28000, false);
   }
 
-  // BG poll — every pollIntervalMin
+
   bool hasDexcomCfg = strlen(appConfig.dexcomUser) > 0 && strlen(appConfig.dexcomPass) > 0;
   bool hasNightscoutCfg = strlen(appConfig.nightscoutUrl) > 0;
   if (WiFi.status()==WL_CONNECTED && !hasDexcomCfg && !hasNightscoutCfg && now - lastNoSourceWarn > 120000UL) {
@@ -487,16 +512,16 @@ void loop() {
     setDisplayBanner(dispState, "Configure Dexcom/Nightscout", CLR_ORANGE, 3500UL);
   }
 
-  // BG poll — every pollIntervalMin
+
   unsigned long pollMs = (unsigned long)appConfig.pollIntervalMin * 60000UL;
-  // If all BG sources are failing repeatedly, back off polling to reduce
-  // connection churn and avoid long-run instability under bad network/API states.
+
+
   if (sourceHealth.consecutiveBgFailures >= 3 && pollMs < 180000UL) pollMs = 180000UL;
   if (sourceHealth.consecutiveBgFailures >= 8 && pollMs < 300000UL) pollMs = 300000UL;
   if (WiFi.status()==WL_CONNECTED && now - lastBGPoll > pollMs) {
     lastBGPoll = now;
     bool ok = false;
-    // Dexcom primary
+
     if (strlen(appConfig.dexcomUser) > 0) {
       ok = fetchDexcomShare(appConfig, lastReading);
       if (ok) {
@@ -505,7 +530,7 @@ void loop() {
         sourceHealth.dexFail++;
       }
     }
-    // Nightscout fallback
+
     if (!ok && strlen(appConfig.nightscoutUrl) > 0) {
       ok = fetchNightscout(appConfig, lastReading);
       if (ok) {
@@ -532,7 +557,7 @@ void loop() {
     }
   }
 
-  // Omnipod status poll (Glooko) — every 30 minutes minimum
+
   unsigned long gkPollMs = (unsigned long)appConfig.glookoPollMin * 60000UL;
   if (WiFi.status()==WL_CONNECTED && omnipodConfigured(appConfig) && now - lastGlookoPoll > gkPollMs) {
     lastGlookoPoll = now;
@@ -546,7 +571,7 @@ void loop() {
     logHeartbeat(appConfig, lastReading);
   }
 
-  // Status push every 5 min
+
   if (WiFi.status()==WL_CONNECTED && now - lastStatusPush > 300000UL) {
     lastStatusPush = now;
     if (pushStatus(appConfig)) {
@@ -554,7 +579,7 @@ void loop() {
     }
   }
 
-  // WiFi watchdog
+
   if (WiFi.status() != WL_CONNECTED) {
     static unsigned long lastReconnect = 0;
     if (now - lastReconnect > 30000UL) {
@@ -572,10 +597,10 @@ void loop() {
 }
 
 void checkDailyAutoReboot() {
-  // Only reboot when time is valid and only once per local calendar day.
-  // Extra guards avoid reboot loops during startup.
+
+
   if (WiFi.status() != WL_CONNECTED) return;
-  if (millis() < 600000UL) return; // let device run at least 10 min first
+  if (millis() < 600000UL) return;
 
   time_t epoch = time(nullptr);
   if (epoch < 1700000000) return;
@@ -584,7 +609,7 @@ void checkDailyAutoReboot() {
   localtime_r(&epoch, &t);
   if (t.tm_year < 124) return;
 
-  // Trigger only at 3:00 AM local time.
+
   if (t.tm_hour != 3 || t.tm_min != 0) return;
 
   int dayStamp = (t.tm_year + 1900) * 1000 + t.tm_yday;
@@ -598,9 +623,9 @@ void checkDailyAutoReboot() {
   ESP.restart();
 }
 
-// ─── Smart Config Ping ────────────────────────────────────────────────────────
-// Lightweight GET — Worker returns {v: N, changed: bool}
-// Only does full config pull if version changed
+
+
+
 
 void pingCloudflare(AppConfig& cfg, Preferences& p) {
   if (!strlen(cfg.workerUrl) || !strlen(cfg.deviceKey)) return;
@@ -630,7 +655,7 @@ void pingCloudflare(AppConfig& cfg, Preferences& p) {
       StaticJsonDocument<64> doc;
       if (!deserializeJson(doc, http.getString())) {
         bool changed = doc["changed"] | false;
-        int  version = doc["v"]       | 0;
+        int version = doc["v"] | 0;
         if (changed || version > cfg.lastConfigVersion) {
           Serial.printf("Config changed (v%d -> v%d) — pulling full config\n",
             cfg.lastConfigVersion, version);
@@ -659,7 +684,7 @@ void pingCloudflare(AppConfig& cfg, Preferences& p) {
       StaticJsonDocument<64> doc;
       if (!deserializeJson(doc, retry.getString())) {
         bool changed = doc["changed"] | false;
-        int  version = doc["v"]       | 0;
+        int version = doc["v"] | 0;
         if (changed || version > cfg.lastConfigVersion) {
           Serial.printf("Config changed (v%d -> v%d) — pulling full config\n",
             cfg.lastConfigVersion, version);
@@ -703,7 +728,7 @@ void pingCloudflare(AppConfig& cfg, Preferences& p) {
   }
 }
 
-// ─── Full Config Pull ─────────────────────────────────────────────────────────
+
 
 void pullCloudflareConfig(AppConfig& cfg, Preferences& p) {
   if (!strlen(cfg.workerUrl) || !strlen(cfg.deviceKey)) return;
@@ -715,9 +740,9 @@ void pullCloudflareConfig(AppConfig& cfg, Preferences& p) {
     }
   }
 
-  char prevTimezone[32];  strlcpy(prevTimezone, cfg.timezone, sizeof(prevTimezone));
-  char prevWifiSSID[64];  strlcpy(prevWifiSSID, cfg.wifiSSID, sizeof(prevWifiSSID));
-  char prevWifiPass[64];  strlcpy(prevWifiPass, cfg.wifiPass, sizeof(prevWifiPass));
+  char prevTimezone[32]; strlcpy(prevTimezone, cfg.timezone, sizeof(prevTimezone));
+  char prevWifiSSID[64]; strlcpy(prevWifiSSID, cfg.wifiSSID, sizeof(prevWifiSSID));
+  char prevWifiPass[64]; strlcpy(prevWifiPass, cfg.wifiPass, sizeof(prevWifiPass));
 
   HTTPClient http;
   String path = "/api/config";
@@ -767,28 +792,28 @@ void pullCloudflareConfig(AppConfig& cfg, Preferences& p) {
       );
       if (kVerboseDiagLogs) sdLog("DBG", keysMsg);
     }
-    if (c.containsKey("poll_interval_min"))   cfg.pollIntervalMin   = c["poll_interval_min"];
-    if (c.containsKey("stale_data_warn_min")) cfg.staleDataWarnMin  = c["stale_data_warn_min"];
-    if (c.containsKey("config_ping_min"))     cfg.configPingMin     = c["config_ping_min"];
-    if (c.containsKey("glooko_enabled"))      cfg.glookoEnabled     = c["glooko_enabled"];
-    if (c.containsKey("glooko_poll_min"))     cfg.glookoPollMin     = c["glooko_poll_min"];
-    if (c.containsKey("urgent_low"))          cfg.urgentLow         = c["urgent_low"];
-    if (c.containsKey("low"))                 cfg.low               = c["low"];
-    if (c.containsKey("high"))                cfg.high              = c["high"];
-    if (c.containsKey("urgent_high"))         cfg.urgentHigh        = c["urgent_high"];
+    if (c.containsKey("poll_interval_min")) cfg.pollIntervalMin = c["poll_interval_min"];
+    if (c.containsKey("stale_data_warn_min")) cfg.staleDataWarnMin = c["stale_data_warn_min"];
+    if (c.containsKey("config_ping_min")) cfg.configPingMin = c["config_ping_min"];
+    if (c.containsKey("glooko_enabled")) cfg.glookoEnabled = c["glooko_enabled"];
+    if (c.containsKey("glooko_poll_min")) cfg.glookoPollMin = c["glooko_poll_min"];
+    if (c.containsKey("urgent_low")) cfg.urgentLow = c["urgent_low"];
+    if (c.containsKey("low")) cfg.low = c["low"];
+    if (c.containsKey("high")) cfg.high = c["high"];
+    if (c.containsKey("urgent_high")) cfg.urgentHigh = c["urgent_high"];
     if (c.containsKey("show_last_reading_time")) cfg.showLastReadingTime = c["show_last_reading_time"];
-    if (c.containsKey("show_trend_arrow"))    cfg.showTrendArrow    = c["show_trend_arrow"];
-    if (c.containsKey("brightness"))          cfg.brightness        = c["brightness"];
-    if (c.containsKey("auto_dim_min"))        cfg.autoDimMin        = c["auto_dim_min"];
-    if (c.containsKey("dim_to_pct"))          cfg.dimToPct          = c["dim_to_pct"];
-    if (c.containsKey("clock_24hr"))          cfg.clock24hr         = c["clock_24hr"];
-    if (c.containsKey("dnd_enabled"))         cfg.dndEnabled        = c["dnd_enabled"];
-    if (c.containsKey("dnd_use_schedule"))    cfg.dndUseSchedule    = c["dnd_use_schedule"];
-    if (c.containsKey("bg_alert_style"))      strlcpy(cfg.bgAlertStyle, c["bg_alert_style"], 16);
-    if (c.containsKey("bg_units"))            strlcpy(cfg.bgUnits,      c["bg_units"],       8);
-    if (c.containsKey("timezone"))            strlcpy(cfg.timezone,     c["timezone"],       32);
-    if (c.containsKey("dnd_from"))            strlcpy(cfg.dndFrom,      c["dnd_from"],       8);
-    if (c.containsKey("dnd_to"))              strlcpy(cfg.dndTo,        c["dnd_to"],         8);
+    if (c.containsKey("show_trend_arrow")) cfg.showTrendArrow = c["show_trend_arrow"];
+    if (c.containsKey("brightness")) cfg.brightness = c["brightness"];
+    if (c.containsKey("auto_dim_min")) cfg.autoDimMin = c["auto_dim_min"];
+    if (c.containsKey("dim_to_pct")) cfg.dimToPct = c["dim_to_pct"];
+    if (c.containsKey("clock_24hr")) cfg.clock24hr = c["clock_24hr"];
+    if (c.containsKey("dnd_enabled")) cfg.dndEnabled = c["dnd_enabled"];
+    if (c.containsKey("dnd_use_schedule")) cfg.dndUseSchedule = c["dnd_use_schedule"];
+    if (c.containsKey("bg_alert_style")) strlcpy(cfg.bgAlertStyle, c["bg_alert_style"], 16);
+    if (c.containsKey("bg_units")) strlcpy(cfg.bgUnits, c["bg_units"], 8);
+    if (c.containsKey("timezone")) strlcpy(cfg.timezone, c["timezone"], 32);
+    if (c.containsKey("dnd_from")) strlcpy(cfg.dndFrom, c["dnd_from"], 8);
+    if (c.containsKey("dnd_to")) strlcpy(cfg.dndTo, c["dnd_to"], 8);
 
     if (c.containsKey("dnd_schedule") && c["dnd_schedule"].is<JsonObject>()) {
       static const char* kDays[7] = {"sun", "mon", "tue", "wed", "thu", "fri", "sat"};
@@ -802,7 +827,7 @@ void pullCloudflareConfig(AppConfig& cfg, Preferences& p) {
       cfg.dndUseSchedule = true;
     }
 
-    // Sensitive fields — store encrypted
+
     bool incomingWifiSsidValid = false;
     if ((c.containsKey("wifi_ssid") && !c["wifi_ssid"].isNull()) ||
         (c.containsKey("wifiSSID") && !c["wifiSSID"].isNull())) {
@@ -863,14 +888,14 @@ void pullCloudflareConfig(AppConfig& cfg, Preferences& p) {
       sdLogError("Cloud config omitted BG creds; kept previous values");
     }
 
-    // Update config version
+
     int newVersion = doc["config_version"] | cfg.lastConfigVersion;
     cfg.lastConfigVersion = newVersion;
 
     sanitizeConfig(cfg);
     logConfigDiagnostics("after-merge", cfg);
 
-    // Automated key rotation
+
     if (doc["rotateNow"].as<bool>() && doc.containsKey("newKey")) {
       strlcpy(cfg.deviceKey, doc["newKey"].as<const char*>(), 64);
       saveConfig(p, cfg);
@@ -920,7 +945,7 @@ void pullCloudflareConfig(AppConfig& cfg, Preferences& p) {
   http.end();
 }
 
-// ─── Status Push ──────────────────────────────────────────────────────────────
+
 
 bool pushStatus(AppConfig& cfg) {
   if (!strlen(cfg.workerUrl)) return false;
@@ -931,36 +956,36 @@ bool pushStatus(AppConfig& cfg) {
   http.addHeader("Content-Type","application/json");
   http.addHeader("X-Device-Key", cfg.deviceKey);
   StaticJsonDocument<256> doc;
-  doc["connection"]     = "wifi";
-  doc["uptime"]         = (millis() - bootTime) / 1000;
-  doc["firmware"]       = FIRMWARE_VERSION;
-  doc["freeMemory"]     = ESP.getFreeHeap() / 1024;
-  doc["rssi"]           = WiFi.RSSI();
-  doc["ssid"]           = WiFi.SSID();
-  doc["ip"]             = WiFi.localIP().toString();
-  doc["sdAvailable"]    = sdAvailable;
+  doc["connection"] = "wifi";
+  doc["uptime"] = (millis() - bootTime) / 1000;
+  doc["firmware"] = FIRMWARE_VERSION;
+  doc["freeMemory"] = ESP.getFreeHeap() / 1024;
+  doc["rssi"] = WiFi.RSSI();
+  doc["ssid"] = WiFi.SSID();
+  doc["ip"] = WiFi.localIP().toString();
+  doc["sdAvailable"] = sdAvailable;
   doc["config_version"] = cfg.lastConfigVersion;
-  doc["batteryPct"]     = M5.Power.getBatteryLevel();
-  doc["bgValue"]         = lastReading.value;
+  doc["batteryPct"] = M5.Power.getBatteryLevel();
+  doc["bgValue"] = lastReading.value;
   if (lastReading.timestamp > 0) {
     doc["lastReadingAgeSec"] = (int)(time(nullptr) - lastReading.timestamp);
   } else {
     doc["lastReadingAgeSec"] = -1;
   }
-    doc["resetReason"]    = gResetReason;
-    doc["source"]         = (lastReading.source == SOURCE_NIGHTSCOUT) ? "nightscout" : ((lastReading.source == SOURCE_DEXCOM) ? "dexcom" : "none");
-    doc["nsOk"]           = sourceHealth.nsOk;
-    doc["nsFail"]         = sourceHealth.nsFail;
-    doc["dexOk"]          = sourceHealth.dexOk;
-    doc["dexFail"]        = sourceHealth.dexFail;
+    doc["resetReason"] = gResetReason;
+    doc["source"] = (lastReading.source == SOURCE_NIGHTSCOUT) ? "nightscout" : ((lastReading.source == SOURCE_DEXCOM) ? "dexcom" : "none");
+    doc["nsOk"] = sourceHealth.nsOk;
+    doc["nsFail"] = sourceHealth.nsFail;
+    doc["dexOk"] = sourceHealth.dexOk;
+    doc["dexFail"] = sourceHealth.dexFail;
     doc["bgPollFailStreak"] = sourceHealth.consecutiveBgFailures;
   doc["omnipodConfigured"] = omnipodConfigured(cfg);
-  doc["omnipodValid"]      = gOmnipodStatus.valid;
-  doc["omnipodActive"]     = gOmnipodStatus.podActive;
-  doc["omnipodIob"]        = gOmnipodStatus.insulinOnBoard;
-  doc["omnipodReservoir"]  = gOmnipodStatus.reservoirUnits;
-  doc["omnipodMinsToExp"]  = gOmnipodStatus.minutesToExpiry;
-  doc["omnipodDataTs"]     = (long)gOmnipodStatus.dataTimestamp;
+  doc["omnipodValid"] = gOmnipodStatus.valid;
+  doc["omnipodActive"] = gOmnipodStatus.podActive;
+  doc["omnipodIob"] = gOmnipodStatus.insulinOnBoard;
+  doc["omnipodReservoir"] = gOmnipodStatus.reservoirUnits;
+  doc["omnipodMinsToExp"] = gOmnipodStatus.minutesToExpiry;
+  doc["omnipodDataTs"] = (long)gOmnipodStatus.dataTimestamp;
   String body; serializeJson(doc, body);
     addSignedHeaders(http, "POST", path, body, cfg);
   int code = http.POST(body);
@@ -1107,7 +1132,7 @@ bool uploadSdLogs(AppConfig& cfg, const char* cmdId, int maxLines, size_t maxByt
   return false;
 }
 
-// ─── Daily AI Digest ──────────────────────────────────────────────────────────
+
 
 void fetchDigest(AppConfig& cfg) {
   if (!strlen(cfg.workerUrl) || !strlen(cfg.deviceKey)) return;
@@ -1131,7 +1156,7 @@ void fetchDigest(AppConfig& cfg) {
       }
     }
   } else if (code == 204) {
-    // No digest available today — not an error
+
     sdLog("AI", "No digest available");
   } else {
     char msg[40];
@@ -1141,16 +1166,16 @@ void fetchDigest(AppConfig& cfg) {
   http.end();
 }
 
-// ─── NTP Time Sync ────────────────────────────────────────────────────────────
-// Uses NIST time servers for maximum accuracy
+
+
 
 void syncTime(const char* tz) {
   const char* posix = "CST6CDT,M3.2.0,M11.1.0";
-  if      (!strcmp(tz,"US/Eastern"))  posix = "EST5EDT,M3.2.0,M11.1.0";
+  if (!strcmp(tz,"US/Eastern")) posix = "EST5EDT,M3.2.0,M11.1.0";
   else if (!strcmp(tz,"US/Mountain")) posix = "MST7MDT,M3.2.0,M11.1.0";
-  else if (!strcmp(tz,"US/Pacific"))  posix = "PST8PDT,M3.2.0,M11.1.0";
+  else if (!strcmp(tz,"US/Pacific")) posix = "PST8PDT,M3.2.0,M11.1.0";
 
-  // NIST primary servers
+
   configTzTime(posix,
     "time.nist.gov",
     "time-a-g.nist.gov",
@@ -1164,7 +1189,7 @@ void syncTime(const char* tz) {
       ti.tm_hour, ti.tm_min, ti.tm_sec);
     sdLog("SYS", "NTP synced to NIST");
   } else {
-    // Fallback to broad public pool in case NIST hosts are blocked by ISP/router.
+
     configTzTime(posix,
       "pool.ntp.org",
       "time.google.com",
@@ -1210,7 +1235,7 @@ void factoryResetToInitialSetup(AppConfig& cfg, Preferences& p) {
   sdLog("CMD", "Factory reset initiated");
   setDisplayBanner(dispState, "Factory reset...", CLR_ORANGE, 3000UL);
 
-  // Keep cloud identity so the device can pull cloud config again after Wi-Fi re-entry.
+
   char keepWorkerUrl[128];
   char keepDeviceKey[64];
   char keepTimezone[32];
@@ -1224,12 +1249,12 @@ void factoryResetToInitialSetup(AppConfig& cfg, Preferences& p) {
   p.clear();
   cfg = AppConfig();
 
-  // Restore cloud identity so /api/config can repopulate NS/Dexcom credentials.
+
   if (strlen(keepWorkerUrl)) strlcpy(cfg.workerUrl, keepWorkerUrl, sizeof(cfg.workerUrl));
   if (strlen(keepDeviceKey)) strlcpy(cfg.deviceKey, keepDeviceKey, sizeof(cfg.deviceKey));
   if (strlen(keepTimezone)) strlcpy(cfg.timezone, keepTimezone, sizeof(cfg.timezone));
 
-  // Backward-compatible fallback for very old devices with no cloud identity stored.
+
   if (!strlen(cfg.workerUrl)) strlcpy(cfg.workerUrl, BGDISPLAY_DEFAULT_WORKER_URL, sizeof(cfg.workerUrl));
   if (!strlen(cfg.deviceKey)) {
     String dk = BGDISPLAY_DEFAULT_DEVICE_KEY;
