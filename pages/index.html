@@ -303,9 +303,9 @@ async function saveConfig(){
     await apiPost('/api/admin/config',updates);
     CONFIG={...CONFIG,...updates};
     if (wifiSsidChanged || wifiPassChanged || wifiOpen) {
-      toast('✓ Saved. Wi-Fi settings changed and the device will reboot to apply.', 5000);
+      toast('✓ Saved. Wi-Fi was updated, so the device will reboot to reconnect.', 5000);
     } else {
-      toast('✓ Saved. Reboot device to apply now (or wait for 3AM auto reboot).', 4500);
+      toast('✓ Saved. Changes are stored. Reboot now to apply immediately, or wait for auto reboot at 3:00 AM.', 4500);
     }
     await loadConfig();
     await loadMetrics();
@@ -501,36 +501,36 @@ function render(){
   // WiFi section
   const wifiOpen = !c.wifi_pass;
   const wifiContent =
-    field('Network (SSID)',`Current: ${c.wifi_ssid||'Not set'}`,inp('wifi_ssid','text',c.wifi_ssid,'Wi-Fi name'))+
-    field('Password','Leave blank to keep existing password. For open Wi-Fi, enable Open network below.',inp('wifi_pass','password','','Enter new Wi-Fi password'))+
-    field('Open network','Use this only for unsecured Wi-Fi with no password.',`<label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="wifi_open" onchange="syncWifiOpenUi()"${wifiOpen?' checked':''}> <span style="font-size:12px;color:var(--muted)">No password required</span></label>`);
+    field('Wi-Fi network (SSID)',`Current network: ${c.wifi_ssid||'Not set yet'}`,inp('wifi_ssid','text',c.wifi_ssid,'HomeWiFi'))+
+    field('Wi-Fi password','Leave blank to keep the current password. Use Open network only for networks with no password.',inp('wifi_pass','password','','Enter a new Wi-Fi password'))+
+    field('Open network','Turn on only for unsecured Wi-Fi networks.',`<label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="wifi_open" onchange="syncWifiOpenUi()"${wifiOpen?' checked':''}> <span style="font-size:12px;color:var(--muted)">This network has no password</span></label>`);
 
   // Data sources section
   const nsContent =
-    field('Nightscout URL','Primary source',inp('nightscout_url','url',c.nightscout_url,'https://yoursite.ns.io'))+
-    field('Nightscout token / secret','Access token or API secret',inp('nightscout_secret','password','','token or secret'))+
-    field('Dexcom username','Fallback — email or phone number',inp('dexcom_user','text',c.dexcom_user,'email or +1xxxxxxxxxx'))+
-    field('Dexcom password','',inp('dexcom_pass','password','','••••••••'))+
-    field('Dexcom region','',sel('dexcom_region',[['US','US'],['Non-US','Non-US']],c.dexcom_region))+
-    field('BG poll interval','How often to fetch readings',sel('poll_interval_min',[[1,'1 min'],[5,'5 min'],[10,'10 min']],c.poll_interval_min))+
-    field('Stale data warning','Alert after no new reading',sel('stale_data_warn_min',[[5,'5 min'],[10,'10 min'],[15,'15 min'],[20,'20 min']],c.stale_data_warn_min))+
-    field('Config ping interval','How often to check for setting changes',sel('config_ping_min',[[1,'1 min'],[2,'2 min'],[5,'5 min']],c.config_ping_min||1));
+    field('Nightscout URL','Primary glucose source.',inp('nightscout_url','url',c.nightscout_url,'https://yoursite.ns.io'))+
+    field('Nightscout token or secret','Used to read data from your Nightscout site.',inp('nightscout_secret','password','','token or secret'))+
+    field('Dexcom username','Fallback source. Enter email or phone number.',inp('dexcom_user','text',c.dexcom_user,'email or +1xxxxxxxxxx'))+
+    field('Dexcom password','Leave blank to keep the current password.',inp('dexcom_pass','password','','••••••••'))+
+    field('Dexcom region','Set this to match your Dexcom account region.',sel('dexcom_region',[['US','US'],['Non-US','Non-US']],c.dexcom_region))+
+    field('Reading refresh interval','How often the device checks for new readings.',sel('poll_interval_min',[[1,'1 minute'],[5,'5 minutes'],[10,'10 minutes']],c.poll_interval_min))+
+    field('Stale reading warning','Show stale status after no new reading for this long.',sel('stale_data_warn_min',[[5,'5 minutes'],[10,'10 minutes'],[15,'15 minutes'],[20,'20 minutes']],c.stale_data_warn_min))+
+    field('Config sync check','How often the device checks for updated settings.',sel('config_ping_min',[[1,'1 minute'],[2,'2 minutes'],[5,'5 minutes']],c.config_ping_min||1));
 
   // BG Alerts section
   const alertContent =
-    field('BG units','',sel('bg_units',[['mg/dL','mg/dL'],['mmol/L','mmol/L']],c.bg_units))+
-    field('Urgent low','Flashes red, overrides all styles',`<div class="thr-row">${inp('urgent_low','number',c.urgent_low||55,'','')}<span>${c.bg_units||'mg/dL'}</span></div>`)+
-    field('Low threshold','Display turns red',`<div class="thr-row">${inp('low','number',c.low||70,'','')}<span>${c.bg_units||'mg/dL'}</span></div>`)+
-    field('High threshold','Display turns yellow',`<div class="thr-row">${inp('high','number',c.high||180,'','')}<span>${c.bg_units||'mg/dL'}</span></div>`)+
-    field('Urgent high','Display turns orange',`<div class="thr-row">${inp('urgent_high','number',c.urgent_high||250,'','')}<span>${c.bg_units||'mg/dL'}</span></div>`)+
-    field('Alert style','Visual only',`<div class="radio-group">${['pulse','flash','color only'].map(s=>`<label class="radio-opt"><input type="radio" name="bg_alert_style" value="${s}"${(c.bg_alert_style||'pulse')===s?' checked':''}> ${s[0].toUpperCase()+s.slice(1)}</label>`).join('')}</div>`);
+    field('Glucose units','Choose the units used in this dashboard and on device alerts.',sel('bg_units',[['mg/dL','mg/dL'],['mmol/L','mmol/L']],c.bg_units))+
+    field('Urgent low threshold','Critical low value. Highest-priority visual alert.',`<div class="thr-row">${inp('urgent_low','number',c.urgent_low||55,'','')}<span>${c.bg_units||'mg/dL'}</span></div>`)+
+    field('Low threshold','Low glucose warning threshold.',`<div class="thr-row">${inp('low','number',c.low||70,'','')}<span>${c.bg_units||'mg/dL'}</span></div>`)+
+    field('High threshold','High glucose warning threshold.',`<div class="thr-row">${inp('high','number',c.high||180,'','')}<span>${c.bg_units||'mg/dL'}</span></div>`)+
+    field('Urgent high threshold','Critical high glucose threshold.',`<div class="thr-row">${inp('urgent_high','number',c.urgent_high||250,'','')}<span>${c.bg_units||'mg/dL'}</span></div>`)+
+    field('Alert appearance','Visual style shown on the device for threshold alerts.',`<div class="radio-group">${['pulse','flash','color only'].map(s=>`<label class="radio-opt"><input type="radio" name="bg_alert_style" value="${s}"${(c.bg_alert_style||'pulse')===s?' checked':''}> ${s[0].toUpperCase()+s.slice(1)}</label>`).join('')}</div>`);
 
   // Pushover alerts section
   const pushoverContent =
-    field('Enable Pushover alerts','Send critical low/high BG alerts to your phone via Pushover',tog('pushover_enabled',c.pushover_enabled))+
-    field('User key',m.pushoverConfigured?'Configured — enter new value to update':'Your Pushover user key (from pushover.net)',inp('pushover_user_key','password','',m.pushoverConfigured?'(configured)':'user key'))+
-    field('API token',m.pushoverConfigured?'Configured — enter new value to update':'App API token from pushover.net',inp('pushover_api_token','password','',m.pushoverConfigured?'(configured)':'api token'))+
-    field('Alert cooldown','Minimum time between repeated critical alerts',sel('pushover_alert_cooldown_min',[[5,'5 min'],[10,'10 min'],[15,'15 min'],[30,'30 min'],[60,'60 min']],c.pushover_alert_cooldown_min||15))+
+    field('Enable phone alerts','Send urgent low/high alerts to your phone through Pushover.',tog('pushover_enabled',c.pushover_enabled))+
+    field('Pushover user key',m.pushoverConfigured?'Stored. Enter a new value only if you want to replace it.':'Your personal user key from pushover.net.',inp('pushover_user_key','password','',m.pushoverConfigured?'(stored)':'user key'))+
+    field('Pushover app token',m.pushoverConfigured?'Stored. Enter a new value only if you want to replace it.':'Application API token from pushover.net.',inp('pushover_api_token','password','',m.pushoverConfigured?'(stored)':'api token'))+
+    field('Phone alert cooldown','Minimum time between repeated urgent phone alerts.',sel('pushover_alert_cooldown_min',[[5,'5 minutes'],[10,'10 minutes'],[15,'15 minutes'],[30,'30 minutes'],[60,'60 minutes']],c.pushover_alert_cooldown_min||15))+
     field('Status','',m.pushoverConfigured?badge('Credentials stored','green'):badge('Not configured','amber'));
 
   // Daily AI Digest section
@@ -538,11 +538,11 @@ function render(){
   const digestDate = m.digest&&m.digest.date ? m.digest.date : '';
   const digestContent =
     (digestText
-      ? field('Today\'s digest',`Generated ${digestDate}`,`<div style="font-size:12px;line-height:1.6;color:var(--text);max-width:340px;white-space:pre-wrap">${digestText.replace(/</g,'&lt;')}</div>`)
-      : field('Today\'s digest','Workers AI summary of the past 24h of BG data','<span style="font-size:12px;color:var(--muted)">No digest yet — generates at 6 AM US/Central</span>'))+
-    field('Model','',`<span style="font-size:12px;color:var(--muted)">@cf/meta/llama-3.1-8b-instruct</span>`)+
-    field('Schedule','',`<span style="font-size:12px;color:var(--muted)">Daily 6:00 AM US/Central (cron)</span>`)+
-    field('Device behavior','','<span style="font-size:12px;color:var(--muted)">Shown on boot for 10 s; tap bottom-left to replay</span>');
+      ? field('Today\'s summary',`Generated ${digestDate}`,`<div style="font-size:12px;line-height:1.6;color:var(--text);max-width:340px;white-space:pre-wrap">${digestText.replace(/</g,'&lt;')}</div>`)
+      : field('Today\'s summary','AI summary based on the last 24 hours of glucose data.','<span style="font-size:12px;color:var(--muted)">No summary yet. It runs daily at 6:00 AM US/Central.</span>'))+
+    field('AI model','',`<span style="font-size:12px;color:var(--muted)">@cf/meta/llama-3.1-8b-instruct</span>`)+
+    field('Run schedule','',`<span style="font-size:12px;color:var(--muted)">Daily at 6:00 AM US/Central (cron)</span>`)+
+    field('On-device behavior','','<span style="font-size:12px;color:var(--muted)">Shown at boot for 10 seconds. Tap bottom-left on the main screen to replay.</span>');
 
   // Display section
   const dndSched = c.dnd_schedule || {};
@@ -552,12 +552,12 @@ function render(){
     return c.dnd_to || '06:00';
   };
   const displayContent =
-    field('Trend arrow','Show direction indicator next to BG',tog('show_trend_arrow',c.show_trend_arrow!==false))+
-    field('Last reading time','Show "X min ago" under BG number',tog('show_last_reading_time',c.show_last_reading_time!==false))+
-    field('24-hour clock','Affects time display on device',tog('clock_24hr',c.clock_24hr))+
+    field('Trend arrow','Show glucose direction next to the reading.',tog('show_trend_arrow',c.show_trend_arrow!==false))+
+    field('Reading age','Show "X min ago" under the glucose value.',tog('show_last_reading_time',c.show_last_reading_time!==false))+
+    field('24-hour clock','Use 24-hour time on the device screen.',tog('clock_24hr',c.clock_24hr))+
     field('Timezone','',sel('timezone',[['US/Central','US / Central'],['US/Eastern','US / Eastern'],['US/Mountain','US / Mountain'],['US/Pacific','US / Pacific']],c.timezone))+
-    field('Screen brightness','After 5 minutes of no touching, brightness will drop to 15% until touched.',sel('brightness',[[25,'25%'],[50,'50%'],[75,'75%'],[100,'100%']],c.brightness))+
-    field('Do not disturb','Lock screen off overnight',tog('dnd_enabled',c.dnd_enabled))+
+    field('Screen brightness','After 5 minutes without touch, brightness drops to 15% until the screen is touched again.',sel('brightness',[[25,'25%'],[50,'50%'],[75,'75%'],[100,'100%']],c.brightness))+
+    field('Do Not Disturb schedule','Turn the screen off during overnight quiet hours.',tog('dnd_enabled',c.dnd_enabled))+
     subfield('Sunday',`<div class="time-range"><input type="text" id="dnd_sun_from" value="${to12h(dndTime('sun','from','23:00'))}" style="width:88px"><span>to</span><input type="text" id="dnd_sun_to" value="${to12h(dndTime('sun','to','06:00'))}" style="width:88px"></div>`)+
     subfield('Monday',`<div class="time-range"><input type="text" id="dnd_mon_from" value="${to12h(dndTime('mon','from','23:00'))}" style="width:88px"><span>to</span><input type="text" id="dnd_mon_to" value="${to12h(dndTime('mon','to','06:00'))}" style="width:88px"></div>`)+
     subfield('Tuesday',`<div class="time-range"><input type="text" id="dnd_tue_from" value="${to12h(dndTime('tue','from','23:00'))}" style="width:88px"><span>to</span><input type="text" id="dnd_tue_to" value="${to12h(dndTime('tue','to','06:00'))}" style="width:88px"></div>`)+
@@ -570,10 +570,10 @@ function render(){
   // Security section
   const secContent =
     field('Cloudflare Access','',badge('Enabled','green'))+
-    field('Session timeout','Auto-logout from this UI',sel('session_timeout_min',[[15,'15 min'],[30,'30 min'],[60,'1 hour'],[240,'4 hours']],c.session_timeout_min))+
-    field('IP allowlist','Restrict Worker access by IP',tog('ip_allowlist_enabled',c.ip_allowlist_enabled))+
-    field('Device API key','Read-only key used by Core2',`<span class="key-display">bg_ro_••••••••${m.keyTail||'????'}</span>`)+
-    field('Firmware recovery key','Optional fallback key accepted after local flash wipe',
+    field('Session timeout','Automatically sign out after inactivity.',sel('session_timeout_min',[[15,'15 min'],[30,'30 min'],[60,'1 hour'],[240,'4 hours']],c.session_timeout_min))+
+    field('IP allowlist','Allow Worker access only from approved IPs.',tog('ip_allowlist_enabled',c.ip_allowlist_enabled))+
+    field('Device API key','Primary key used by the BGDisplay device.',`<span class="key-display">bg_ro_••••••••${m.keyTail||'????'}</span>`)+
+    field('Recovery device key','Optional backup key accepted after local flash wipe.',
       `<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
         <div style="display:flex;gap:8px;align-items:center">
           <input id="recovery_device_key" type="password" class="wide" placeholder="bg_ro_..." style="width:210px">
@@ -585,7 +585,7 @@ function render(){
           ${m.recoveryKeyUpdatedAt ? ` • Updated ${fmtTs(m.recoveryKeyUpdatedAt)}` : ''}
         </div>
       </div>`)+
-    field('Auto key rotate',`${fmtCountdown(nextMs)} — fully automated, zero manual steps<br><span style="font-size:11px;background:var(--amber-bg);color:var(--amber);padding:1px 7px;border-radius:99px;font-weight:600;display:inline-block;margin-top:3px">Locked — 7 days</span>`,
+    field('Automatic key rotation',`${fmtCountdown(nextMs)} - rotates automatically every 7 days<br><span style="font-size:11px;background:var(--amber-bg);color:var(--amber);padding:1px 7px;border-radius:99px;font-weight:600;display:inline-block;margin-top:3px">Automatic policy</span>`,
       `<div class="rotate-block">
         <svg width="36" height="36" viewBox="0 0 36 36">
           <circle cx="18" cy="18" r="15" fill="none" stroke="#e5e7eb" stroke-width="3"/>
@@ -596,37 +596,37 @@ function render(){
         <div class="rotate-meta">Last rotated: ${fmtTs(m.lastRotated)}</div>
         <div class="rotate-meta">Next: ${m.nextAutoRotate?new Date(m.nextAutoRotate).toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',hour12:true}):'—'}</div>
       </div>`)+
-    field('Certificate pinning','Core2 rejects non-Cloudflare certs',badge('Active','green'))+
-    field('Rate limiting','Max requests to Worker',sel('rate_limit_per_min',[[10,'10 per Minute'],[15,'15 per Minute'],[25,'25 per Minute'],[30,'30 per Minute'],[45,'45 per Minute'],[60,'60 per Minute']],c.rate_limit_per_min))+
-    field('Failed auth lockout','Lock after repeated failed attempts',tog('lockout_enabled',c.lockout_enabled!==false))+
-    subfield('Attempts before lockout',sel('lockout_attempts',[[3,'3'],[5,'5'],[10,'10']],c.lockout_attempts))+
-    subfield('Lockout duration',sel('lockout_duration_min',[[5,'5 min'],[15,'15 min'],[60,'1 hour']],c.lockout_duration_min))+
+    field('Certificate pinning','The device rejects unexpected TLS certificates.',badge('Active','green'))+
+    field('Rate limit','Maximum requests allowed per minute to the Worker.',sel('rate_limit_per_min',[[10,'10 per minute'],[15,'15 per minute'],[25,'25 per minute'],[30,'30 per minute'],[45,'45 per minute'],[60,'60 per minute']],c.rate_limit_per_min))+
+    field('Failed login lockout','Temporarily block access after repeated failed attempts.',tog('lockout_enabled',c.lockout_enabled!==false))+
+    subfield('Attempts before lockout',sel('lockout_attempts',[[3,'3 attempts'],[5,'5 attempts'],[10,'10 attempts']],c.lockout_attempts))+
+    subfield('Lockout duration',sel('lockout_duration_min',[[5,'5 minutes'],[15,'15 minutes'],[60,'1 hour']],c.lockout_duration_min))+
     field('Last known device IP','Masked for privacy',`<span class="key-display">${m.status?.ip||'—'}</span>`)+
     field('Failed auth attempts','Last 24 hours',badge(`${m.failedAuthCount||0} attempts`,m.failedAuthCount>0?'red':'green'))+
-    `<div style="padding:8px 16px;background:#fafafa;border-top:1px solid var(--border)"><div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Config change log <span style="font-size:10px;font-weight:400">(v${m.config_version||0})</span></div>${(m.changelog||[]).slice(0,5).map(l=>`<div class="log-row"><span>${l.msg}</span><span>${fmtTs(l.ts)}</span></div>`).join('')||'<div style="font-size:12px;color:var(--faint);padding:4px 0">No entries yet</div>'}<div style="text-align:right;margin-top:6px"><button class="btn" onclick="clearLog()">Clear log</button></div></div>`;
+    `<div style="padding:8px 16px;background:#fafafa;border-top:1px solid var(--border)"><div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Recent configuration changes <span style="font-size:10px;font-weight:400">(v${m.config_version||0})</span></div>${(m.changelog||[]).slice(0,5).map(l=>`<div class="log-row"><span>${l.msg}</span><span>${fmtTs(l.ts)}</span></div>`).join('')||'<div style="font-size:12px;color:var(--faint);padding:4px 0">No changes recorded yet</div>'}<div style="text-align:right;margin-top:6px"><button class="btn" onclick="clearLog()">Clear history</button></div></div>`;
 
   // Backup section
   const backupContent =
-    field('Export config','Download settings as JSON',`<button class="btn" onclick="exportConfig()">Export</button>`)+
-    field('Import config','Restore from a previous export',`<button class="btn" onclick="importConfig()">Import</button>`)+
-    field('Auto-backup to KV','Saves snapshot on every save',tog('auto_backup',c.auto_backup!==false));
+    field('Export settings','Download all settings as a JSON backup file.',`<button class="btn" onclick="exportConfig()">Export</button>`)+
+    field('Import settings','Restore settings from a previous JSON backup.',`<button class="btn" onclick="importConfig()">Import</button>`)+
+    field('Automatic backup','Save a snapshot to KV each time settings are saved.',tog('auto_backup',c.auto_backup!==false));
 
   // Diagnostics section
   const diagContent =
     `<div class="diag-row"><span>Cloudflare Worker</span><span id="diag-worker">${badge('—','blue')}</span></div>`+
     `<div class="diag-row"><span>Dexcom Share</span><span id="diag-dex">${badge('—','blue')}</span></div>`+
     `<div class="diag-row"><span>Worker latency</span><span id="diag-latency" style="font-size:12px;color:var(--muted)">—</span></div>`+
-    `<div class="diag-row"><span>Last device seen</span><span style="font-size:12px;color:var(--muted)">${fmtTs(m.status?.lastSeen)}</span></div>`+
-    `<div class="diag-row"><span>Device firmware</span><span style="font-size:12px;color:var(--muted)">${m.status?.firmware||'—'}</span></div>`+
-    `<div style="padding:10px 16px"><button class="btn full" onclick="runDiagnostics()">Run connection test</button></div>`;
+    `<div class="diag-row"><span>Last seen</span><span style="font-size:12px;color:var(--muted)">${fmtTs(m.status?.lastSeen)}</span></div>`+
+    `<div class="diag-row"><span>Firmware version</span><span style="font-size:12px;color:var(--muted)">${m.status?.firmware||'—'}</span></div>`+
+    `<div style="padding:10px 16px"><button class="btn full" onclick="runDiagnostics()">Run connectivity check</button></div>`;
 
   // Device Control section
   const cmd = m.pendingCommand;
   const ack = m.lastCommandAck;
   const logMeta = m.lastLogUpload;
   const controlContent =
-    field('Immediate actions','Queue a one-time command for the device',`<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" onclick="sendCommand('sync-now')">Sync now</button><button class="btn" onclick="sendCommand('upload-logs')">Pull SD logs</button><button class="btn danger" onclick="sendCommand('reboot')">Reboot now</button><button class="btn danger" onclick="if(confirm('Queue factory reset? Device will wipe local config and return to setup mode.'))sendCommand('factory-reset')">Factory reset</button></div>`)+
-    field('Latest SD log upload','Most recent device log bundle in Worker',
+    field('Quick actions','Send a one-time command to the device.',`<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" onclick="sendCommand('sync-now')">Sync now</button><button class="btn" onclick="sendCommand('upload-logs')">Pull SD logs</button><button class="btn danger" onclick="sendCommand('reboot')">Reboot now</button><button class="btn danger" onclick="if(confirm('Queue factory reset? Device will wipe local config and return to setup mode.'))sendCommand('factory-reset')">Factory reset</button></div>`)+
+    field('Latest SD log upload','Most recent log package uploaded from the device.',
       logMeta
         ? `<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end"><span style="font-size:12px;color:var(--muted)">${logMeta.lineCount||0} lines, ${logMeta.bytes||0} bytes (${fmtTs(logMeta.uploadedAt)})</span><button class="btn" onclick="downloadLatestLogs()">Download logs</button></div>`
         : '<span style="font-size:12px;color:var(--muted)">No uploaded logs yet</span>'
@@ -637,20 +637,20 @@ function render(){
   // Cloud Insights section
   const mx = METRICS?.metrics || {};
   const cloudInsightsContent =
-    field('Samples retained','Recent telemetry points in KV',`<span style="font-size:12px;color:var(--muted)">${mx.samples ?? '—'}</span>`)+
-    field('Average RSSI','Recent average signal strength',`<span style="font-size:12px;color:var(--muted)">${mx.avgRssi ?? '—'}${mx.avgRssi!==null&&mx.avgRssi!==undefined?' dBm':''}</span>`)+
-    field('Battery range','Min/Max from telemetry window',`<span style="font-size:12px;color:var(--muted)">${mx.minBattery ?? '—'}${mx.minBattery!==null&&mx.minBattery!==undefined?'%':''} / ${mx.maxBattery ?? '—'}${mx.maxBattery!==null&&mx.maxBattery!==undefined?'%':''}</span>`)+
-    field('Stale sample ratio','Percent of stale readings in window',`<span style="font-size:12px;color:var(--muted)">${mx.staleSamplePct ?? '—'}%</span>`)+
-    field('Events (1h)','Alerts / Config saves / Command ACK fail',`<span style="font-size:12px;color:var(--muted)">${mx.eventCounts1h?.alert ?? 0} / ${mx.eventCounts1h?.configSave ?? 0} / ${mx.eventCounts1h?.commandAckFail ?? 0}</span>`)+
-    field('Source health','Nightscout ok/fail, Dexcom ok/fail',`<span style="font-size:12px;color:var(--muted)">${mx.sourceHealth?.nsOk ?? 0}/${mx.sourceHealth?.nsFail ?? 0} • ${mx.sourceHealth?.dexOk ?? 0}/${mx.sourceHealth?.dexFail ?? 0}</span>`)+
-    field('Confidence','Overall data confidence score',`<span style="font-size:12px;color:var(--muted)">${mx.confidence?.score ?? '—'}%</span>`);
+    field('Telemetry samples','Recent telemetry points retained in KV.',`<span style="font-size:12px;color:var(--muted)">${mx.samples ?? '—'}</span>`)+
+    field('Average RSSI','Average Wi-Fi signal strength over the sample window.',`<span style="font-size:12px;color:var(--muted)">${mx.avgRssi ?? '—'}${mx.avgRssi!==null&&mx.avgRssi!==undefined?' dBm':''}</span>`)+
+    field('Battery range','Lowest and highest battery level in the sample window.',`<span style="font-size:12px;color:var(--muted)">${mx.minBattery ?? '—'}${mx.minBattery!==null&&mx.minBattery!==undefined?'%':''} / ${mx.maxBattery ?? '—'}${mx.maxBattery!==null&&mx.maxBattery!==undefined?'%':''}</span>`)+
+    field('Stale reading ratio','Percent of stale glucose samples in the window.',`<span style="font-size:12px;color:var(--muted)">${mx.staleSamplePct ?? '—'}%</span>`)+
+    field('Events (last hour)','Alerts / Config saves / Failed command ACK.',`<span style="font-size:12px;color:var(--muted)">${mx.eventCounts1h?.alert ?? 0} / ${mx.eventCounts1h?.configSave ?? 0} / ${mx.eventCounts1h?.commandAckFail ?? 0}</span>`)+
+    field('Source health','Nightscout success/fail and Dexcom success/fail counts.',`<span style="font-size:12px;color:var(--muted)">${mx.sourceHealth?.nsOk ?? 0}/${mx.sourceHealth?.nsFail ?? 0} • ${mx.sourceHealth?.dexOk ?? 0}/${mx.sourceHealth?.dexFail ?? 0}</span>`)+
+    field('Confidence score','Overall health score for recent data quality.',`<span style="font-size:12px;color:var(--muted)">${mx.confidence?.score ?? '—'}%</span>`);
 
-  // Alert tuning section
+  // UI Alerts section
   const alertTuningContent =
-    field('Offline alert threshold','Trigger when device unseen for this long',sel('alert_offline_min',[[10,'10 min'],[15,'15 min'],[30,'30 min'],[60,'60 min']],c.alert_offline_min||15))+
-    field('Stale data alert threshold','Trigger when reading age exceeds this',sel('alert_stale_min',[[15,'15 min'],[30,'30 min'],[45,'45 min'],[60,'60 min']],c.alert_stale_min||30))+
-    field('Low battery threshold','Trigger battery warning at or below',sel('alert_battery_low_pct',[[10,'10%'],[15,'15%'],[20,'20%'],[25,'25%']],c.alert_battery_low_pct||15))+
-    field('Alert cooldown','Minimum minutes between same alert',sel('alert_cooldown_min',[[15,'15 min'],[30,'30 min'],[60,'60 min'],[180,'3 hours']],c.alert_cooldown_min||60));
+    field('Offline alert threshold','Send an alert when the device has not checked in for this long.',sel('alert_offline_min',[[10,'10 minutes'],[15,'15 minutes'],[30,'30 minutes'],[60,'60 minutes']],c.alert_offline_min||15))+
+    field('Stale data alert threshold','Send an alert when glucose data is older than this.',sel('alert_stale_min',[[15,'15 minutes'],[30,'30 minutes'],[45,'45 minutes'],[60,'60 minutes']],c.alert_stale_min||30))+
+    field('Low battery threshold','Send an alert when battery is at or below this level.',sel('alert_battery_low_pct',[[10,'10%'],[15,'15%'],[20,'20%'],[25,'25%']],c.alert_battery_low_pct||15))+
+    field('Alert cooldown','Minimum wait time before sending the same alert again.',sel('alert_cooldown_min',[[15,'15 minutes'],[30,'30 minutes'],[60,'60 minutes'],[180,'3 hours']],c.alert_cooldown_min||60));
 
   // System section
   const sdBadge = m.status?.sdAvailable ? badge('Available','green') : badge('Not detected','amber');
@@ -665,11 +665,11 @@ function render(){
     `<div class="vrow"><span class="label">SD card</span><span>${sdBadge}</span></div>`+
     `<div class="vrow"><span class="label">Config version</span><span>v${m.config_version||0}</span></div>`+
     `<div class="vrow"><span class="label">Reset reason</span><span>${m.status?.resetReason||'—'}</span></div>`+
-    `<div style="padding:12px 16px"><button class="btn full danger" onclick="if(confirm('Factory reset? Device will wipe local config and return to setup mode.'))sendCommand('factory-reset')">Factory reset</button></div>`;
+    `<div style="padding:12px 16px"><button class="btn full danger" onclick="if(confirm('Factory reset? Device will wipe local config and return to setup mode.'))sendCommand('factory-reset')">Factory reset device</button></div>`;
 
   const logRows = (LOGS.preview||[]).map(l=>`<div class="log-row" style="font-family:var(--mono)"><span style="white-space:pre-wrap;word-break:break-word">${l.replace(/</g,'&lt;')}</span></div>`).join('');
   const logExplorerContent =
-    `<div class="field"><div class="field-label"><div class="name">Filter logs</div><div class="desc">Search + level filter on latest uploaded SD log bundle</div></div><div style="display:flex;gap:8px;align-items:center"><input id="log_q" type="text" class="wide" placeholder="search text"><select id="log_lvl"><option value="">All</option><option value="ERR">ERR</option><option value="NET">NET</option><option value="CFG">CFG</option><option value="SYS">SYS</option><option value="BG">BG</option><option value="CMD">CMD</option></select><button class="btn" onclick="loadLogs()">Run</button></div></div>`+
+    `<div class="field"><div class="field-label"><div class="name">Filter logs</div><div class="desc">Search and filter the latest uploaded SD log package.</div></div><div style="display:flex;gap:8px;align-items:center"><input id="log_q" type="text" class="wide" placeholder="search text"><select id="log_lvl"><option value="">All</option><option value="ERR">ERR</option><option value="NET">NET</option><option value="CFG">CFG</option><option value="SYS">SYS</option><option value="BG">BG</option><option value="CMD">CMD</option></select><button class="btn" onclick="loadLogs()">Run</button></div></div>`+
     `<div class="diag-row"><span>Matched lines</span><span style="font-size:12px;color:var(--muted)">${LOGS.total||0}</span></div>`+
     (logRows||`<div class="diag-row"><span style="color:var(--muted)">No log lines loaded yet</span></div>`);
 
@@ -684,35 +684,35 @@ function render(){
 
   document.getElementById('app').innerHTML = `
   <div class="grid">
-    ${section('wifi','icon-wifi',wifiIcon,'Wi-Fi','Connection credentials',wifiContent)}
-    ${section('ns','icon-dex',dexIcon,'Data sources','Nightscout primary, Dexcom fallback',nsContent)}
+    ${section('wifi','icon-wifi',wifiIcon,'Wi-Fi setup','Connect BGDisplay to your network',wifiContent)}
+    ${section('ns','icon-dex',dexIcon,'Data sources','Choose where glucose readings come from',nsContent)}
   </div>
   <div class="grid">
-    ${section('alerts','icon-alert',alertIcon,'BG alerts','Thresholds and visual alerts',alertContent)}
-    ${section('pushover','icon-pushover',pushoverIcon,'Pushover alerts','Critical BG notifications to phone',pushoverContent)}
+    ${section('alerts','icon-alert',alertIcon,'Glucose targets','Thresholds and on-device visual alerts',alertContent)}
+    ${section('display','icon-display',displayIcon,'Display and schedule','Screen, clock, and quiet hours',displayContent)}
   </div>
   <div class="grid">
-    ${section('display','icon-display',displayIcon,'Display','Screen &amp; time settings',displayContent)}
-    ${section('digest','icon-ai',aiIcon,'Daily AI digest','Morning BG summary via Workers AI',digestContent)}
+    ${section('pushover','icon-pushover',pushoverIcon,'Phone notifications','Urgent alerts sent through Pushover',pushoverContent)}
+    ${section('alerts_cloud','icon-alert',alertIcon,'UI alerts','Worker-side alert thresholds and cooldowns',alertTuningContent)}
   </div>
   <div class="grid">
-    ${section('security','icon-security',secIcon,'Security','API keys, rate limiting, access control',secContent)}
-    ${section('system','icon-system',sysIcon,'System','Device status and information',sysContent)}
+    ${section('system','icon-system',sysIcon,'System status','Live device health and connection details',sysContent)}
+    ${section('control','icon-system',ctrlIcon,'Device actions','Run sync, reboot, and maintenance commands',controlContent)}
   </div>
   <div class="grid">
-    ${section('backup','icon-backup',backupIcon,'Backup &amp; restore','Export and import settings',backupContent)}
-    ${section('diag','icon-diag',diagIcon,'Diagnostics','Connection health checks',diagContent)}
+    ${section('diag','icon-diag',diagIcon,'Diagnostics','Quick connectivity and service checks',diagContent)}
+    ${section('insights','icon-diag',diagIcon,'Cloud insights','Telemetry trends and Worker-side metrics',cloudInsightsContent)}
   </div>
   <div class="grid">
-    ${section('control','icon-system',ctrlIcon,'Device control','Queue reboot or sync commands',controlContent)}
-    ${section('insights','icon-diag',diagIcon,'Cloud insights','Worker-side telemetry and event aggregates',cloudInsightsContent)}
+    ${section('security','icon-security',secIcon,'Security','Access control, keys, and protection policies',secContent)}
+    ${section('backup','icon-backup',backupIcon,'Backup and restore','Export, import, and automatic snapshots',backupContent)}
   </div>
   <div class="grid">
-    ${section('alerts_cloud','icon-alert',alertIcon,'Alert tuning','Cloud alert thresholds and cooldowns',alertTuningContent)}
-    ${section('logs','icon-diag',diagIcon,'Log explorer','Filter and inspect uploaded SD logs',logExplorerContent)}
+    ${section('digest','icon-ai',aiIcon,'Daily AI summary','Morning glucose summary generated in the cloud',digestContent)}
+    ${section('maint','icon-system',sysIcon,'Maintenance center','Automation, rotations, and source health',maintContent)}
   </div>
   <div class="grid">
-    ${section('maint','icon-system',sysIcon,'Maintenance center','Reboot/rotation/source health maintenance signals',maintContent)}
+    ${section('logs','icon-diag',diagIcon,'Log explorer','Search and inspect uploaded SD logs',logExplorerContent)}
     <div></div>
   </div>
   </div>`;
