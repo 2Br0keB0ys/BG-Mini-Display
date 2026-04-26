@@ -75,12 +75,12 @@ The main sketch is `bgdisplay.ino`. All modules are header-only files included b
 - **NVS encryption:** Chip ID acts as hardware root-of-trust. Same key used for SD logs (different salt).
 - **Stack:** `ARDUINO_LOOP_STACK_SIZE=16384` in `platformio.ini` (prevents overflow crash).
 - **Timezone support:** US/Central, US/Eastern, US/Mountain, US/Pacific (mapped to POSIX strings). NTP: NIST primary → public pool fallback.
-- **AI Daily Digest:** On boot (after WiFi + config), firmware calls `GET /api/digest`. If a digest is available, `showDigestScreen()` displays it for 10 s. Bottom-left tap (x<160, y>170) on the main screen replays the digest. Global `gDigestText[512]` holds it in memory.
+- **AI Daily Digest:** On boot (after WiFi + config), firmware calls `GET /api/digest`. If a digest is available, `showDigestScreen()` displays it for 10 s. Bottom-left tap (x<160, y>170) on the main screen replays the digest. Global `gDigestText[1024]` holds it in memory.
 - **WebSocket reconnect:** `ws_sync.h` uses 8 s reconnect interval. WS event handler is flag-only (sets `_wsTriggerPull`); the actual config pull happens in `wsTick()` after `_wsClient.loop()` returns to avoid re-entrancy.
 
 ### Cloudflare Worker (`apps/cloudflare/src/worker.js`)
 
-Current worker version: `2.0.0` (set in `wrangler.toml` `WORKER_VERSION` var).
+Current worker version: `3.0.0` (set in `wrangler.toml` `WORKER_VERSION` var).
 
 Single file handling all backend logic. Two KV namespaces:
 - `BGDISPLAY_CONFIG`: config JSON, version counter, changelog (50 entries), device status, telemetry (720 points), SD logs, commands, `daily_digest`, `pushover_creds`, `last_pushover_alert`

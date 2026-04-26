@@ -1,165 +1,105 @@
-# BGDisplay — Setup & Deployment Guide
+# BGDisplay
 
-## Project Structure
-```
+BGDisplay is an ESP32-based blood glucose display for M5Stack Core2.
+
+Current architecture:
+- Dexcom Share is the primary data source
+- Nightscout is fallback
+- Firmware syncs config from a Cloudflare Worker
+- Cloudflare Pages hosts the browser-based setup UI
+- WebSocket push is used for near-instant config refresh
+
+## Repository Layout
+
+```text
 bgdisplay/
-├── .github/workflows/      # CI
-├── CLAUDE.md               # Architecture and operations reference
-├── bgdisplay_context.md    # Session/context notes
 ├── apps/
-│   ├── cloudflare/
-│   │   ├── package.json        # Worker deployment scripts
-│   │   ├── wrangler.toml       # Worker config + cron schedules
-│   │   └── src/worker.js       # API backend
-│   └── pages/
-│       ├── index.html          # Config web UI
-│       └── _headers            # Pages headers
-└── firmware/
-    └── bgdisplay/
-        ├── platformio.ini          # PlatformIO project config
-        ├── src/
-        │   ├── bgdisplay.ino       # Main sketch
-        │   ├── config.h            # AppConfig struct + NVS persistence
-        │   ├── display.h           # Rendering + digest screen
-        │   ├── dexcom.h            # Dexcom Share primary polling
-        │   ├── nightscout.h        # Nightscout fallback polling
-        │   └── ...
-        └── scripts/
-            └── secure_provision.ps1
+│   ├── cloudflare/        # Worker + wrangler config
+│   └── pages/             # Single-file UI (index.html)
+├── firmware/bgdisplay/    # PlatformIO firmware for M5Stack Core2
+├── CLAUDE.md              # Deep architecture and ops reference
+└── bgdisplay_context.md   # Current project snapshot
 ```
 
----
+## Prerequisites
 
-## Step 1 — Cloudflare Setup
+- Node.js 18+
+- Wrangler CLI
+- VS Code with PlatformIO extension
+- M5Stack Core2 with USB-C cable
 
-### 1a. Install Wrangler
-```bash
-npm install -g wrangler
-wrangler login
-```
+## 1) Deploy Cloudflare Worker
 
-### 1b. Create KV Namespaces
-```bash
-wrangler kv:namespace create BGDISPLAY_CONFIG
-wrangler kv:namespace create BGDISPLAY_AUTH
-```
-Copy the IDs output and paste them into `wrangler.toml`.
-
-### 1c. Deploy the Worker
 ```bash
 cd apps/cloudflare
 npm install
 npm run deploy:worker
 ```
-Note your Worker URL: `https://bgdisplay-worker.YOURNAME.workers.dev`
 
-### 1d. Get your initial Device API Key
-Hit this URL once in your browser (authenticated via Cloudflare Access):
-```
-GET https://bgdisplay-worker.YOURNAME.workers.dev/api/init
-```
-Copy the `initialKey` from the response — you need it for the firmware.
+Before first deploy, set Worker secrets as needed:
 
----
-
-## Step 2 — Cloudflare Pages (Config UI)
-
-### 2a. Edit apps/pages/index.html
-Set the `WORKER_URL` variable at the top of the `<script>` block:
-```js
-const WORKER_URL = "https://bgdisplay-worker.YOURNAME.workers.dev";
+```bash
+wrangler secret put KV_ENCRYPT_KEY
 ```
 
-### 2b. Deploy to Cloudflare Pages
+## 2) Deploy Config UI (Cloudflare Pages)
+
+Edit `apps/pages/index.html` and set `WORKER_URL` at the top of the script block.
+
 ```bash
 cd apps/cloudflare
-npm install
 npm run deploy:pages
 ```
 
-This deploy runs from the `apps/pages/` directory so Wrangler does not try to parse the Worker config in `apps/cloudflare/wrangler.toml`.
+Optional but recommended: protect the Pages domain with Cloudflare Access.
 
-Then set your custom domain (e.g. `bgdisplay.yourdomain.com`) in the Cloudflare dashboard.
+## 3) Flash Firmware (PlatformIO)
 
-### 2c. Enable Cloudflare Access
-- Go to Zero Trust → Access → Applications
-- Add application → Self-hosted
-- Domain: `bgdisplay.yourdomain.com`
-- Policy: Allow your Google/email account
+1. Copy `firmware/bgdisplay/src/secrets.example.h` to `firmware/bgdisplay/src/secrets.h`.
+2. Set:
+    - `BGDISPLAY_DEFAULT_WORKER_URL`
+    - `BGDISPLAY_DEFAULT_DEVICE_KEY`
+    - `BGDISPLAY_DEFAULT_TIMEZONE` (optional)
+3. Build and flash:
 
----
-
-## Step 3 — Arduino IDE Setup
-
-### 3a. Install Board Support
-In Arduino IDE → Preferences → Additional Board URLs, add:
+```bash
+cd firmware/bgdisplay
+pio run -d .
+pio run -d . -t upload
 ```
-https://m5stack.oss-cn-shenzhen.aliyuncs.com/resource/arduino/package_m5stack_index.json
-```
-Then: Tools → Board Manager → search "M5Stack" → Install
 
-### 3b. Select Board
-Tools → Board → M5Stack-Core2
+From plain Windows shell, `pio` may need full path:
+`~/.platformio/penv/Scripts/pio.exe`
 
-### 3c. Install Libraries
-Tools → Library Manager — install these:
-- **M5Core2** (by M5Stack)
-- **ArduinoJson** (by Benoit Blanchon) — v6.x
-- All dependencies M5Core2 pulls in automatically
+## 4) First Boot
 
-### 3d. Set firmware credentials
-Before flashing, edit `bgdisplay.ino` and fill in:
-- `workerUrl` — your Worker URL
-- `deviceKey` — the initial key from Step 1d
+1. If no WiFi is saved, device enters AP setup mode.
+2. Join `BGDisplay-Setup-XXXX` network.
+3. Open `http://192.168.4.1` if captive portal does not auto-open.
+4. Enter WiFi credentials.
+5. Device connects, pulls cloud config, then starts BG polling.
 
-Or leave blank and use AP Mode setup on first boot.
+## 5) Configure Runtime Settings
 
----
-
-## Step 4 — First Boot
-
-1. Flash the firmware via USB-C
-2. Device boots → shows "BGDisplay" splash → tries WiFi
-3. No WiFi saved → enters AP Mode automatically
-4. On your phone: connect to the on-screen `BGDisplay-Setup-XXXX` network using the on-screen password
-5. Browser opens automatically → fill in:
-   - Work Wi-Fi SSID + password
-   - Worker URL
-   - Device API key (from Step 1d)
-   - Nightscout URL + secret
-   - Dexcom credentials
-6. Tap Save → device restarts → connects to work Wi-Fi → starts displaying BG
-
----
-
-## Step 5 — All Future Config Changes
-
-Open `https://bgdisplay.yourdomain.com` in any browser.
-No app, no hotspot, no USB — just your browser.
-
----
-
-## Firmware OTA Updates (future)
-Not yet implemented. Currently update via USB-C cable.
-Connect to a laptop, reflash via Arduino IDE.
-
----
+Use the Cloudflare Pages UI for:
+- Display preferences
+- Dexcom and Nightscout credentials
+- Alert thresholds and DND
+- Pushover alerts and daily digest push
+- Security and advanced options
 
 ## Troubleshooting
 
-| Symptom | Fix |
+| Symptom | What to check |
 |---|---|
-| `KEY ERROR - REFLASH` on display | API key was rotated — get new key from UI → Rotate → reflash |
-| `STALE` banner showing | Nightscout not reachable from device, check NS URL in config |
-| Device shows `---` | Both Nightscout and Dexcom failing — check credentials in UI |
-| AP Mode not showing captive portal | Open browser manually to `http://192.168.4.1` |
-| Config changes not applying | Wait up to 60 seconds — device polls every 60s |
+| Device shows `---` | Dexcom and Nightscout credentials/endpoints |
+| `STALE` appears | Data source reachability or stale threshold too low |
+| Config changes delayed | WebSocket disconnected, device falls back to ping interval |
+| Setup portal does not open | Browse to `http://192.168.4.1` manually |
+| `KEY ERROR` overlay | Device key mismatch or invalid key in cloud |
 
----
+## Notes
 
-## Adding Cellular (Later)
-When you add the M5Stack LTE module:
-1. Enable `cellular_fallback` in the config UI
-2. The firmware already has the toggle plumbed in
-3. Add APN config to `wifi_setup.h` (T-Mobile APN: `fast.t-mobile.com`)
-4. The Cloudflare Worker and Pages UI require zero changes
+- OTA is implemented via `ArduinoOTA` when enabled in firmware.
+- Cellular fallback is a planned hardware path and not currently active.
+- See `CLAUDE.md` for endpoint lists, auth model, and full architecture details.

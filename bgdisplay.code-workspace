@@ -14,6 +14,19 @@
       "**/node_modules": true,
       "**/.DS_Store": true,
       "**/Thumbs.db": true
-    }
+    },
+    "chat.agent.maxRequests": 500,
+    "chat.agent.allowedNetworkDomains": [
+      "*.*.*"
+    ],
+    "chat.requestQueuing.defaultAction": "queue",
+    "chat.mcp.discovery.enabled": {
+      "claude-desktop": true,
+      "cursor-global": true,
+      "cursor-workspace": true
+    },
+    "chat.mcp.gallery.enabled": true,
+    "chat.mcp.assisted.nuget.enabled": true,
+    "chat.useNestedAgentsMdFiles": true
   }
 }
