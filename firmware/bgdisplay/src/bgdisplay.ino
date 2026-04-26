@@ -538,8 +538,11 @@ void loop() {
   unsigned long gkPollMs = (unsigned long)appConfig.glookoPollMin * 60000UL;
   if (WiFi.status()==WL_CONNECTED && omnipodConfigured(appConfig) && now - lastGlookoPoll > gkPollMs) {
     lastGlookoPoll = now;
+    sdLogfEx("POD", "POD_SYNC", "poll_tick intervalMs:%lu", gkPollMs);
     if (!fetchGlookoOmnipod(appConfig, gOmnipodStatus)) {
-      sdLogError("Omnipod poll failed");
+      sdLogEx("ERR", "POD_SYNC", "poll_failed");
+    } else {
+      sdLogEx("POD", "POD_SYNC", "poll_ok");
     }
   }
 

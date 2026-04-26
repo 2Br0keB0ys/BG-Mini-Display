@@ -374,14 +374,28 @@ async function fetchNightscoutHistory(config, count = 24) {
   } catch { return []; }
 }
 
-async function fetchOmnipodBridge(config) {
-  if (!config.glooko_enabled) return null;
+async function fetchOmnipodBridge(config, diag = null) {
+  if (!config.glooko_enabled) {
+    if (diag) {
+      diag.reason = "sync_disabled";
+      diag.source = String(config.omnipod_source || "glooko").toLowerCase();
+    }
+    return null;
+  }
   try {
     const source = String(config.omnipod_source || "glooko").toLowerCase();
     // Legacy bridge settings remain supported for backwards compatibility while source-credential fetchers are added.
     const endpoint = config.omnipod_connect_url || config.glooko_omnipod_url || "";
     const token = config.omnipod_connect_token || config.glooko_token || "";
-    if (!endpoint) return null;
+    if (diag) {
+      diag.source = source;
+      diag.hasEndpoint = !!endpoint;
+      diag.hasToken = !!token;
+    }
+    if (!endpoint) {
+      if (diag) diag.reason = "missing_endpoint";
+      return null;
+    }
 
     const headers = { "Accept": "application/json" };
     if (token) {
@@ -394,11 +408,26 @@ async function fetchOmnipodBridge(config) {
       headers,
       signal: AbortSignal.timeout(9000),
     });
-    if (!resp.ok) return null;
+    if (!resp.ok) {
+      if (diag) {
+        diag.reason = "upstream_http_error";
+        diag.http = resp.status;
+      }
+      return null;
+    }
 
-    const jsonBody = await resp.json();
+    let jsonBody = null;
+    try {
+      jsonBody = await resp.json();
+    } catch {
+      if (diag) diag.reason = "upstream_invalid_json";
+      return null;
+    }
     const pod = (jsonBody && jsonBody.omnipod && typeof jsonBody.omnipod === "object") ? jsonBody.omnipod : jsonBody;
-    if (!pod || typeof pod !== "object") return null;
+    if (!pod || typeof pod !== "object") {
+      if (diag) diag.reason = "payload_not_object";
+      return null;
+    }
 
     const active = (pod.pod_active ?? pod.active ?? false) === true;
     const iob = Number(pod.insulin_on_board ?? pod.iob ?? -1);
@@ -407,7 +436,7 @@ async function fetchOmnipodBridge(config) {
     const rawTs = Number(pod.timestamp ?? pod.ts ?? jsonBody.timestamp ?? 0);
     const tsSec = rawTs > 1000000000000 ? Math.floor(rawTs / 1000) : rawTs;
 
-    return {
+    const out = {
       source,
       pod_active: active,
       insulin_on_board: Number.isFinite(iob) ? iob : -1,
@@ -415,7 +444,10 @@ async function fetchOmnipodBridge(config) {
       minutes_to_expiry: Number.isFinite(minsToExpiry) ? Math.floor(minsToExpiry) : -1,
       timestamp: Number.isFinite(tsSec) ? tsSec : 0,
     };
+    if (diag) diag.reason = "ok";
+    return out;
   } catch {
+    if (diag) diag.reason = "fetch_exception";
     return null;
   }
 }
@@ -968,9 +1000,14 @@ async function handleMCP(request, env, config, auth) {
       }
 
       if (checks.omnipod.configured) {
-        const pod = await fetchOmnipodBridge(config);
+        const diag = {};
+        const pod = await fetchOmnipodBridge(config, diag);
         checks.omnipod.reachable = !!pod;
-        checks.omnipod.note = checks.omnipod.reachable ? "Omnipod payload available" : "No Omnipod payload returned";
+        checks.omnipod.note = checks.omnipod.reachable ? "Omnipod payload available" : `No Omnipod payload returned (${diag.reason || "unknown"})`;
+        checks.omnipod.reason = diag.reason || null;
+        checks.omnipod.hasEndpoint = !!diag.hasEndpoint;
+        checks.omnipod.hasToken = !!diag.hasToken;
+        checks.omnipod.http = Number.isFinite(diag.http) ? diag.http : null;
       } else {
         checks.omnipod.note = "Omnipod source sync disabled";
       }
@@ -1029,8 +1066,20 @@ async function handleMCP(request, env, config, auth) {
         return mcpResult(id, { content: [{ type: "text", text: JSON.stringify({ source: "nightscout", count: payload.length, readings: payload }, null, 2) }] });
       }
 
-      const pod = await fetchOmnipodBridge(config);
-      if (!pod) return mcpResult(id, { content: [{ type: "text", text: "No Omnipod source data available." }] });
+      const diag = {};
+      const pod = await fetchOmnipodBridge(config, diag);
+      if (!pod) {
+        return mcpResult(id, {
+          content: [{ type: "text", text: JSON.stringify({
+            source: "omnipod",
+            available: false,
+            reason: diag.reason || "unknown",
+            hasEndpoint: !!diag.hasEndpoint,
+            hasToken: !!diag.hasToken,
+            http: Number.isFinite(diag.http) ? diag.http : null,
+          }, null, 2) }],
+        });
+      }
       return mcpResult(id, {
         content: [{ type: "text", text: JSON.stringify({ source: "omnipod", omnipod: pod }, null, 2) }],
       });
@@ -1565,8 +1614,19 @@ export default {
       const sig = await verifyDeviceSignature(request, env, keyHash, "");
       if (!sig.ok) return json({ error: sig.error }, 401);
 
-      const pod = await fetchOmnipodBridge(config);
-      if (!pod) return json({ available: false, ts: Date.now() });
+      const diag = {};
+      const pod = await fetchOmnipodBridge(config, diag);
+      if (!pod) {
+        return json({
+          available: false,
+          reason: diag.reason || "unknown",
+          source: diag.source || String(config.omnipod_source || "glooko").toLowerCase(),
+          hasEndpoint: !!diag.hasEndpoint,
+          hasToken: !!diag.hasToken,
+          http: Number.isFinite(diag.http) ? diag.http : undefined,
+          ts: Date.now(),
+        });
+      }
       return json({ available: true, omnipod: pod, ts: Date.now() });
     }
 

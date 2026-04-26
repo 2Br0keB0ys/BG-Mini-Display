@@ -34,7 +34,19 @@ inline time_t parseEpochSeconds(const JsonVariantConst& v) {
 }
 
 inline bool fetchGlookoOmnipod(AppConfig& cfg, OmnipodStatus& out) {
-  if (!omnipodConfigured(cfg)) return false;
+  if (!omnipodConfigured(cfg)) {
+    sdLogfEx(
+      "ERR",
+      "POD_SYNC",
+      "not_configured enabled:%d hasWorker:%d hasKey:%d",
+      cfg.glookoEnabled ? 1 : 0,
+      strlen(cfg.workerUrl) > 0 ? 1 : 0,
+      strlen(cfg.deviceKey) > 0 ? 1 : 0
+    );
+    return false;
+  }
+
+  sdLogfEx("POD", "POD_SYNC", "request_start pollMin:%d", cfg.glookoPollMin);
 
   HTTPClient http;
   String path = "/api/omnipod";
@@ -45,29 +57,48 @@ inline bool fetchGlookoOmnipod(AppConfig& cfg, OmnipodStatus& out) {
   http.setTimeout(9000);
 
   int code = http.GET();
+  sdLogfEx("POD", "POD_SYNC", "proxy_http:%d", code);
   if (code != 200) {
     char msg[48];
     snprintf(msg, sizeof(msg), "Omnipod proxy HTTP %d", code);
-    sdLogError(msg);
+    sdLogfEx("ERR", "POD_SYNC", "%s", msg);
     http.end();
     out.fetchedAtMs = millis();
     return false;
   }
 
+  String body = http.getString();
   DynamicJsonDocument doc(3072);
-  DeserializationError err = deserializeJson(doc, http.getString());
+  DeserializationError err = deserializeJson(doc, body);
   http.end();
   if (err) {
-    sdLogError("Omnipod proxy parse failed");
+    String preview = body.substring(0, 180);
+    preview.replace("\n", " ");
+    preview.replace("\r", " ");
+    sdLogfEx("ERR", "POD_SYNC", "proxy_parse_failed err:%s body:%s", err.c_str(), preview.c_str());
     out.fetchedAtMs = millis();
     return false;
   }
 
   JsonObject root = doc.as<JsonObject>();
   if (root.containsKey("available") && !root["available"].as<bool>()) {
+    const char* reason = root["reason"] | "unknown";
+    const char* source = root["source"] | "unknown";
+    bool hasEndpoint = root["hasEndpoint"] | false;
+    bool hasToken = root["hasToken"] | false;
+    int httpCode = root["http"] | 0;
     out.fetchedAtMs = millis();
     out.valid = false;
-    sdLog("POD", "Omnipod data unavailable");
+    sdLogfEx(
+      "ERR",
+      "POD_SYNC",
+      "data_unavailable reason:%s source:%s hasEndpoint:%d hasToken:%d upstreamHttp:%d",
+      reason,
+      source,
+      hasEndpoint ? 1 : 0,
+      hasToken ? 1 : 0,
+      httpCode
+    );
     return false;
   }
 
@@ -118,9 +149,26 @@ inline bool fetchGlookoOmnipod(AppConfig& cfg, OmnipodStatus& out) {
   out.valid = touched;
 
   if (out.valid) {
-    sdLog("POD", "Omnipod proxy fetch success");
+    sdLogfEx(
+      "POD",
+      "POD_SYNC",
+      "ok active:%d iob:%.2f reservoir:%.2f expMin:%d ts:%lu",
+      out.podActive ? 1 : 0,
+      out.insulinOnBoard,
+      out.reservoirUnits,
+      out.minutesToExpiry,
+      (unsigned long)out.dataTimestamp
+    );
   } else {
-    sdLogError("Omnipod proxy payload missing fields");
+    sdLogfEx(
+      "ERR",
+      "POD_SYNC",
+      "payload_missing_fields active:%d iob:%d reservoir:%d expiry:%d",
+      pod.containsKey("pod_active") || pod.containsKey("active") ? 1 : 0,
+      pod.containsKey("insulin_on_board") || pod.containsKey("iob") ? 1 : 0,
+      pod.containsKey("reservoir_units") || pod.containsKey("reservoir") ? 1 : 0,
+      pod.containsKey("minutes_to_expiry") || pod.containsKey("pod_expires_in_min") ? 1 : 0
+    );
   }
   return out.valid;
 }
