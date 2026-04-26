@@ -1,0 +1,19 @@
+{
+  "folders": [
+    {
+      "name": "bgdisplay-root",
+      "path": "."
+    }
+  ],
+  "settings": {
+    "claudeCode.useTerminal": true,
+    "debug.terminal.clearBeforeReusing": true,
+    "files.exclude": {
+      "**/.pio": true,
+      "**/.wrangler": true,
+      "**/node_modules": true,
+      "**/.DS_Store": true,
+      "**/Thumbs.db": true
+    }
+  }
+}
