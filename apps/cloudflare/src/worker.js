@@ -387,13 +387,23 @@ async function fetchOmnipodBridge(config, diag = null) {
     // Legacy bridge settings remain supported for backwards compatibility while source-credential fetchers are added.
     const endpoint = config.omnipod_connect_url || config.glooko_omnipod_url || "";
     const token = config.omnipod_connect_token || config.glooko_token || "";
+    const hasSourceCreds =
+      (source === "glooko" && !!(config.glooko_email && config.glooko_password)) ||
+      (source === "tandem" && !!(config.tandem_username && config.tandem_password)) ||
+      (source === "medtronic" && !!(config.medtronic_username && config.medtronic_password)) ||
+      (source === "tidepool" && !!(config.tidepool_username && config.tidepool_password));
     if (diag) {
       diag.source = source;
       diag.hasEndpoint = !!endpoint;
       diag.hasToken = !!token;
+      diag.hasSourceCreds = hasSourceCreds;
     }
     if (!endpoint) {
-      if (diag) diag.reason = "missing_endpoint";
+      if (diag) {
+        diag.reason = hasSourceCreds
+          ? "source_credentials_present_but_direct_pod_sync_not_implemented"
+          : "missing_endpoint";
+      }
       return null;
     }
 
@@ -1007,6 +1017,7 @@ async function handleMCP(request, env, config, auth) {
         checks.omnipod.reason = diag.reason || null;
         checks.omnipod.hasEndpoint = !!diag.hasEndpoint;
         checks.omnipod.hasToken = !!diag.hasToken;
+        checks.omnipod.hasSourceCreds = !!diag.hasSourceCreds;
         checks.omnipod.http = Number.isFinite(diag.http) ? diag.http : null;
       } else {
         checks.omnipod.note = "Omnipod source sync disabled";
@@ -1076,6 +1087,7 @@ async function handleMCP(request, env, config, auth) {
             reason: diag.reason || "unknown",
             hasEndpoint: !!diag.hasEndpoint,
             hasToken: !!diag.hasToken,
+            hasSourceCreds: !!diag.hasSourceCreds,
             http: Number.isFinite(diag.http) ? diag.http : null,
           }, null, 2) }],
         });
