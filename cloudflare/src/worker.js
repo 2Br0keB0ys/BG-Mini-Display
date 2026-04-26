@@ -77,6 +77,12 @@ const DEFAULT_CONFIG = {
   // Feature 4: Pushover alerts (non-sensitive fields only; credentials stored encrypted separately)
   pushover_enabled: false,
   pushover_alert_cooldown_min: 15,
+  // AI context: insulin therapy / pump profile
+  insulin_pump_type: "none",
+  insulin_pump_brand: "",
+  insulin_pump_model: "",
+  insulin_pump_loop_mode: "none",
+  insulin_pump_notes: "",
 };
 
 function normalizeConfig(cfg) {
@@ -103,6 +109,14 @@ function normalizeConfig(cfg) {
   out.dnd_use_schedule = out.dnd_use_schedule !== false;
   out.dnd_schedule = normalizeDndSchedule(out.dnd_schedule, out.dnd_from, out.dnd_to);
   out.pushover_alert_cooldown_min = Math.max(5, Math.min(60, Number(out.pushover_alert_cooldown_min || 15)));
+
+  const pumpType = String(out.insulin_pump_type || "none").trim().toLowerCase();
+  const loopMode = String(out.insulin_pump_loop_mode || "none").trim().toLowerCase();
+  out.insulin_pump_type = ["none", "pump", "patch-pump"].includes(pumpType) ? pumpType : "none";
+  out.insulin_pump_loop_mode = ["none", "manual", "hybrid-closed-loop", "closed-loop"].includes(loopMode) ? loopMode : "none";
+  out.insulin_pump_brand = String(out.insulin_pump_brand || "").trim().slice(0, 40);
+  out.insulin_pump_model = String(out.insulin_pump_model || "").trim().slice(0, 40);
+  out.insulin_pump_notes = String(out.insulin_pump_notes || "").trim().slice(0, 180);
 
   return out;
 }
@@ -384,6 +398,13 @@ async function generateDailyDigest(env) {
 
   const statsLine = `${values.length} readings over 24h. TIR (${low}–${high} mg/dL): ${tir}%. Below ${low}: ${belowLow}x. Above ${high}: ${aboveHigh}x. Urgent lows (<${urgLow}): ${urgLows}x. Urgent highs (>${urgHigh}): ${urgHighs}x. Min/Max/Avg: ${minVal}/${maxVal}/${avgVal} mg/dL.`;
   const recentStr = values.slice(0, 12).join(", ");
+  const pumpProfile = {
+    type: config.insulin_pump_type || "none",
+    brand: config.insulin_pump_brand || "",
+    model: config.insulin_pump_model || "",
+    loopMode: config.insulin_pump_loop_mode || "none",
+    notes: config.insulin_pump_notes || "",
+  };
 
   let digestText = "AI digest unavailable — Workers AI binding not configured.";
 
@@ -394,11 +415,11 @@ async function generateDailyDigest(env) {
         messages: [
           {
             role: "system",
-            content: "You are a concise diabetes health assistant for a Type 2 diabetic using a Dexcom G7 CGM. Write a morning summary of the past 24 hours in 3-4 sentences (under 180 words). Cover: time in range, notable lows or highs, overnight pattern, and one brief actionable observation. No greeting or closing. Plain text only.",
+            content: "You are a concise diabetes health assistant for a Type 2 diabetic using a Dexcom G7 CGM. Write a morning summary of the past 24 hours in 3-4 sentences (under 180 words). Cover: time in range, notable lows or highs, overnight pattern, and one brief actionable observation. Adapt guidance to insulin delivery context (pump/no pump and loop mode when provided). If no pump is used, do not mention pump actions. No greeting or closing. Plain text only.",
           },
           {
             role: "user",
-            content: `Stats: ${statsLine} Most recent 12 values (newest first): ${recentStr} mg/dL.`,
+            content: `Stats: ${statsLine} Most recent 12 values (newest first): ${recentStr} mg/dL. Pump profile: ${JSON.stringify(pumpProfile)}.`,
           },
         ],
       });

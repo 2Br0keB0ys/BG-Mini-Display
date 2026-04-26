@@ -253,6 +253,7 @@ function collectConfig(){
   const fields=['wifi_ssid','wifi_pass','nightscout_url','nightscout_secret','dexcom_user','dexcom_pass','dexcom_region',
     'poll_interval_min','stale_data_warn_min','config_ping_min',
     'bg_units','urgent_low','low','high','urgent_high',
+    'insulin_pump_type','insulin_pump_brand','insulin_pump_model','insulin_pump_loop_mode','insulin_pump_notes',
     'show_last_reading_time','show_trend_arrow','brightness',
     'dnd_enabled','dnd_from','dnd_to','clock_24hr','timezone',
     'rate_limit_per_min','lockout_enabled','lockout_attempts','lockout_duration_min',
@@ -416,16 +417,18 @@ function toggleSection(id){
   localStorage.setItem('section-'+id, open?'1':'0');
 }
 
-function sectionOpen(id){ return localStorage.getItem('section-'+id)!=='0'; }
+function sectionOpen(id){ return localStorage.getItem('section-'+id)==='1'; }
 
-function section(id,iconClass,iconSvg,title,sub,content,fullWidth=false){
-  const open=sectionOpen(id);
+function section(id,iconClass,iconSvg,title,sub,content,fullWidth=false,lockOpen=false){
+  const open=lockOpen ? true : sectionOpen(id);
+  const headAttrs=lockOpen ? '' : ` id="head-${id}" onclick="toggleSection('${id}')"`;
+  const chev=lockOpen ? '' : `<svg class="chevron${open?' open':''}" id="chev-${id}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>`;
   return `<div class="section${fullWidth?' full':''}">
-    <div class="section-head${open?' open':''}" id="head-${id}" onclick="toggleSection('${id}')">
+    <div class="section-head${open?' open':''}"${headAttrs}>
       <div class="section-icon ${iconClass}">${iconSvg}</div>
       <div style="flex:1"><div class="section-title">${title}</div>${sub?`<div class="section-sub">${sub}</div>`:''}
       </div>
-      <svg class="chevron${open?' open':''}" id="chev-${id}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      ${chev}
     </div>
     <div class="section-body${open?' open':''}" id="body-${id}">${content}</div>
   </div>`;
@@ -497,6 +500,7 @@ function render(){
   const ctrlIcon=`<svg viewBox="0 0 24 24" stroke-width="2"><path d="M12 2v10"/><path d="M6.2 6.2a8 8 0 1011.3 0"/></svg>`;
   const pushoverIcon=`<svg viewBox="0 0 24 24" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>`;
   const aiIcon=`<svg viewBox="0 0 24 24" stroke-width="2"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"/></svg>`;
+  const pumpIcon=`<svg viewBox="0 0 24 24" stroke-width="2"><rect x="5" y="3" width="14" height="18" rx="2"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="9" y1="12" x2="15" y2="12"/><circle cx="12" cy="17" r="1" fill="currentColor"/></svg>`;
 
   // WiFi section
   const wifiOpen = !c.wifi_pass;
@@ -507,9 +511,9 @@ function render(){
 
   // Data sources section
   const nsContent =
-    field('Nightscout URL','Primary glucose source.',inp('nightscout_url','url',c.nightscout_url,'https://yoursite.ns.io'))+
+    field('Nightscout URL','',inp('nightscout_url','url',c.nightscout_url,'https://yoursite.ns.io'))+
     field('Nightscout token or secret','Used to read data from your Nightscout site.',inp('nightscout_secret','password','','token or secret'))+
-    field('Dexcom username','Fallback source. Enter email or phone number.',inp('dexcom_user','text',c.dexcom_user,'email or +1xxxxxxxxxx'))+
+    field('Dexcom username','',inp('dexcom_user','text',c.dexcom_user,'email or +1xxxxxxxxxx'))+
     field('Dexcom password','Leave blank to keep the current password.',inp('dexcom_pass','password','','••••••••'))+
     field('Dexcom region','Set this to match your Dexcom account region.',sel('dexcom_region',[['US','US'],['Non-US','Non-US']],c.dexcom_region))+
     field('Reading refresh interval','How often the device checks for new readings.',sel('poll_interval_min',[[1,'1 minute'],[5,'5 minutes'],[10,'10 minutes']],c.poll_interval_min))+
@@ -543,6 +547,14 @@ function render(){
     field('AI model','',`<span style="font-size:12px;color:var(--muted)">@cf/meta/llama-3.1-8b-instruct</span>`)+
     field('Run schedule','',`<span style="font-size:12px;color:var(--muted)">Daily at 6:00 AM US/Central (cron)</span>`)+
     field('On-device behavior','','<span style="font-size:12px;color:var(--muted)">Shown at boot for 10 seconds. Tap bottom-left on the main screen to replay.</span>');
+
+  // Pump Profile section
+  const pumpContent =
+    field('Insulin delivery type','Used by AI summary to tailor context and recommendations.',sel('insulin_pump_type',[["none","No pump"],["pump","Tubed pump"],["patch-pump","Patch pump"]],c.insulin_pump_type||'none'))+
+    field('Pump brand','Optional. Example: Tandem, Medtronic, Omnipod.',inp('insulin_pump_brand','text',c.insulin_pump_brand||'','Optional'))+
+    field('Pump model','Optional. Example: t:slim X2, 780G, Omnipod 5.',inp('insulin_pump_model','text',c.insulin_pump_model||'','Optional'))+
+    field('Automation mode','Lets AI adjust wording for manual vs hybrid closed-loop behavior.',sel('insulin_pump_loop_mode',[["none","No automation"],["manual","Manual mode"],["hybrid-closed-loop","Hybrid closed loop"],["closed-loop","Closed loop"]],c.insulin_pump_loop_mode||'none'))+
+    field('Additional notes','Optional context for AI (e.g., exercise pattern, meal timing, known overnight trends).',inp('insulin_pump_notes','text',c.insulin_pump_notes||'','Optional', 'wide'));
 
   // Display section
   const dndSched = c.dnd_schedule || {};
@@ -683,9 +695,16 @@ function render(){
     `<div class="vrow"><span class="label">Rotation reminders</span><span>${(m.reminders||[]).length?`${m.reminders.length} pending`:'none'}</span></div>`;
 
   document.getElementById('app').innerHTML = `
+  <div class="grid full">
+    ${section('digest','icon-ai',aiIcon,'Daily AI summary','Morning glucose summary generated in the cloud',digestContent,true,true)}
+  </div>
   <div class="grid">
     ${section('wifi','icon-wifi',wifiIcon,'Wi-Fi setup','Connect BGDisplay to your network',wifiContent)}
     ${section('ns','icon-dex',dexIcon,'Data sources','Choose where glucose readings come from',nsContent)}
+  </div>
+  <div class="grid">
+    ${section('pump','icon-display',pumpIcon,'Pump profile','Optional AI context about insulin delivery setup',pumpContent)}
+    <div></div>
   </div>
   <div class="grid">
     ${section('alerts','icon-alert',alertIcon,'Glucose targets','Thresholds and on-device visual alerts',alertContent)}
@@ -708,8 +727,8 @@ function render(){
     ${section('backup','icon-backup',backupIcon,'Backup and restore','Export, import, and automatic snapshots',backupContent)}
   </div>
   <div class="grid">
-    ${section('digest','icon-ai',aiIcon,'Daily AI summary','Morning glucose summary generated in the cloud',digestContent)}
     ${section('maint','icon-system',sysIcon,'Maintenance center','Automation, rotations, and source health',maintContent)}
+    <div></div>
   </div>
   <div class="grid">
     ${section('logs','icon-diag',diagIcon,'Log explorer','Search and inspect uploaded SD logs',logExplorerContent)}
