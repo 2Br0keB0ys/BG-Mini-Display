@@ -1,6 +1,8 @@
 // BGDisplay Cloudflare Worker v3.0
 // Features: WebSocket relay (DO), Workers AI digest, MCP server, Pushover alerts
 
+import { createCgmDataProvider } from "./providers/registry.js";
+
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
@@ -50,6 +52,8 @@ const DEFAULT_CONFIG = {
   nightscout_url: "", nightscout_secret: "",
   // Dexcom (primary)
   dexcom_user: "", dexcom_pass: "", dexcom_region: "US",
+  // Glooko (optional BG source)
+  glooko_email: "", glooko_password: "", glooko_env: "default", glooko_server: "",
   // Omnipod bridge (optional)
   glooko_enabled: false,
   glooko_omnipod_url: "",
@@ -123,6 +127,10 @@ function normalizeConfig(cfg) {
   out.pushover_alert_cooldown_min = Math.max(5, Math.min(60, Number(out.pushover_alert_cooldown_min || 15)));
   out.digest_pushover_hour = Math.max(0, Math.min(23, Number(out.digest_pushover_hour ?? 7)));
   out.glooko_poll_min = Math.max(30, Math.min(240, Number(out.glooko_poll_min || 30)));
+  out.glooko_email = String(out.glooko_email || "").trim();
+  out.glooko_password = String(out.glooko_password || "");
+  out.glooko_env = String(out.glooko_env || "default").toLowerCase();
+  out.glooko_server = String(out.glooko_server || "").trim().toLowerCase();
 
   // Omnipod provider normalization + migration
   const src = String(out.omnipod_source || "").trim().toLowerCase();
@@ -294,6 +302,30 @@ async function fetchDexcomShareLatest(config) {
     if (m) ts = parseInt(m[1], 10);
     return { value: r.Value, trend: r.Trend ?? 4, direction: null, timestamp: ts };
   } catch { return null; }
+}
+
+async function fetchGlookoLatest(config) {
+  if (!config.glooko_email || !config.glooko_password) return null;
+  try {
+    const provider = createCgmDataProvider("glooko", {
+      email: config.glooko_email,
+      password: config.glooko_password,
+      env: config.glooko_env,
+      server: config.glooko_server,
+    });
+    const readings = await provider.fetchReadings({ limit: 1 });
+    if (!Array.isArray(readings) || !readings.length) return null;
+    const r = readings[0];
+    return {
+      value: r.sgv,
+      trend: null,
+      direction: r.direction || null,
+      timestamp: r.timestamp instanceof Date ? r.timestamp.getTime() : null,
+      device: r.device || "glooko",
+    };
+  } catch {
+    return null;
+  }
 }
 
 // ─── Nightscout Fetch Helpers (used by cron jobs and MCP) ─────────────────────
@@ -610,7 +642,7 @@ async function runPushoverAlertCheck(env) {
 const MCP_TOOLS = [
   {
     name: "get_current_bg",
-    description: "Fetch the latest blood glucose reading. Tries Dexcom Share first (if credentials are configured), falls back to Nightscout. Returns value, trend direction as both numeric (Dexcom 0–8 scale) and human-readable string (e.g. \"Flat\", \"SingleUp\"), ISO timestamp, source used (\"dexcom\" or \"nightscout\"), and staleness in minutes.",
+    description: "Fetch the latest blood glucose reading. Tries Dexcom Share first, then Glooko if configured, then falls back to Nightscout. Returns value, trend direction as both numeric (Dexcom 0–8 scale) and human-readable string (e.g. \"Flat\", \"SingleUp\"), ISO timestamp, source used (\"dexcom\", \"glooko\", or \"nightscout\"), and staleness in minutes.",
     inputSchema: { type: "object", properties: {}, required: [] },
   },
   {
@@ -669,7 +701,7 @@ const MCP_TOOLS = [
 
 function redactConfig(config) {
   const redacted = { ...config };
-  for (const k of ["wifi_pass", "nightscout_secret", "dexcom_pass", "dexcom_user", "glooko_token", "omnipod_connect_token"]) {
+  for (const k of ["wifi_pass", "nightscout_secret", "dexcom_pass", "dexcom_user", "glooko_password", "glooko_email", "glooko_token", "omnipod_connect_token"]) {
     if (redacted[k]) redacted[k] = "••••••••";
   }
   return redacted;
@@ -709,6 +741,15 @@ async function handleMCP(request, env, config, auth) {
       if (config.dexcom_user && config.dexcom_pass) {
         rawEntry = await fetchDexcomShareLatest(config);
         if (rawEntry) source = "dexcom";
+      }
+
+      // Try Glooko next
+      if (!rawEntry) {
+        const glookoEntry = await fetchGlookoLatest(config);
+        if (glookoEntry) {
+          rawEntry = glookoEntry;
+          source = "glooko";
+        }
       }
 
       // Fall back to Nightscout
@@ -1200,6 +1241,9 @@ export default {
         const version = await getConfigVersion(env);
         const deviceConfig = { ...config };
         delete deviceConfig.glooko_token;
+        delete deviceConfig.glooko_email;
+        delete deviceConfig.glooko_password;
+        delete deviceConfig.glooko_server;
         delete deviceConfig.glooko_omnipod_url;
         delete deviceConfig.omnipod_connect_token;
         delete deviceConfig.omnipod_connect_url;
@@ -1218,6 +1262,9 @@ export default {
       const version = await getConfigVersion(env);
       const deviceConfig = { ...config };
       delete deviceConfig.glooko_token;
+      delete deviceConfig.glooko_email;
+      delete deviceConfig.glooko_password;
+      delete deviceConfig.glooko_server;
       delete deviceConfig.glooko_omnipod_url;
       delete deviceConfig.omnipod_connect_token;
       delete deviceConfig.omnipod_connect_url;

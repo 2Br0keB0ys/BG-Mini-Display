@@ -9,6 +9,6 @@
     "deploy:all": "npm run deploy:worker && npm run deploy:pages"
   },
   "devDependencies": {
-    "wrangler": "^4.83.0"
+    "wrangler": "4.85.0"
   }
 }
