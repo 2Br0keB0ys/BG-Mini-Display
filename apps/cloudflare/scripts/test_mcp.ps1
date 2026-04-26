@@ -4,7 +4,7 @@ param(
   [switch]$ShowBg
 )
 
-$endpoint = "$McpUrl?key=$McpKey"
+$endpoint = "${McpUrl}?key=$McpKey"
 Write-Host "MCP endpoint: $McpUrl"
 Write-Host "Key tail: ...$($McpKey.Substring([Math]::Max(0, $McpKey.Length - 6)))"
 
