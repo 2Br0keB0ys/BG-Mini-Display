@@ -26,11 +26,11 @@ struct AppConfig {
   char wifiSSID[64]="";
   char wifiPass[64]="";
 
-  // Nightscout (primary)
+  // Nightscout (fallback)
   char nightscoutUrl[128]="";
   char nightscoutSecret[64]="";
 
-  // Dexcom (fallback)
+  // Dexcom (primary)
   char dexcomUser[64]="";
   char dexcomPass[64]="";
   char dexcomRegion[8]="US";

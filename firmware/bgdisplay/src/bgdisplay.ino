@@ -1,4 +1,4 @@
-// BGDisplay v2.0 — Dexcom only, encrypted, SD logging, smart config sync
+// BGDisplay v3.0.0-S — Dexcom primary, Nightscout fallback, encrypted, smart config sync
 #include <M5Unified.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
@@ -287,7 +287,7 @@ void setup() {
   M5.begin(cfg);
   M5.Display.setRotation(1);
   Serial.begin(115200);
-  Serial.println("BGDisplay v2.0 booting...");
+  Serial.println("BGDisplay v" FIRMWARE_VERSION " booting...");
   strlcpy(gResetReason, resetReasonStr(esp_reset_reason()), sizeof(gResetReason));
 
   prefs.begin("bgdisplay", false);

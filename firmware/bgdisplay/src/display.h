@@ -279,7 +279,7 @@ void showBootScreen() {
   canvas.drawString("BGDisplay", W/2, H/2 - 24);
   canvas.setFont(&fonts::FreeSans9pt7b);
   canvas.setTextColor(CLR_MUTED);
-  canvas.drawString("Secured by AI(SafeBoot)", W/2, H/2 - 4);
+  canvas.drawString("Chip-ID encrypted", W/2, H/2 - 4);
   canvas.setFont(&fonts::FreeSans9pt7b);
   canvas.setTextColor(CLR_MUTED);
   canvas.drawString("v" FIRMWARE_VERSION, W/2, H/2 + 18);

@@ -11,7 +11,7 @@ binding = "BGDISPLAY_AUTH"
 id = "1e7f3aa136174b6eacdbd78bd4ce7a45"
 
 [vars]
-WORKER_VERSION = "2.0.0"
+WORKER_VERSION = "3.0.0"
 
 # Feature 1: Durable Object WebSocket relay for instant config push
 [[durable_objects.bindings]]

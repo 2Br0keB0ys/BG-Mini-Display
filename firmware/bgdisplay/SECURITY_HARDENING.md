@@ -1,12 +1,14 @@
 # BGDisplay Security Hardening
 
-This project already encrypts sensitive values in NVS using a per-device key derived from chip identity.
+This project already applies multiple security controls in firmware and backend.
 
-## What Was Hardened In Firmware
+## Current Security Controls
 
-- Dexcom enhanced debug logging that exposed sensitive data was removed.
-- Dexcom auth/login state now clears on failures.
-- Build remains functional with normal diagnostics, without printing credential payloads.
+- Sensitive NVS fields are encrypted with a per-device key derived from chip identity.
+- SD logs are encrypted with the same hardware root (different salt).
+- Device-to-worker requests are HMAC signed (timestamp + nonce + body hash).
+- Worker enforces replay checks, rate limits, and key rotation windows.
+- Credential-like values are redacted from UI responses.
 
 ## Why This Matters For Stolen Devices
 
@@ -36,3 +38,4 @@ powershell -ExecutionPolicy Bypass -File scripts/secure_provision.ps1 -Port COM6
 - Keep generated keys in a secure backup.
 - Test one device first before rolling out to others.
 - After irreversible hardening, serial recovery options are reduced.
+- Run this only after validating the firmware image you intend to keep on the device.
