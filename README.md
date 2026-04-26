@@ -3,18 +3,28 @@
 ## Project Structure
 ```
 bgdisplay/
+├── .github/workflows/      # CI
+├── CLAUDE.md               # Architecture and operations reference
+├── bgdisplay_context.md    # Session/context notes
 ├── cloudflare/
-│   ├── wrangler.toml       # Worker config
+│   ├── package.json        # Worker deployment scripts
+│   ├── wrangler.toml       # Worker config + cron schedules
 │   └── src/worker.js       # API backend
 ├── pages/
-│   └── index.html          # Config web UI
+│   ├── index.html          # Config web UI
+│   └── _headers            # Pages headers
 └── firmware/
-    ├── bgdisplay.ino       # Main sketch
-    ├── config.h            # AppConfig struct + NVS persistence
-    ├── display.h           # All rendering logic
-    ├── nightscout.h        # Nightscout API polling
-    ├── dexcom.h            # Dexcom Share fallback
-    └── wifi_setup.h        # AP mode captive portal
+    └── bgdisplay/
+        ├── platformio.ini          # PlatformIO project config
+        ├── src/
+        │   ├── bgdisplay.ino       # Main sketch
+        │   ├── config.h            # AppConfig struct + NVS persistence
+        │   ├── display.h           # Rendering + digest screen
+        │   ├── dexcom.h            # Dexcom Share primary polling
+        │   ├── nightscout.h        # Nightscout fallback polling
+        │   └── ...
+        └── scripts/
+            └── secure_provision.ps1
 ```
 
 ---
@@ -66,7 +76,6 @@ npm install
 npm run deploy:pages
 ```
 
-This deploy runs from the `pages/` directory so Wrangler does not try to parse the Worker config in `cloudflare/wrangler.toml`.
 This deploy runs from the `pages/` directory so Wrangler does not try to parse the Worker config in `cloudflare/wrangler.toml`.
 
 Then set your custom domain (e.g. `bgdisplay.yourdomain.com`) in the Cloudflare dashboard.

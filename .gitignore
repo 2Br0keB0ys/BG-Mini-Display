@@ -4,8 +4,18 @@ Thumbs.db
 # Cloudflare/Wrangler local cache
 **/.wrangler/
 
+# Firmware build artifacts
+firmware/bgdisplay/.pio/
+
+# Local editor/workspace state
+**/.vscode/
+**/.idea/
+
 # Local secret material
 cloudflare/bgdisplay-device-key.txt
 
 # Node modules if installed later
 **/node_modules/
+
+# Cloudflare local secrets
+cloudflare/.dev.vars
