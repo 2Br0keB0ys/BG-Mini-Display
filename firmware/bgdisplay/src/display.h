@@ -407,32 +407,46 @@ void drawFrame(AppConfig& cfg, BGReading& reading, DisplayState& state) {
     
     // Determine color based on clinical thresholds
     uint16_t podColor = CLR_MUTED;  // default fallback
+    uint16_t reservoirColor = CLR_MUTED;
+    uint16_t expiryColor = CLR_MUTED;
     
     // Evaluate reservoir level (units threshold)
     if (gOmnipodStatus.reservoirUnits >= 0) {
       if (gOmnipodStatus.reservoirUnits > 25) {
-        podColor = CLR_GREEN;  // Normal operation
+        reservoirColor = CLR_GREEN;  // Normal operation
       } else if (gOmnipodStatus.reservoirUnits > 15) {
-        podColor = CLR_YELLOW;  // Low-approaching, consider prep
+        reservoirColor = CLR_YELLOW;  // Low-approaching, consider prep
       } else if (gOmnipodStatus.reservoirUnits > 5) {
-        podColor = CLR_ORANGE;  // Critical prep window
+        reservoirColor = CLR_ORANGE;  // Critical prep window
       } else {
-        podColor = CLR_RED;  // Imminent change required
+        reservoirColor = CLR_RED;  // Imminent change required
       }
     }
     
-    // Evaluate pod expiry (time threshold) — escalate color if more critical
+    // Evaluate pod expiry (time threshold)
     if (gOmnipodStatus.minutesToExpiry >= 0) {
       int expiryHours = gOmnipodStatus.minutesToExpiry / 60;
       if (expiryHours < 1) {
-        podColor = CLR_RED;  // Critical: pod change NOW
+        expiryColor = CLR_RED;  // Critical: pod change NOW
       } else if (expiryHours < 4) {
-        // Escalate to orange if not already red
-        if (podColor != CLR_RED) podColor = CLR_ORANGE;
+        expiryColor = CLR_ORANGE;  // Final hours
       } else if (expiryHours < 8) {
-        // Escalate to yellow if not already orange/red
-        if (podColor == CLR_MUTED) podColor = CLR_YELLOW;
+        expiryColor = CLR_YELLOW;  // Expiry window open
+      } else {
+        expiryColor = CLR_GREEN;  // Normal
       }
+    }
+    
+    // Use the more critical (higher severity) color
+    // Severity order: RED > ORANGE > YELLOW > GREEN > MUTED
+    if (reservoirColor == CLR_RED || expiryColor == CLR_RED) {
+      podColor = CLR_RED;
+    } else if (reservoirColor == CLR_ORANGE || expiryColor == CLR_ORANGE) {
+      podColor = CLR_ORANGE;
+    } else if (reservoirColor == CLR_YELLOW || expiryColor == CLR_YELLOW) {
+      podColor = CLR_YELLOW;
+    } else if (reservoirColor == CLR_GREEN || expiryColor == CLR_GREEN) {
+      podColor = CLR_GREEN;
     }
     
     canvas.setFont(&fonts::FreeSans9pt7b);
