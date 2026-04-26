@@ -700,6 +700,23 @@ const MCP_TOOLS = [
     },
   },
   {
+    name: "get_source_status",
+    description: "Return per-source configuration and availability checks for Dexcom, Glooko, Nightscout, and Omnipod source sync.",
+    inputSchema: { type: "object", properties: {}, required: [] },
+  },
+  {
+    name: "get_source_data",
+    description: "Fetch source-specific payloads. source must be one of: dexcom, glooko, nightscout, omnipod. Optional count applies to nightscout history (1-288).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        source: { type: "string", description: "dexcom | glooko | nightscout | omnipod" },
+        count: { type: "number", description: "Nightscout only: number of readings (default 24, max 288)" },
+      },
+      required: ["source"],
+    },
+  },
+  {
     name: "get_daily_digest",
     description: "Return today's AI-generated blood glucose morning summary",
     inputSchema: { type: "object", properties: {}, required: [] },
@@ -899,6 +916,124 @@ async function handleMCP(request, env, config, auth) {
         return `${ts}: ${r.sgv} mg/dL ${trendArrowText(trend)}`;
       });
       return mcpResult(id, { content: [{ type: "text", text: lines.join("\n") }] });
+    }
+
+    if (toolName === "get_source_status") {
+      const checks = {
+        nightscout: {
+          configured: !!config.nightscout_url,
+          reachable: false,
+          note: "",
+        },
+        dexcom: {
+          configured: !!(config.dexcom_user && config.dexcom_pass),
+          reachable: false,
+          note: "",
+        },
+        glooko: {
+          configured: !!(config.glooko_email && config.glooko_password),
+          reachable: false,
+          note: "",
+        },
+        omnipod: {
+          configured: !!config.glooko_enabled,
+          source: String(config.omnipod_source || "glooko").toLowerCase(),
+          reachable: false,
+          note: "",
+        },
+      };
+
+      if (checks.nightscout.configured) {
+        const latest = await fetchNightscoutLatest(config);
+        checks.nightscout.reachable = !!(latest && latest.sgv);
+        checks.nightscout.note = checks.nightscout.reachable ? "Latest reading available" : "No reading returned";
+      } else {
+        checks.nightscout.note = "Nightscout URL missing";
+      }
+
+      if (checks.dexcom.configured) {
+        const latest = await fetchDexcomShareLatest(config);
+        checks.dexcom.reachable = !!(latest && latest.value);
+        checks.dexcom.note = checks.dexcom.reachable ? "Latest reading available" : "No reading returned";
+      } else {
+        checks.dexcom.note = "Dexcom credentials missing";
+      }
+
+      if (checks.glooko.configured) {
+        const latest = await fetchGlookoLatest(config);
+        checks.glooko.reachable = !!(latest && latest.value);
+        checks.glooko.note = checks.glooko.reachable ? "Latest reading available" : "No reading returned";
+      } else {
+        checks.glooko.note = "Glooko credentials missing";
+      }
+
+      if (checks.omnipod.configured) {
+        const pod = await fetchOmnipodBridge(config);
+        checks.omnipod.reachable = !!pod;
+        checks.omnipod.note = checks.omnipod.reachable ? "Omnipod payload available" : "No Omnipod payload returned";
+      } else {
+        checks.omnipod.note = "Omnipod source sync disabled";
+      }
+
+      return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(checks, null, 2) }] });
+    }
+
+    if (toolName === "get_source_data") {
+      const source = String(args.source || "").trim().toLowerCase();
+
+      if (!["dexcom", "glooko", "nightscout", "omnipod"].includes(source)) {
+        return mcpError(id, -32602, "source must be one of: dexcom, glooko, nightscout, omnipod");
+      }
+
+      if (source === "dexcom") {
+        const latest = await fetchDexcomShareLatest(config);
+        if (!latest) return mcpResult(id, { content: [{ type: "text", text: "No Dexcom data available." }] });
+        const trend = normalizeTrend(latest.trend, latest.direction);
+        return mcpResult(id, {
+          content: [{ type: "text", text: JSON.stringify({
+            source: "dexcom",
+            value: latest.value,
+            trend_numeric: trend.numeric,
+            trend_name: trend.name,
+            timestamp: latest.timestamp ? new Date(latest.timestamp).toISOString() : null,
+          }, null, 2) }],
+        });
+      }
+
+      if (source === "glooko") {
+        const latest = await fetchGlookoLatest(config);
+        if (!latest) return mcpResult(id, { content: [{ type: "text", text: "No Glooko data available." }] });
+        const trend = normalizeTrend(latest.trend, latest.direction);
+        return mcpResult(id, {
+          content: [{ type: "text", text: JSON.stringify({
+            source: "glooko",
+            value: latest.value,
+            trend_numeric: trend.numeric,
+            trend_name: trend.name,
+            timestamp: latest.timestamp ? new Date(latest.timestamp).toISOString() : null,
+            device: latest.device || "glooko",
+          }, null, 2) }],
+        });
+      }
+
+      if (source === "nightscout") {
+        const count = Math.min(288, Math.max(1, Number(args.count || 24)));
+        const readings = await fetchNightscoutHistory(config, count);
+        if (!readings.length) return mcpResult(id, { content: [{ type: "text", text: "No Nightscout data available." }] });
+        const payload = readings.map(r => ({
+          timestamp: r.date ? new Date(r.date).toISOString() : null,
+          value: r.sgv ?? null,
+          trend_numeric: r.trend ?? null,
+          trend_name: r.direction || null,
+        }));
+        return mcpResult(id, { content: [{ type: "text", text: JSON.stringify({ source: "nightscout", count: payload.length, readings: payload }, null, 2) }] });
+      }
+
+      const pod = await fetchOmnipodBridge(config);
+      if (!pod) return mcpResult(id, { content: [{ type: "text", text: "No Omnipod source data available." }] });
+      return mcpResult(id, {
+        content: [{ type: "text", text: JSON.stringify({ source: "omnipod", omnipod: pod }, null, 2) }],
+      });
     }
 
     if (toolName === "get_daily_digest") {
