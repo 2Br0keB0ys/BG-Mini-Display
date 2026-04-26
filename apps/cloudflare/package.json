@@ -6,7 +6,9 @@
   "scripts": {
     "deploy:worker": "wrangler deploy",
     "deploy:pages": "cd ../pages && wrangler pages deploy . --project-name bgdisplay-ui --branch production --commit-dirty=true",
-    "deploy:all": "npm run deploy:worker && npm run deploy:pages"
+    "deploy:all": "npm run deploy:worker && npm run deploy:pages",
+    "test:mcp": "powershell -ExecutionPolicy Bypass -File ./scripts/test_mcp.ps1",
+    "test:mcp:bg": "powershell -ExecutionPolicy Bypass -File ./scripts/test_mcp.ps1 -ShowBg"
   },
   "devDependencies": {
     "wrangler": "4.85.0"
