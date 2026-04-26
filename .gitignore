@@ -21,6 +21,9 @@ apps/cloudflare/bgdisplay-device-key.txt
 apps/cloudflare/.dev.vars
 
 # Reseach Data
-research/
+research/pump-sync-refs/Glooko-Conversational-AI
+research/pump-sync-refs/glookoscout
+research/pump-sync-refs/glookoscout-2024-06-17
+research/pump-sync-refs/
 
 
