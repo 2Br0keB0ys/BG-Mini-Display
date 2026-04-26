@@ -28,6 +28,6 @@
     "chat.mcp.gallery.enabled": true,
     "chat.mcp.assisted.nuget.enabled": true,
     "chat.useNestedAgentsMdFiles": true,
-    "chat.permissions.default": "autopilot"
+    "chat.permissions.default": "autoApprove"
   }
 }

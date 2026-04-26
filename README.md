@@ -89,6 +89,26 @@ Use the Cloudflare Pages UI for:
 - Pushover alerts and daily digest push
 - Security and advanced options
 
+## Display Features
+
+### Main Screen
+- **Large BG value** with trend arrow (updated every 5 minutes)
+- **Sparkline history** (24-point glucose trend chart)
+- **Omnipod summary line** (if Glooko enabled):
+    - Format: `Pod ON/OFF IOB X.XU Res X.XU Exp XhYZm`
+    - **Color-coded clinical thresholds:**
+        - **GREEN:** Healthy (Res >25U, Exp >8h)
+        - **YELLOW:** Warning (Res 15-25U, Exp 4-8h)
+        - **ORANGE:** Urgent (Res 5-15U, Exp 1-4h)
+        - **RED:** Critical (Res ≤5U, Exp <1h)
+    - Color reflects most critical condition (reservoir or expiry)
+- **Status bar** with connection indicators and timestamp
+
+### Settings Menu
+- Dexcom, Nightscout, and Glooko Omnipod connection status
+- Alert and DND settings
+- Display brightness and theme options
+
 ## Troubleshooting
 
 | Symptom | What to check |

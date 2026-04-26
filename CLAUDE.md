@@ -49,7 +49,7 @@ The main sketch is `bgdisplay.ino`. All modules are header-only files included b
 | File | Responsibility |
 |------|---------------|
 | `config.h` | `AppConfig` struct (~40 fields), NVS save/load with AES-128-CBC encryption for sensitive fields |
-| `display.h` | Off-screen rendering via M5Canvas (double-buffering), dirty tracking, BG color coding, trend arrows, BG sparkline (24-pt history), battery meter, AI digest screen (`showDigestScreen`) |
+| `display.h` | Off-screen rendering via M5Canvas (double-buffering), dirty tracking, BG color coding, trend arrows, BG sparkline (24-pt history), battery meter, AI digest screen (`showDigestScreen`), **Omnipod clinical thresholds** (severity-based color evaluation for reservoir 5U/15U/25U and expiry 1h/4h/8h) |
 | `crypto.h` | AES-128-CBC via mbedTLS; key derived from unique ESP32 chip ID — stolen device = unreadable data |
 | `nightscout.h` | Polls `/api/v1/entries.json`, extracts sgv + trend + timestamp |
 | `dexcom.h` | Two-step Share API auth (email or phone), 4h session TTL, US/international regions |
