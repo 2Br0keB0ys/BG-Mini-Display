@@ -50,11 +50,15 @@ const DEFAULT_CONFIG = {
   nightscout_url: "", nightscout_secret: "",
   // Dexcom (primary)
   dexcom_user: "", dexcom_pass: "", dexcom_region: "US",
-  // Glooko Omnipod (optional)
+  // Omnipod bridge (optional)
   glooko_enabled: false,
   glooko_omnipod_url: "",
   glooko_token: "",
   glooko_poll_min: 30,
+  // Preferred provider path (Nightscout-Connect style bridge)
+  omnipod_source: "nightscout_connect",
+  omnipod_connect_url: "",
+  omnipod_connect_token: "",
   // Polling
   poll_interval_min: 5, stale_data_warn_min: 15, config_ping_min: 1,
   // BG thresholds
@@ -119,6 +123,12 @@ function normalizeConfig(cfg) {
   out.pushover_alert_cooldown_min = Math.max(5, Math.min(60, Number(out.pushover_alert_cooldown_min || 15)));
   out.digest_pushover_hour = Math.max(0, Math.min(23, Number(out.digest_pushover_hour ?? 7)));
   out.glooko_poll_min = Math.max(30, Math.min(240, Number(out.glooko_poll_min || 30)));
+
+  // Omnipod provider normalization + migration
+  const src = String(out.omnipod_source || "").trim().toLowerCase();
+  out.omnipod_source = (src === "glooko" || src === "glooko_direct") ? "glooko_direct" : "nightscout_connect";
+  if (!out.omnipod_connect_url && out.glooko_omnipod_url) out.omnipod_connect_url = out.glooko_omnipod_url;
+  if (!out.omnipod_connect_token && out.glooko_token) out.omnipod_connect_token = out.glooko_token;
 
   const pumpType = String(out.insulin_pump_type || "none").trim().toLowerCase();
   out.insulin_pump_type = ["none", "pump", "patch-pump"].includes(pumpType) ? pumpType : "none";
@@ -318,14 +328,26 @@ async function fetchNightscoutHistory(config, count = 24) {
   } catch { return []; }
 }
 
-async function fetchGlookoOmnipod(config) {
-  if (!config.glooko_enabled || !config.glooko_omnipod_url) return null;
+async function fetchOmnipodBridge(config) {
+  if (!config.glooko_enabled) return null;
   try {
+    const useLegacyGlooko = (config.omnipod_source || "nightscout_connect") === "glooko_direct";
+    const endpoint = useLegacyGlooko
+      ? (config.glooko_omnipod_url || "")
+      : (config.omnipod_connect_url || config.glooko_omnipod_url || "");
+    const token = useLegacyGlooko
+      ? (config.glooko_token || "")
+      : (config.omnipod_connect_token || config.glooko_token || "");
+    if (!endpoint) return null;
+
     const headers = { "Accept": "application/json" };
-    if (config.glooko_token) {
-      headers["Authorization"] = `Bearer ${config.glooko_token}`;
+    if (token) {
+      // Support common bridge auth styles.
+      headers["Authorization"] = `Bearer ${token}`;
+      headers["api-secret"] = token;
+      headers["X-API-SECRET"] = token;
     }
-    const resp = await fetch(config.glooko_omnipod_url, {
+    const resp = await fetch(endpoint, {
       headers,
       signal: AbortSignal.timeout(9000),
     });
@@ -647,7 +669,7 @@ const MCP_TOOLS = [
 
 function redactConfig(config) {
   const redacted = { ...config };
-  for (const k of ["wifi_pass", "nightscout_secret", "dexcom_pass", "dexcom_user", "glooko_token"]) {
+  for (const k of ["wifi_pass", "nightscout_secret", "dexcom_pass", "dexcom_user", "glooko_token", "omnipod_connect_token"]) {
     if (redacted[k]) redacted[k] = "••••••••";
   }
   return redacted;
@@ -758,6 +780,9 @@ async function handleMCP(request, env, config, auth) {
       }
       if (typeof args.fields.dexcom_pass === "string" && args.fields.dexcom_pass !== config.dexcom_pass) {
         secretMeta.dexcomPassUpdatedAt = nowTs;
+      }
+      if (typeof args.fields.omnipod_connect_token === "string" && args.fields.omnipod_connect_token !== config.omnipod_connect_token) {
+        secretMeta.omnipodConnectTokenUpdatedAt = nowTs;
       }
       await env.BGDISPLAY_CONFIG.put("secret_meta", JSON.stringify(secretMeta));
 
@@ -1176,6 +1201,8 @@ export default {
         const deviceConfig = { ...config };
         delete deviceConfig.glooko_token;
         delete deviceConfig.glooko_omnipod_url;
+        delete deviceConfig.omnipod_connect_token;
+        delete deviceConfig.omnipod_connect_url;
         return json({ config: deviceConfig, config_version: version, ts: Date.now(), keyConfirmed: true });
       }
       if (!isDeviceKeyValid(auth, keyHash)) {
@@ -1192,6 +1219,8 @@ export default {
       const deviceConfig = { ...config };
       delete deviceConfig.glooko_token;
       delete deviceConfig.glooko_omnipod_url;
+      delete deviceConfig.omnipod_connect_token;
+      delete deviceConfig.omnipod_connect_url;
       const resp = { config: deviceConfig, config_version: version, ts: Date.now() };
       if (pendingKey) { resp.newKey = pendingKey; resp.rotateNow = true; }
       return json(resp);
@@ -1315,7 +1344,7 @@ export default {
       const sig = await verifyDeviceSignature(request, env, keyHash, "");
       if (!sig.ok) return json({ error: sig.error }, 401);
 
-      const pod = await fetchGlookoOmnipod(config);
+      const pod = await fetchOmnipodBridge(config);
       if (!pod) return json({ available: false, ts: Date.now() });
       return json({ available: true, omnipod: pod, ts: Date.now() });
     }
@@ -1406,6 +1435,9 @@ export default {
       if (secretMeta.glookoTokenUpdatedAt && now - secretMeta.glookoTokenUpdatedAt > 30 * 86400000) {
         reminders.push({ key: "glooko_token", msg: "Glooko token older than 30 days" });
       }
+      if (secretMeta.omnipodConnectTokenUpdatedAt && now - secretMeta.omnipodConnectTokenUpdatedAt > 30 * 86400000) {
+        reminders.push({ key: "omnipod_connect_token", msg: "Omnipod bridge token older than 30 days" });
+      }
 
       const configUpdatedAt = Number(await env.BGDISPLAY_CONFIG.get("config_updated_at") || 0) || null;
 
@@ -1478,6 +1510,9 @@ export default {
       }
       if (typeof body.glooko_token === "string" && body.glooko_token !== config.glooko_token) {
         secretMeta.glookoTokenUpdatedAt = Date.now();
+      }
+      if (typeof body.omnipod_connect_token === "string" && body.omnipod_connect_token !== config.omnipod_connect_token) {
+        secretMeta.omnipodConnectTokenUpdatedAt = Date.now();
       }
 
       const nowTs = Date.now();
