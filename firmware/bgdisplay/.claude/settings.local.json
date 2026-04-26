@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/zaneb/Downloads/bgdisplay/cloudflare/**)",
+      "Bash(npm run *)",
+      "Bash(node --check /c/Users/zaneb/Downloads/bgdisplay/cloudflare/src/worker.js)",
+      "Bash(pio run *)",
+      "Bash(/c/Users/zaneb/.platformio/penv/Scripts/pio.exe run *)"
+    ]
+  }
+}

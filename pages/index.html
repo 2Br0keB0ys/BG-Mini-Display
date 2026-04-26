@@ -257,7 +257,8 @@ function collectConfig(){
     'dnd_enabled','dnd_from','dnd_to','clock_24hr','timezone',
     'rate_limit_per_min','lockout_enabled','lockout_attempts','lockout_duration_min',
     'session_timeout_min','ip_allowlist_enabled','auto_backup',
-    'alert_offline_min','alert_stale_min','alert_battery_low_pct','alert_cooldown_min'];
+    'alert_offline_min','alert_stale_min','alert_battery_low_pct','alert_cooldown_min',
+    'pushover_enabled','pushover_alert_cooldown_min'];
   fields.forEach(f=>{ const v=get(f); if(v!==undefined&&v!=='') c[f]=v; });
   const bgAlert=radio('bg_alert_style'); if(bgAlert) c.bg_alert_style=bgAlert;
 
@@ -282,6 +283,8 @@ function collectConfig(){
   }
 
   if(get('dexcom_pass')==='') delete c.dexcom_pass;
+  const po_user=get('pushover_user_key'); if(po_user) c.pushover_user_key=po_user;
+  const po_token=get('pushover_api_token'); if(po_token) c.pushover_api_token=po_token;
   return c;
 }
 
@@ -492,6 +495,8 @@ function render(){
   const diagIcon=`<svg viewBox="0 0 24 24" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`;
   const sysIcon=`<svg viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93l-1.41 1.41M4.93 4.93l1.41 1.41M4.93 19.07l1.41-1.41M19.07 19.07l-1.41-1.41M21 12h-2M3 12H1M12 3V1M12 23v-2"/></svg>`;
   const ctrlIcon=`<svg viewBox="0 0 24 24" stroke-width="2"><path d="M12 2v10"/><path d="M6.2 6.2a8 8 0 1011.3 0"/></svg>`;
+  const pushoverIcon=`<svg viewBox="0 0 24 24" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>`;
+  const aiIcon=`<svg viewBox="0 0 24 24" stroke-width="2"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"/></svg>`;
 
   // WiFi section
   const wifiOpen = !c.wifi_pass;
@@ -519,6 +524,25 @@ function render(){
     field('High threshold','Display turns yellow',`<div class="thr-row">${inp('high','number',c.high||180,'','')}<span>${c.bg_units||'mg/dL'}</span></div>`)+
     field('Urgent high','Display turns orange',`<div class="thr-row">${inp('urgent_high','number',c.urgent_high||250,'','')}<span>${c.bg_units||'mg/dL'}</span></div>`)+
     field('Alert style','Visual only',`<div class="radio-group">${['pulse','flash','color only'].map(s=>`<label class="radio-opt"><input type="radio" name="bg_alert_style" value="${s}"${(c.bg_alert_style||'pulse')===s?' checked':''}> ${s[0].toUpperCase()+s.slice(1)}</label>`).join('')}</div>`);
+
+  // Pushover alerts section
+  const pushoverContent =
+    field('Enable Pushover alerts','Send critical low/high BG alerts to your phone via Pushover',tog('pushover_enabled',c.pushover_enabled))+
+    field('User key',m.pushoverConfigured?'Configured — enter new value to update':'Your Pushover user key (from pushover.net)',inp('pushover_user_key','password','',m.pushoverConfigured?'(configured)':'user key'))+
+    field('API token',m.pushoverConfigured?'Configured — enter new value to update':'App API token from pushover.net',inp('pushover_api_token','password','',m.pushoverConfigured?'(configured)':'api token'))+
+    field('Alert cooldown','Minimum time between repeated critical alerts',sel('pushover_alert_cooldown_min',[[5,'5 min'],[10,'10 min'],[15,'15 min'],[30,'30 min'],[60,'60 min']],c.pushover_alert_cooldown_min||15))+
+    field('Status','',m.pushoverConfigured?badge('Credentials stored','green'):badge('Not configured','amber'));
+
+  // Daily AI Digest section
+  const digestText = m.digest&&m.digest.text ? m.digest.text : '';
+  const digestDate = m.digest&&m.digest.date ? m.digest.date : '';
+  const digestContent =
+    (digestText
+      ? field('Today\'s digest',`Generated ${digestDate}`,`<div style="font-size:12px;line-height:1.6;color:var(--text);max-width:340px;white-space:pre-wrap">${digestText.replace(/</g,'&lt;')}</div>`)
+      : field('Today\'s digest','Workers AI summary of the past 24h of BG data','<span style="font-size:12px;color:var(--muted)">No digest yet — generates at 6 AM US/Central</span>'))+
+    field('Model','',`<span style="font-size:12px;color:var(--muted)">@cf/meta/llama-3.1-8b-instruct</span>`)+
+    field('Schedule','',`<span style="font-size:12px;color:var(--muted)">Daily 6:00 AM US/Central (cron)</span>`)+
+    field('Device behavior','','<span style="font-size:12px;color:var(--muted)">Shown on boot for 10 s; tap bottom-left to replay</span>');
 
   // Display section
   const dndSched = c.dnd_schedule || {};
@@ -665,7 +689,11 @@ function render(){
   </div>
   <div class="grid">
     ${section('alerts','icon-alert',alertIcon,'BG alerts','Thresholds and visual alerts',alertContent)}
+    ${section('pushover','icon-pushover',pushoverIcon,'Pushover alerts','Critical BG notifications to phone',pushoverContent)}
+  </div>
+  <div class="grid">
     ${section('display','icon-display',displayIcon,'Display','Screen &amp; time settings',displayContent)}
+    ${section('digest','icon-ai',aiIcon,'Daily AI digest','Morning BG summary via Workers AI',digestContent)}
   </div>
   <div class="grid">
     ${section('security','icon-security',secIcon,'Security','API keys, rate limiting, access control',secContent)}
@@ -708,6 +736,8 @@ async function loadConfig(){
     lastLogUpload:data.lastLogUpload,
     reminders:data.reminders||[],
     secretMeta:data.secretMeta||{},
+    digest:data.digest||null,
+    pushoverConfigured:!!data.pushoverConfigured,
   };
 }
 

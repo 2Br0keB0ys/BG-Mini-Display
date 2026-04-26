@@ -504,6 +504,96 @@ void updateDisplay(AppConfig& cfg, BGReading& reading, DisplayState& state) {
   drawFrame(cfg, reading, state);
 }
 
+// ─── AI Daily Digest Screen ───────────────────────────────────────────────────
+
+static void _drawWrappedText(int x, int y, int maxW, int lineH, const char* text) {
+  char line[96] = "";
+  char word[64] = "";
+  int  curY = y;
+  const char* p = text;
+  int  dispH = M5.Display.height();
+
+  while (*p || strlen(line) > 0) {
+    // Collect next word
+    size_t wi = 0;
+    while (*p && *p != ' ' && *p != '\n' && wi < sizeof(word) - 2) {
+      word[wi++] = *p++;
+    }
+    word[wi] = '\0';
+    bool newline = (*p == '\n');
+    if (*p == ' ' || *p == '\n') p++;
+
+    if (strlen(line) == 0) {
+      strlcpy(line, word, sizeof(line));
+    } else {
+      char trial[96];
+      snprintf(trial, sizeof(trial), "%s %s", line, word);
+      if (canvas.textWidth(trial) <= maxW) {
+        strlcpy(line, trial, sizeof(line));
+      } else {
+        canvas.setTextDatum(top_left);
+        canvas.drawString(line, x, curY);
+        curY += lineH;
+        strlcpy(line, word, sizeof(line));
+      }
+    }
+
+    if (newline || *p == '\0') {
+      if (strlen(line) > 0) {
+        if (curY + lineH < dispH - 14) {
+          canvas.setTextDatum(top_left);
+          canvas.drawString(line, x, curY);
+          curY += lineH;
+        }
+        line[0] = '\0';
+      }
+    }
+    if (curY + lineH >= dispH - 14) break;
+    if (!*p && strlen(line) == 0) break;
+  }
+  // Flush remaining
+  if (strlen(line) > 0 && curY + lineH < dispH - 14) {
+    canvas.setTextDatum(top_left);
+    canvas.drawString(line, x, curY);
+  }
+}
+
+void showDigestScreen(const char* text, unsigned long durationMs = 10000) {
+  if (!text || !strlen(text)) return;
+  int W = M5.Display.width(), H = M5.Display.height();
+
+  canvas.fillScreen(CLR_BG);
+  canvas.setFont(&fonts::FreeSansBold9pt7b);
+  canvas.setTextDatum(middle_center);
+  canvas.setTextColor(CLR_TEXT);
+  canvas.drawString("Morning Digest", W / 2, 16);
+  canvas.drawLine(10, 30, W - 10, 30, CLR_SEP);
+
+  canvas.setFont(&fonts::FreeSans9pt7b);
+  canvas.setTextColor(CLR_MUTED);
+  _drawWrappedText(8, 38, W - 16, 18, text);
+
+  canvas.setFont(&fonts::FreeSans9pt7b);
+  canvas.setTextColor(CLR_DIM);
+  canvas.setTextDatum(middle_center);
+  canvas.drawString("Tap to close", W / 2, H - 8);
+  canvas.pushSprite(0, 0);
+
+  unsigned long start = millis();
+  while (millis() - start < durationMs) {
+    M5.update();
+    if (M5.Touch.getCount() && M5.Touch.getDetail().wasPressed()) {
+      delay(200);
+      break;
+    }
+    delay(50);
+  }
+
+  // Force full redraw on return to main screen
+  extern DisplayState dispState;
+  dispState.initialized = false;
+}
+
 // ─── Settings Menu ────────────────────────────────────────────────────────────
 
 void showSettingsMenu(AppConfig& cfg, Preferences& prefs) {

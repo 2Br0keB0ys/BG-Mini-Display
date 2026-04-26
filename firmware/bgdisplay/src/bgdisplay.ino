@@ -16,6 +16,7 @@
 #include "wifi_setup.h"
 #include "sd_logger.h"
 #include "ota.h"
+#include "ws_sync.h"
 
 #if __has_include("secrets.h")
 #include "secrets.h"
@@ -60,10 +61,12 @@ struct SourceHealthStats {
 
 SourceHealthStats sourceHealth;
 char gResetReason[20] = "unknown";
+char gDigestText[512] = "";
 bool gFactoryResetArmed = false;
 unsigned long gFactoryResetArmMs = 0;
 
 // Forward declarations
+void fetchDigest(AppConfig&);
 void pullCloudflareConfig(AppConfig&, Preferences&);
 void pingCloudflare(AppConfig&, Preferences&);
 void pushStatus(AppConfig&);
@@ -312,6 +315,7 @@ void setup() {
     sdLogWifi(appConfig.wifiSSID, WiFi.RSSI());
     pullCloudflareConfig(appConfig, prefs);
     logConfigDiagnostics("after-config-pull", appConfig);
+    wsInit(appConfig);
     // Try Dexcom first, fall back to Nightscout
     bool ok = false;
     if (strlen(appConfig.dexcomUser) > 0) {
@@ -325,12 +329,18 @@ void setup() {
     else if (lastReading.source == SOURCE_DEXCOM) src = "DEX";
     sdLogBG(lastReading.value, lastReading.trend, src);
     logRuntimeSnapshot("initial-fetch", appConfig, lastReading);
+    fetchDigest(appConfig);
+    if (strlen(gDigestText)) {
+      showDigestScreen(gDigestText, 10000UL);
+    }
   }
 }
 
 void loop() {
   M5.update();
   unsigned long now = millis();
+
+  wsTick(appConfig, prefs);
 
   if (gFactoryResetArmed && (now - gFactoryResetArmMs > 10000UL)) {
     gFactoryResetArmed = false;
@@ -376,14 +386,17 @@ void loop() {
       dispState.dndWakeUntilMs = now + 300000UL;
       if (tp.x > 220 && tp.y < 40) {
         showSettingsMenu(appConfig, prefs);
+      } else if (tp.x < 160 && tp.y > 170 && strlen(gDigestText)) {
+        showDigestScreen(gDigestText, 10000UL);
       }
     }
   }
 
-  // HTTPS fast sync — cap to once per 60s to reduce long-run network churn.
-  unsigned long pingMs = (unsigned long)appConfig.configPingMin * 60000UL;
-  const unsigned long kFastSyncMs = 60000UL;
-  if (pingMs > kFastSyncMs) pingMs = kFastSyncMs;
+  // HTTPS config ping — 30s fallback when WebSocket is down; configured interval when WS active.
+  unsigned long pingMs = wsIsConnected()
+    ? (unsigned long)appConfig.configPingMin * 60000UL
+    : 30000UL;
+  if (pingMs > 300000UL) pingMs = 300000UL;  // hard cap at 5 min
   if (WiFi.status()==WL_CONNECTED && now - lastConfigPing > pingMs) {
     lastConfigPing = now;
     sdLog("CFG", "Running HTTPS fast-sync ping");
@@ -968,6 +981,40 @@ bool uploadSdLogs(AppConfig& cfg, const char* cmdId, int maxLines, size_t maxByt
   snprintf(msg, sizeof(msg), "Log upload HTTP %d", code);
   sdLogError(msg);
   return false;
+}
+
+// ─── Daily AI Digest ──────────────────────────────────────────────────────────
+
+void fetchDigest(AppConfig& cfg) {
+  if (!strlen(cfg.workerUrl) || !strlen(cfg.deviceKey)) return;
+  if (!hasValidClock()) return;
+
+  HTTPClient http;
+  String path = "/api/digest";
+  http.begin(String(cfg.workerUrl) + path);
+  http.addHeader("X-Device-Key", cfg.deviceKey);
+  addSignedHeaders(http, "GET", path, "", cfg);
+  http.setTimeout(5000);
+
+  int code = http.GET();
+  if (code == 200) {
+    StaticJsonDocument<640> doc;
+    if (!deserializeJson(doc, http.getString())) {
+      const char* txt = doc["text"] | "";
+      if (strlen(txt) > 0) {
+        strlcpy(gDigestText, txt, sizeof(gDigestText));
+        sdLog("AI", "Digest fetched");
+      }
+    }
+  } else if (code == 204) {
+    // No digest available today — not an error
+    sdLog("AI", "No digest available");
+  } else {
+    char msg[40];
+    snprintf(msg, sizeof(msg), "Digest HTTP %d", code);
+    sdLog("AI", msg);
+  }
+  http.end();
 }
 
 // ─── NTP Time Sync ────────────────────────────────────────────────────────────
