@@ -19,3 +19,8 @@ apps/cloudflare/bgdisplay-device-key.txt
 
 # Cloudflare local secrets
 apps/cloudflare/.dev.vars
+
+# Reseach Data
+research/
+
+
