@@ -83,7 +83,7 @@ h1{color:#16a34a;font-size:20px}p{color:#666;margin-top:8px;font-size:14px}</sty
 bool connectWiFi(AppConfig& cfg, Preferences& prefs) {
   if (!strlen(cfg.wifiSSID)) return false;
 
-  sdLog("NET", "WiFi connect attempt");
+  sdLogfEx("NET", "WIFI", "connect_attempt ssid:%s hasPass:%d", cfg.wifiSSID, strlen(cfg.wifiPass) > 0 ? 1 : 0);
 
   int W=M5.Display.width();
   M5.Display.fillScreen(0x0000);
@@ -114,15 +114,16 @@ bool connectWiFi(AppConfig& cfg, Preferences& prefs) {
     M5.Display.drawString(WiFi.localIP().toString().c_str(), W/2, 190);
     delay(800);
     Serial.printf("WiFi: %s (%d dBm)\n", WiFi.SSID().c_str(), WiFi.RSSI());
+    sdLogfEx("NET", "WIFI", "connect_ok ip:%s rssi:%d", WiFi.localIP().toString().c_str(), WiFi.RSSI());
     return true;
   }
   Serial.println("WiFi: failed to connect");
-  sdLogError("WiFi connection failed");
+  sdLogEx("ERR", "WIFI", "connect_failed");
   return false;
 }
 
 void startAPMode(AppConfig& cfg, Preferences& prefs) {
-  sdLog("NET", "AP setup mode started");
+  sdLogEx("NET", "AP", "setup_mode_started");
   uint64_t chipId = ESP.getEfuseMac();
   char apSsid[32];
   char apPass[20];
@@ -134,6 +135,7 @@ void startAPMode(AppConfig& cfg, Preferences& prefs) {
   IPAddress apIP(192,168,4,1);
   WiFi.softAPConfig(apIP,apIP,IPAddress(255,255,255,0));
   dnsServer.start(53,"*",apIP);
+  sdLogfEx("NET", "AP", "ap_started ssid:%s ip:%s", apSsid, apIP.toString().c_str());
 
   int W=M5.Display.width(), H=M5.Display.height();
   String wifiQr = buildWifiJoinQr(apSsid, apPass);
@@ -212,7 +214,7 @@ void startAPMode(AppConfig& cfg, Preferences& prefs) {
     strlcpy(cfg.wifiSSID, ssid.c_str(), 64);
     strlcpy(cfg.wifiPass, pass.c_str(), 64);
     saveConfig(prefs, cfg);
-    sdLog("NET", "WiFi credentials saved");
+    sdLogfEx("NET", "AP", "credentials_saved ssid:%s hasPass:%d", cfg.wifiSSID, strlen(cfg.wifiPass) > 0 ? 1 : 0);
     apServer.send_P(200,"text/html",SAVED_HTML);
     delay(2000);
     ESP.restart();

@@ -3,6 +3,7 @@
 #include <WiFi.h>
 #include <ArduinoOTA.h>
 #include "config.h"
+#include "sd_logger.h"
 
 inline void otaTick(const AppConfig& cfg) {
 #if ENABLE_OTA
@@ -22,17 +23,21 @@ inline void otaTick(const AppConfig& cfg) {
 
     ArduinoOTA.onStart([]() {
       Serial.println("OTA update started");
+      sdLogEx("OTA", "OTA", "start");
     });
     ArduinoOTA.onEnd([]() {
       Serial.println("OTA update complete");
+      sdLogEx("OTA", "OTA", "complete");
     });
     ArduinoOTA.onError([](ota_error_t err) {
       Serial.printf("OTA error: %u\n", (unsigned)err);
+      sdLogfEx("ERR", "OTA", "error:%u", (unsigned)err);
     });
 
     ArduinoOTA.begin();
     initialized = true;
     Serial.printf("OTA ready: %s.local\n", hostname);
+    sdLogfEx("OTA", "OTA", "ready host:%s", hostname);
   }
 
   ArduinoOTA.handle();
