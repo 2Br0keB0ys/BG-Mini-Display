@@ -656,10 +656,23 @@ async function handleMCP(request, env, config, auth) {
       if (!args.fields || typeof args.fields !== "object") {
         return mcpError(id, -32602, "fields parameter must be an object");
       }
+      const nowTs = Date.now();
       const merged = normalizeConfig({ ...config, ...args.fields });
       await env.BGDISPLAY_CONFIG.put("config", JSON.stringify(merged));
+      await env.BGDISPLAY_CONFIG.put("config_updated_at", String(nowTs));
+
+      const secretMeta = await env.BGDISPLAY_CONFIG.get("secret_meta", { type: "json" }) || {};
+      if (typeof args.fields.nightscout_secret === "string" && args.fields.nightscout_secret !== config.nightscout_secret) {
+        secretMeta.nightscoutSecretUpdatedAt = nowTs;
+      }
+      if (typeof args.fields.dexcom_pass === "string" && args.fields.dexcom_pass !== config.dexcom_pass) {
+        secretMeta.dexcomPassUpdatedAt = nowTs;
+      }
+      await env.BGDISPLAY_CONFIG.put("secret_meta", JSON.stringify(secretMeta));
+
       const newVersion = await incrementConfigVersion(env);
       await appendChangeLog(env, `Config updated via MCP (v${newVersion})`);
+      await appendWorkerEvent(env, { type: "config-save", version: newVersion, via: "mcp" });
       if (merged.auto_backup) {
         await env.BGDISPLAY_CONFIG.put(`backup:${Date.now()}`, JSON.stringify(merged), { expirationTtl: 30 * 86400 });
       }
@@ -669,11 +682,11 @@ async function handleMCP(request, env, config, auth) {
           const stub = env.CONFIG_SYNC.get(env.CONFIG_SYNC.idFromName("global"));
           await stub.fetch(new Request("https://do.internal/broadcast", {
             method: "POST",
-            body: JSON.stringify({ type: "config-changed", version: newVersion }),
+            body: JSON.stringify({ type: "config-changed", version: newVersion, ts: nowTs }),
           }));
         } catch {}
       }
-      return mcpResult(id, { content: [{ type: "text", text: `Config updated. New version: v${newVersion}.` }] });
+      return mcpResult(id, { content: [{ type: "text", text: `Config updated. New version: v${newVersion}. Updated: ${new Date(nowTs).toISOString()}.` }] });
     }
 
     if (toolName === "force_sync") {
@@ -1253,6 +1266,8 @@ export default {
         reminders.push({ key: "dexcom_pass", msg: "Dexcom password older than 30 days" });
       }
 
+      const configUpdatedAt = Number(await env.BGDISPLAY_CONFIG.get("config_updated_at") || 0) || null;
+
       return json({
         config, status, changelog, metrics,
         workerEvents: events.slice(0, 20),
@@ -1270,6 +1285,7 @@ export default {
         rotateDays: 7,
         pendingRotation: !!(auth.pendingKeyHash),
         config_version: version,
+        config_updated_at: configUpdatedAt,
         device_config_version: status?.config_version || 0,
         digest,
         pushoverConfigured,
@@ -1320,7 +1336,9 @@ export default {
         secretMeta.dexcomPassUpdatedAt = Date.now();
       }
 
+      const nowTs = Date.now();
       await env.BGDISPLAY_CONFIG.put("config", JSON.stringify(merged));
+      await env.BGDISPLAY_CONFIG.put("config_updated_at", String(nowTs));
       await env.BGDISPLAY_CONFIG.put("secret_meta", JSON.stringify(secretMeta));
       const newVersion = await incrementConfigVersion(env);
       await appendChangeLog(env, `Config updated (v${newVersion})`);
@@ -1343,7 +1361,7 @@ export default {
         })());
       }
 
-      return json({ ok: true, config_version: newVersion });
+      return json({ ok: true, config_version: newVersion, config_updated_at: nowTs });
     }
 
     if (path === "/api/admin/metrics" && method === "GET") {
@@ -1455,10 +1473,13 @@ export default {
       const body = await request.json().catch(() => null);
       if (!body?.config) return json({ error: "Invalid import file" }, 400);
       const merged = normalizeConfig(body.config);
+      const nowTs = Date.now();
       await env.BGDISPLAY_CONFIG.put("config", JSON.stringify(merged));
+      await env.BGDISPLAY_CONFIG.put("config_updated_at", String(nowTs));
       const newVersion = await incrementConfigVersion(env);
       await appendChangeLog(env, `Config imported from backup (v${newVersion})`);
-      return json({ ok: true });
+      await appendWorkerEvent(env, { type: "config-save", version: newVersion, via: "import" });
+      return json({ ok: true, config_version: newVersion, config_updated_at: nowTs });
     }
 
     return json({ error: "Not found" }, 404);

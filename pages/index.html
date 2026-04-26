@@ -25,6 +25,7 @@ body{font-family:'Trebuchet MS','Segoe UI',Verdana,sans-serif;background:radial-
 .logo svg{width:18px;height:18px;fill:white}
 .header h1{font-size:16px;font-weight:700;letter-spacing:.01em}
 .header p{font-size:12px;color:var(--muted)}
+.header-meta{font-size:11px;color:var(--muted);margin-top:1px}
 .status-pill{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;padding:5px 11px;border-radius:99px;white-space:nowrap;flex-shrink:0;border:1px solid transparent}
 .status-pill.online{color:var(--green);background:var(--green-bg)}
 .status-pill.offline{color:var(--red);background:var(--red-bg)}
@@ -185,7 +186,7 @@ input[type=text].wide,input[type=password].wide,input[type=url].wide{width:210px
 <div class="header">
   <div class="header-inner">
     <div class="logo"><svg viewBox="0 0 24 24"><path d="M12 2a7 7 0 017 7c0 5-7 13-7 13S5 14 5 9a7 7 0 017-7zm0 4a3 3 0 100 6 3 3 0 000-6z"/></svg></div>
-    <div><h1>BGDisplay</h1></div>
+    <div><h1>BGDisplay</h1><div id="configMeta" class="header-meta">Last settings update: —</div></div>
     <div id="statusPill" class="status-pill offline"><span class="dot"></span>Loading...</div>
     <div class="save-bar"><button class="save-btn" onclick="saveConfig()">Save changes</button></div>
   </div>
@@ -566,6 +567,8 @@ function render(){
   const online=m.status&&(Date.now()-m.status.lastSeen<180000);
   document.getElementById('statusPill').className='status-pill '+(online?'online':'offline');
   document.getElementById('statusPill').innerHTML=`<span class="dot"></span>${online?'Device online':'Device offline'}`;
+  const cm=document.getElementById('configMeta');
+  if(cm) cm.textContent=`Last settings update: ${fmtTs(m.configUpdatedAt)}`;
 
   const {used,remain,label,color}=rotateProgress(m.lastRotated);
   const nextMs=(m.nextAutoRotate||0)-Date.now();
@@ -620,7 +623,7 @@ function render(){
 
   // Daily AI Digest section
   const digestText = m.digest&&m.digest.text ? m.digest.text : '';
-  const digestDate = m.digest&&m.digest.date ? m.digest.date : '';
+  const digestDate = m.digest&&m.digest.generatedAt ? fmtTs(m.digest.generatedAt) : (m.digest&&m.digest.date ? m.digest.date : '');
   const digestContent =
     (digestText
       ? field('Today\'s summary',`Generated ${digestDate}`,`<div style="font-size:12px;line-height:1.6;color:var(--text);max-width:340px;white-space:pre-wrap">${digestText.replace(/</g,'&lt;')}</div>`)
@@ -840,6 +843,7 @@ async function loadConfig(){
     lastLogUpload:data.lastLogUpload,
     reminders:data.reminders||[],
     secretMeta:data.secretMeta||{},
+    configUpdatedAt:data.config_updated_at||null,
     digest:data.digest||null,
     pushoverConfigured:!!data.pushoverConfigured,
   };
