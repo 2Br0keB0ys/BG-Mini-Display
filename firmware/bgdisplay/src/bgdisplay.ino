@@ -534,7 +534,7 @@ void loop() {
     }
   }
 
-  // Omnipod status poll (Glooko) — every 30 minutes minimum
+  // Pump data poll — every 30 minutes minimum
   unsigned long gkPollMs = (unsigned long)appConfig.glookoPollMin * 60000UL;
   if (WiFi.status()==WL_CONNECTED && omnipodConfigured(appConfig) && now - lastGlookoPoll > gkPollMs) {
     lastGlookoPoll = now;
@@ -542,7 +542,15 @@ void loop() {
     if (!fetchGlookoOmnipod(appConfig, gOmnipodStatus)) {
       sdLogEx("ERR", "POD_SYNC", "poll_failed");
     } else {
-      sdLogEx("POD", "POD_SYNC", "poll_ok");
+      sdLogfEx(
+        "POD",
+        "POD_SYNC",
+        "poll_ok iob:%.2f bolus:%.2f bolusTs:%lu podChangeTs:%lu",
+        gOmnipodStatus.insulinOnBoard,
+        gOmnipodStatus.lastBolusUnits,
+        (unsigned long)gOmnipodStatus.lastBolusTimestamp,
+        (unsigned long)gOmnipodStatus.podChangeTimestamp
+      );
     }
   }
 
@@ -936,7 +944,7 @@ bool pushStatus(AppConfig& cfg) {
   http.begin(String(cfg.workerUrl)+path);
   http.addHeader("Content-Type","application/json");
   http.addHeader("X-Device-Key", cfg.deviceKey);
-  StaticJsonDocument<256> doc;
+  StaticJsonDocument<384> doc;
   doc["connection"]     = "wifi";
   doc["uptime"]         = (millis() - bootTime) / 1000;
   doc["firmware"]       = FIRMWARE_VERSION;
@@ -966,6 +974,9 @@ bool pushStatus(AppConfig& cfg) {
   doc["omnipodIob"]        = gOmnipodStatus.insulinOnBoard;
   doc["omnipodReservoir"]  = gOmnipodStatus.reservoirUnits;
   doc["omnipodMinsToExp"]  = gOmnipodStatus.minutesToExpiry;
+  doc["omnipodLastBolusU"] = gOmnipodStatus.lastBolusUnits;
+  doc["omnipodLastBolusTs"] = (long)gOmnipodStatus.lastBolusTimestamp;
+  doc["omnipodPodChangeTs"] = (long)gOmnipodStatus.podChangeTimestamp;
   doc["omnipodDataTs"]     = (long)gOmnipodStatus.dataTimestamp;
   String body; serializeJson(doc, body);
     addSignedHeaders(http, "POST", path, body, cfg);

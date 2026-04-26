@@ -326,7 +326,7 @@ function syncPumpProfileUi(){
   typeEl.value = model.type;
 }
 
-function getOmnipodSourceCredentialDefs(source){
+function getPumpSourceCredentialDefs(source){
   const s = String(source || '').toLowerCase();
   if (s === 'tandem') {
     return [
@@ -349,19 +349,26 @@ function getOmnipodSourceCredentialDefs(source){
   return [
     { id: 'glooko_email', label: 'Glooko email', type: 'text', placeholder: 'name@example.com' },
     { id: 'glooko_password', label: 'Glooko password', type: 'password', placeholder: 'leave blank to keep current password', sensitive: true },
+    { id: 'glooko_env', label: 'Glooko region', type: 'select', options: [['default', 'Global/US'], ['eu', 'EU'], ['production', 'Production API'], ['development', 'Development API']] },
+    { id: 'glooko_server', label: 'Glooko custom server', type: 'text', placeholder: 'optional override, e.g. eu.api.glooko.com' },
   ];
 }
 
-function syncOmnipodSourceUi(){
+function renderSourceCredentialControl(def){
+  const existingValue = (CONFIG && typeof CONFIG[def.id] === 'string' && !def.sensitive) ? CONFIG[def.id] : '';
+  if (def.type === 'select') {
+    return subfield(def.label, sel(def.id, def.options || [], existingValue || 'default'));
+  }
+  return subfield(def.label, inp(def.id, def.type, existingValue, def.placeholder));
+}
+
+function syncPumpDataSourceUi(){
   const sourceEl = document.getElementById('omnipod_source');
-  const wrapEl = document.getElementById('omnipod_source_creds');
+  const wrapEl = document.getElementById('pump_source_creds');
   if (!sourceEl || !wrapEl) return;
   const source = sourceEl.value || 'glooko';
-  const defs = getOmnipodSourceCredentialDefs(source);
-  wrapEl.innerHTML = defs.map(def=>{
-    const existingValue = (CONFIG && typeof CONFIG[def.id] === 'string' && !def.sensitive) ? CONFIG[def.id] : '';
-    return subfield(def.label, inp(def.id, def.type, existingValue, def.placeholder));
-  }).join('');
+  const defs = getPumpSourceCredentialDefs(source);
+  wrapEl.innerHTML = defs.map(renderSourceCredentialControl).join('');
 }
 
 // ── Collect Config ────────────────────────────────────────────────────────────
@@ -567,6 +574,36 @@ function toggleSection(id){
 
 function sectionOpen(id){ return localStorage.getItem('section-'+id)==='1'; }
 
+function expandAll(){
+  const sectionIds=['digest','wifi','ns','pump_data','pump','alerts','display','pushover','alerts_cloud','system','control','diag','insights','security','backup','maint','logs'];
+  sectionIds.forEach(id=>{
+    const body=document.getElementById('body-'+id);
+    const head=document.getElementById('head-'+id);
+    const chev=document.getElementById('chev-'+id);
+    if(body){
+      body.classList.add('open');
+      if(head) head.classList.add('open');
+      if(chev) chev.classList.add('open');
+      localStorage.setItem('section-'+id,'1');
+    }
+  });
+}
+
+function collapseAll(){
+  const sectionIds=['digest','wifi','ns','pump_data','pump','alerts','display','pushover','alerts_cloud','system','control','diag','insights','security','backup','maint','logs'];
+  sectionIds.forEach(id=>{
+    const body=document.getElementById('body-'+id);
+    const head=document.getElementById('head-'+id);
+    const chev=document.getElementById('chev-'+id);
+    if(body){
+      body.classList.remove('open');
+      if(head) head.classList.remove('open');
+      if(chev) chev.classList.remove('open');
+      localStorage.setItem('section-'+id,'0');
+    }
+  });
+}
+
 function section(id,iconClass,iconSvg,title,sub,content,fullWidth=false,lockOpen=false){
   const open=lockOpen ? true : sectionOpen(id);
   const headAttrs=lockOpen ? '' : ` id="head-${id}" onclick="toggleSection('${id}')"`;
@@ -666,13 +703,15 @@ function render(){
     field('Dexcom username','',inp('dexcom_user','text',c.dexcom_user,'email or +1xxxxxxxxxx'))+
     field('Dexcom password','Leave blank to keep the current password.',inp('dexcom_pass','password','','••••••••'))+
     field('Dexcom region','Set this to match your Dexcom account region.',sel('dexcom_region',[['US','US'],['Non-US','Non-US']],c.dexcom_region))+
-    field('Enable Omnipod source sync','Fetch Omnipod-related status using your selected provider credentials.',tog('glooko_enabled',c.glooko_enabled))+
-    field('Omnipod source','Select which source account to use for Omnipod-related data.',sel('omnipod_source',[["tandem","Tandem"],["glooko","Glooko"],["medtronic","Medtronic"],["tidepool","Tidepool"]],c.omnipod_source||'glooko'))+
-    `<div id="omnipod_source_creds"></div>`+
-    field('Omnipod poll interval','Status refresh interval (minimum 30 minutes).',sel('glooko_poll_min',[[30,'30 minutes'],[60,'60 minutes'],[120,'120 minutes']],c.glooko_poll_min||30))+
     field('Reading refresh interval','How often the device checks for new readings.',sel('poll_interval_min',[[1,'1 minute'],[5,'5 minutes'],[10,'10 minutes']],c.poll_interval_min))+
     field('Stale reading warning','Show stale status after no new reading for this long.',sel('stale_data_warn_min',[[5,'5 minutes'],[10,'10 minutes'],[15,'15 minutes'],[20,'20 minutes']],c.stale_data_warn_min))+
     field('Config sync check','How often the device checks for updated settings.',sel('config_ping_min',[[1,'1 minute'],[2,'2 minutes'],[5,'5 minutes']],c.config_ping_min||1));
+
+  const pumpDataContent =
+    field('Enable pump data sync','Fetch pump-only status (IOB, last bolus, pod change) from your selected source.',tog('glooko_enabled',c.glooko_enabled))+
+    field('Pump data source','Choose which provider account to use for pump data.',sel('omnipod_source',[["tandem","Tandem"],["glooko","Glooko"],["medtronic","Medtronic"],["tidepool","Tidepool"]],c.omnipod_source||'glooko'))+
+    `<div id="pump_source_creds"></div>`+
+    field('Poll interval','Pump data refresh interval (minimum 30 minutes).',sel('glooko_poll_min',[[30,'30 minutes'],[60,'60 minutes'],[120,'120 minutes']],c.glooko_poll_min||30));
 
   // BG Alerts section
   const alertContent =
@@ -701,12 +740,11 @@ function render(){
   const digestContent =
     (digestText
       ? field('Today\'s summary',`Generated ${digestDate}`,`<div style="font-size:12px;line-height:1.6;color:var(--text);max-width:340px;white-space:pre-wrap">${digestText.replace(/</g,'&lt;')}</div>`)
-      : field('Today\'s summary','AI summary based on the last 24 hours of glucose data.','<span style="font-size:12px;color:var(--muted)">No summary yet. It runs daily at 6:00 AM US/Central.</span>'))+
+      : field('Today\'s summary','AI summary based on the last 24 hours of glucose data.','<span style="font-size:12px;color:var(--muted)">No summary yet. It runs daily at 7:45 AM US/Central, and hourly 8 AM–11 PM.</span>'))+
     field('Generate on demand','Force-regenerate the summary from the last 24h of readings right now.',`<button id="digest-gen-btn" class="btn" onclick="generateDigestNow()">Generate now</button>`)+
     field('AI model','',`<span style="font-size:12px;color:var(--muted)">@cf/meta/llama-3.1-8b-instruct</span>`)+
-    field('Run schedule','',`<span style="font-size:12px;color:var(--muted)">Daily at 6:00 AM US/Central (cron) — or press Generate now above.</span>`)+
-    field('On-device behavior','','<span style="font-size:12px;color:var(--muted)">Shown at boot for 10 seconds. Tap bottom-left on the main screen to replay.</span>')+
-    field('Push digest to Pushover','Send the daily summary to your phone via Pushover at a set time.',tog('digest_pushover_enabled',c.digest_pushover_enabled))+
+    field('Run schedule','',`<span style="font-size:12px;color:var(--muted)">Daily at 7:45 AM, hourly 8 AM–11 PM US/Central (cron).</span>`)+
+    field('Push digest to Pushover','Send the summary to your phone via Pushover at a set time.',tog('digest_pushover_enabled',c.digest_pushover_enabled))+
     field('Digest push time','Hour to send the digest (requires Pushover credentials configured above).',`<select id="digest_pushover_hour">${digestHourOptions}</select>`);
 
   // Pump Profile section
@@ -860,11 +898,19 @@ function render(){
 
   document.getElementById('app').innerHTML = `
   <div class="grid full">
-    ${section('digest','icon-ai',aiIcon,'Daily AI summary','Morning glucose summary generated in the cloud',digestContent,true,true)}
+    ${section('digest','icon-ai',aiIcon,'EndoAI','AI-powered glucose insights',digestContent,true,true)}
+  </div>
+  <div class="grid" style="margin-top:1rem">
+    <button class="btn" onclick="expandAll()" style="padding:10px 16px;background:linear-gradient(145deg,#4CAF50,#45a049);color:white;border:none;border-radius:8px;cursor:pointer;font-weight:600;margin-right:8px">Expand all</button>
+    <button class="btn" onclick="collapseAll()" style="padding:10px 16px;background:linear-gradient(145deg,#9E9E9E,#757575);color:white;border:none;border-radius:8px;cursor:pointer;font-weight:600">Collapse all</button>
   </div>
   <div class="grid">
     ${section('wifi','icon-wifi',wifiIcon,'Wi-Fi setup','Connect BGDisplay to your network',wifiContent)}
     ${section('ns','icon-dex',dexIcon,'Data sources','Choose where glucose readings come from',nsContent)}
+  </div>
+  <div class="grid">
+    ${section('pump_data','icon-display',pumpIcon,'Pump data source','Provider credentials and sync settings for pump-only data',pumpDataContent)}
+    <div></div>
   </div>
   <div class="grid">
     ${section('pump','icon-display',pumpIcon,'Pump profile','Optional AI context about insulin delivery setup',pumpContent)}
@@ -902,10 +948,10 @@ function render(){
 
   syncWifiOpenUi();
   syncPumpProfileUi();
-  syncOmnipodSourceUi();
+  syncPumpDataSourceUi();
   const omSourceEl = document.getElementById('omnipod_source');
   if (omSourceEl) {
-    omSourceEl.addEventListener('change', syncOmnipodSourceUi);
+    omSourceEl.addEventListener('change', syncPumpDataSourceUi);
   }
 }
 

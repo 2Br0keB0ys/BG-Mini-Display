@@ -2,6 +2,10 @@
 // Features: WebSocket relay (DO), Workers AI digest, MCP server, Pushover alerts
 
 import { createCgmDataProvider } from "./providers/registry.js";
+import { fetchGlookoPumpSnapshot } from "./providers/glooko.js";
+import { fetchTandemPumpSnapshot } from "./providers/tandem.js";
+import { fetchMedtronicPumpSnapshot } from "./providers/medtronic.js";
+import { fetchTidepoolPumpSnapshot } from "./providers/tidepool.js";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -399,9 +403,119 @@ async function fetchOmnipodBridge(config, diag = null) {
       diag.hasSourceCreds = hasSourceCreds;
     }
     if (!endpoint) {
+      if (source === "glooko" && hasSourceCreds) {
+        try {
+          const direct = await fetchGlookoPumpSnapshot({
+            email: config.glooko_email,
+            password: config.glooko_password,
+            env: config.glooko_env,
+            server: config.glooko_server,
+          }, {
+            signal: AbortSignal.timeout(9000),
+          });
+
+          if (diag) diag.reason = "ok_direct_glooko";
+          return {
+            source,
+            pod_active: true,
+            insulin_on_board: Number.isFinite(Number(direct.insulin_on_board)) ? Number(direct.insulin_on_board) : -1,
+            reservoir_units: -1,
+            minutes_to_expiry: -1,
+            last_bolus_units: Number.isFinite(Number(direct.last_bolus_units)) ? Number(direct.last_bolus_units) : -1,
+            last_bolus_timestamp: Number.isFinite(Number(direct.last_bolus_timestamp)) ? Math.floor(Number(direct.last_bolus_timestamp)) : 0,
+            pod_change_timestamp: Number.isFinite(Number(direct.pod_change_timestamp)) ? Math.floor(Number(direct.pod_change_timestamp)) : 0,
+            timestamp: Number.isFinite(Number(direct.timestamp)) ? Math.floor(Number(direct.timestamp)) : Math.floor(Date.now() / 1000),
+          };
+        } catch {
+          if (diag) diag.reason = "direct_source_fetch_failed";
+          return null;
+        }
+      }
+
+      if (source === "tandem" && hasSourceCreds) {
+        try {
+          const direct = await fetchTandemPumpSnapshot({
+            email: config.tandem_username,
+            password: config.tandem_password,
+          }, {
+            signal: AbortSignal.timeout(9000),
+          });
+
+          if (diag) diag.reason = "ok_direct_tandem";
+          return {
+            source,
+            pod_active: true,
+            insulin_on_board: Number.isFinite(Number(direct.insulin_on_board)) ? Number(direct.insulin_on_board) : -1,
+            reservoir_units: Number.isFinite(Number(direct.reservoir_units)) ? Number(direct.reservoir_units) : -1,
+            minutes_to_expiry: Number.isFinite(Number(direct.minutes_to_expiry)) ? Number(direct.minutes_to_expiry) : -1,
+            last_bolus_units: Number.isFinite(Number(direct.last_bolus_units)) ? Number(direct.last_bolus_units) : -1,
+            last_bolus_timestamp: Number.isFinite(Number(direct.last_bolus_timestamp)) ? Math.floor(Number(direct.last_bolus_timestamp)) : 0,
+            pod_change_timestamp: Number.isFinite(Number(direct.pod_change_timestamp)) ? Math.floor(Number(direct.pod_change_timestamp)) : 0,
+            timestamp: Number.isFinite(Number(direct.timestamp)) ? Math.floor(Number(direct.timestamp)) : Math.floor(Date.now() / 1000),
+          };
+        } catch {
+          if (diag) diag.reason = "direct_source_fetch_failed";
+          return null;
+        }
+      }
+
+      if (source === "medtronic" && hasSourceCreds) {
+        try {
+          const direct = await fetchMedtronicPumpSnapshot({
+            username: config.medtronic_username,
+            password: config.medtronic_password,
+          }, {
+            signal: AbortSignal.timeout(9000),
+          });
+
+          if (diag) diag.reason = "ok_direct_medtronic";
+          return {
+            source,
+            pod_active: true,
+            insulin_on_board: Number.isFinite(Number(direct.insulin_on_board)) ? Number(direct.insulin_on_board) : -1,
+            reservoir_units: Number.isFinite(Number(direct.reservoir_units)) ? Number(direct.reservoir_units) : -1,
+            minutes_to_expiry: Number.isFinite(Number(direct.minutes_to_expiry)) ? Number(direct.minutes_to_expiry) : -1,
+            last_bolus_units: Number.isFinite(Number(direct.last_bolus_units)) ? Number(direct.last_bolus_units) : -1,
+            last_bolus_timestamp: Number.isFinite(Number(direct.last_bolus_timestamp)) ? Math.floor(Number(direct.last_bolus_timestamp)) : 0,
+            pod_change_timestamp: Number.isFinite(Number(direct.pod_change_timestamp)) ? Math.floor(Number(direct.pod_change_timestamp)) : 0,
+            timestamp: Number.isFinite(Number(direct.timestamp)) ? Math.floor(Number(direct.timestamp)) : Math.floor(Date.now() / 1000),
+          };
+        } catch {
+          if (diag) diag.reason = "direct_source_fetch_failed";
+          return null;
+        }
+      }
+
+      if (source === "tidepool" && hasSourceCreds) {
+        try {
+          const direct = await fetchTidepoolPumpSnapshot({
+            email: config.tidepool_username,
+            password: config.tidepool_password,
+          }, {
+            signal: AbortSignal.timeout(9000),
+          });
+
+          if (diag) diag.reason = "ok_direct_tidepool";
+          return {
+            source,
+            pod_active: true,
+            insulin_on_board: Number.isFinite(Number(direct.insulin_on_board)) ? Number(direct.insulin_on_board) : -1,
+            reservoir_units: Number.isFinite(Number(direct.reservoir_units)) ? Number(direct.reservoir_units) : -1,
+            minutes_to_expiry: Number.isFinite(Number(direct.minutes_to_expiry)) ? Number(direct.minutes_to_expiry) : -1,
+            last_bolus_units: Number.isFinite(Number(direct.last_bolus_units)) ? Number(direct.last_bolus_units) : -1,
+            last_bolus_timestamp: Number.isFinite(Number(direct.last_bolus_timestamp)) ? Math.floor(Number(direct.last_bolus_timestamp)) : 0,
+            pod_change_timestamp: Number.isFinite(Number(direct.pod_change_timestamp)) ? Math.floor(Number(direct.pod_change_timestamp)) : 0,
+            timestamp: Number.isFinite(Number(direct.timestamp)) ? Math.floor(Number(direct.timestamp)) : Math.floor(Date.now() / 1000),
+          };
+        } catch {
+          if (diag) diag.reason = "direct_source_fetch_failed";
+          return null;
+        }
+      }
+
       if (diag) {
         diag.reason = hasSourceCreds
-          ? "source_credentials_present_but_direct_pod_sync_not_implemented"
+          ? "source_credentials_present_but_direct_sync_not_fully_implemented"
           : "missing_endpoint";
       }
       return null;
@@ -443,7 +557,12 @@ async function fetchOmnipodBridge(config, diag = null) {
     const iob = Number(pod.insulin_on_board ?? pod.iob ?? -1);
     const reservoir = Number(pod.reservoir_units ?? pod.reservoir ?? -1);
     const minsToExpiry = Number(pod.minutes_to_expiry ?? pod.pod_expires_in_min ?? -1);
+    const lastBolusUnits = Number(pod.last_bolus_units ?? pod.lastBolusUnits ?? pod.bolus_units ?? -1);
+    const rawLastBolusTs = Number(pod.last_bolus_timestamp ?? pod.lastBolusTimestamp ?? pod.last_bolus_ts ?? 0);
+    const rawPodChangeTs = Number(pod.pod_change_timestamp ?? pod.podChangeTimestamp ?? pod.last_pod_change_ts ?? 0);
     const rawTs = Number(pod.timestamp ?? pod.ts ?? jsonBody.timestamp ?? 0);
+    const lastBolusTsSec = rawLastBolusTs > 1000000000000 ? Math.floor(rawLastBolusTs / 1000) : rawLastBolusTs;
+    const podChangeTsSec = rawPodChangeTs > 1000000000000 ? Math.floor(rawPodChangeTs / 1000) : rawPodChangeTs;
     const tsSec = rawTs > 1000000000000 ? Math.floor(rawTs / 1000) : rawTs;
 
     const out = {
@@ -452,6 +571,9 @@ async function fetchOmnipodBridge(config, diag = null) {
       insulin_on_board: Number.isFinite(iob) ? iob : -1,
       reservoir_units: Number.isFinite(reservoir) ? reservoir : -1,
       minutes_to_expiry: Number.isFinite(minsToExpiry) ? Math.floor(minsToExpiry) : -1,
+      last_bolus_units: Number.isFinite(lastBolusUnits) ? lastBolusUnits : -1,
+      last_bolus_timestamp: Number.isFinite(lastBolusTsSec) ? Math.floor(lastBolusTsSec) : 0,
+      pod_change_timestamp: Number.isFinite(podChangeTsSec) ? Math.floor(podChangeTsSec) : 0,
       timestamp: Number.isFinite(tsSec) ? tsSec : 0,
     };
     if (diag) diag.reason = "ok";
@@ -512,28 +634,34 @@ function directionToTrend(dir) {
   return m[dir] || 5;
 }
 
-// ─── Feature 2: Daily AI Digest ────────────────────────────────────────────────
+// ─── Feature 2: Daily & Hourly AI Digest ──────────────────────────────────────
 
-async function generateDailyDigest(env, force = false) {
+async function generateDailyDigest(env, force = false, type = "daily") {
   const today = new Date().toISOString().slice(0, 10);
-
-  // Guard: only run once per calendar day (bypassed when force=true)
-  const stored = await env.BGDISPLAY_CONFIG.get("daily_digest", { type: "json" });
+  const hourKey = type === "hourly" ? `hourly_digest_${new Date().getHours()}` : "daily_digest";
+  
+  // Guard: only run once per calendar day/hour (bypassed when force=true)
+  const stored = await env.BGDISPLAY_CONFIG.get(hourKey, { type: "json" });
   if (!force && stored?.date === today) return;
 
   const config = normalizeConfig(await env.BGDISPLAY_CONFIG.get("config", { type: "json" }));
 
   if (!config.nightscout_url) {
-    await env.BGDISPLAY_CONFIG.put("daily_digest", JSON.stringify({
-      text: "No Nightscout URL configured.", generatedAt: Date.now(), date: today,
+    const text = type === "hourly" ? "No Nightscout URL configured." : "No Nightscout URL configured.";
+    const key = type === "hourly" ? `hourly_digest_${new Date().getHours()}` : "daily_digest";
+    await env.BGDISPLAY_CONFIG.put(key, JSON.stringify({
+      text, generatedAt: Date.now(), date: today, type,
     }));
     return;
   }
 
-  const readings = await fetchNightscoutHistory(config, 288);
+  // Fetch readings: 288 for 24h daily, 12 for 1h hourly
+  const readingCount = type === "hourly" ? 12 : 288;
+  const readings = await fetchNightscoutHistory(config, readingCount);
   if (!readings.length) {
-    await env.BGDISPLAY_CONFIG.put("daily_digest", JSON.stringify({
-      text: "No readings available for digest.", generatedAt: Date.now(), date: today,
+    const key = type === "hourly" ? `hourly_digest_${new Date().getHours()}` : "daily_digest";
+    await env.BGDISPLAY_CONFIG.put(key, JSON.stringify({
+      text: "No readings available for digest.", generatedAt: Date.now(), date: today, type,
     }));
     return;
   }
@@ -549,7 +677,8 @@ async function generateDailyDigest(env, force = false) {
   const minVal = Math.min(...values), maxVal = Math.max(...values);
   const avgVal = Math.round(values.reduce((a, b) => a + b, 0) / values.length);
 
-  const statsLine = `${values.length} readings over 24h. TIR (${low}–${high} mg/dL): ${tir}%. Below ${low}: ${belowLow}x. Above ${high}: ${aboveHigh}x. Urgent lows (<${urgLow}): ${urgLows}x. Urgent highs (>${urgHigh}): ${urgHighs}x. Min/Max/Avg: ${minVal}/${maxVal}/${avgVal} mg/dL.`;
+  const timeFrame = type === "hourly" ? "past hour" : "past 24 hours";
+  const statsLine = `${values.length} readings over ${type === "hourly" ? "1h" : "24h"}. TIR (${low}–${high} mg/dL): ${tir}%. Below ${low}: ${belowLow}x. Above ${high}: ${aboveHigh}x. Urgent lows (<${urgLow}): ${urgLows}x. Urgent highs (>${urgHigh}): ${urgHighs}x. Min/Max/Avg: ${minVal}/${maxVal}/${avgVal} mg/dL.`;
   const recentStr = values.slice(0, 12).join(", ");
   const pumpProfile = {
     type: config.insulin_pump_type || "none",
@@ -563,36 +692,43 @@ async function generateDailyDigest(env, force = false) {
 
   if (env.AI) {
     try {
+      const systemPrompt = type === "hourly"
+        ? "You are a concise diabetes health assistant for a Type 2 diabetic using a Dexcom G7 CGM. Write a brief summary of the past hour in 1-2 sentences (under 80 words). Cover: current status (in range or trend), any notable excursions. Plain text only."
+        : "You are a concise diabetes health assistant for a Type 2 diabetic using a Dexcom G7 CGM. Write a morning summary of the past 24 hours in 3-4 sentences (under 180 words). Cover: time in range, notable lows or highs, overnight pattern, and one brief actionable observation. Adapt guidance to insulin delivery context (pump/no pump and loop mode when provided). If no pump is used, do not mention pump actions. No greeting or closing. Plain text only.";
+      
       const aiResp = await env.AI.run("@cf/meta/llama-3.1-8b-instruct", {
-        max_tokens: 280,
+        max_tokens: type === "hourly" ? 120 : 280,
         messages: [
           {
             role: "system",
-            content: "You are a concise diabetes health assistant for a Type 2 diabetic using a Dexcom G7 CGM. Write a morning summary of the past 24 hours in 3-4 sentences (under 180 words). Cover: time in range, notable lows or highs, overnight pattern, and one brief actionable observation. Adapt guidance to insulin delivery context (pump/no pump and loop mode when provided). If no pump is used, do not mention pump actions. No greeting or closing. Plain text only.",
+            content: systemPrompt,
           },
           {
             role: "user",
-            content: `Stats: ${statsLine} Most recent 12 values (newest first): ${recentStr} mg/dL. Pump profile: ${JSON.stringify(pumpProfile)}.`,
+            content: `Stats: ${statsLine} Most recent values (newest first): ${recentStr} mg/dL. Pump profile: ${JSON.stringify(pumpProfile)}.`,
           },
         ],
       });
-      digestText = (aiResp?.response || "").trim().slice(0, 950) || "AI returned empty response.";
+      digestText = (aiResp?.response || "").trim().slice(0, type === "hourly" ? 200 : 950) || "AI returned empty response.";
     } catch (e) {
       digestText = `AI error: ${String(e).slice(0, 120)}`;
     }
   }
 
+  const key = type === "hourly" ? `hourly_digest_${new Date().getHours()}` : "daily_digest";
   const digest = {
     text: digestText,
     generatedAt: Date.now(),
     date: today,
+    type,
     stats: { tir: Number(tir), min: minVal, max: maxVal, avg: avgVal, readingCount: values.length },
   };
-  await env.BGDISPLAY_CONFIG.put("daily_digest", JSON.stringify(digest));
-  await appendChangeLog(env, `Daily AI digest generated (TIR ${tir}%, ${values.length} readings)`);
+  await env.BGDISPLAY_CONFIG.put(key, JSON.stringify(digest));
+  const logMsg = type === "hourly" ? `Hourly AI digest generated (TIR ${tir}%, ${values.length} readings)` : `Daily AI digest generated (TIR ${tir}%, ${values.length} readings)`;
+  await appendChangeLog(env, logMsg);
 }
 
-// ─── Feature 4b: Digest Pushover Send ───────────────────────────────────────────
+// ─── Feature 2b: Digest Pushover Send (Daily + Hourly) ────────────────────────
 
 async function sendDigestPushover(env) {
   const config = normalizeConfig(await env.BGDISPLAY_CONFIG.get("config", { type: "json" }));
@@ -609,26 +745,44 @@ async function sendDigestPushover(env) {
   } catch {}
   if (!creds?.user_key || !creds?.api_token) return;
 
-  // Already sent today?
   const today = new Date().toISOString().slice(0, 10);
-  const lastSent = await env.BGDISPLAY_CONFIG.get("last_digest_pushover");
-  if (lastSent === today) return;
-
-  // Is it the configured hour in US/Central?
+  
+  // Check for daily digest send (at configured hour)
   const nowCentral = new Date().toLocaleString("en-US", { timeZone: "America/Chicago", hour: "numeric", hour12: false });
   const currentHour = Number(nowCentral) % 24;
-  if (currentHour !== config.digest_pushover_hour) return;
-
-  // Get today's digest
-  const digest = await env.BGDISPLAY_CONFIG.get("daily_digest", { type: "json" });
-  if (!digest || digest.date !== today) return;
-
-  const title = "BGDisplay — Daily Summary";
-  const message = digest.text.slice(0, 1024);
-  const ok = await sendPushoverNotification(creds.user_key, creds.api_token, message, title);
-  if (ok) {
-    await env.BGDISPLAY_CONFIG.put("last_digest_pushover", today);
-    await appendChangeLog(env, "Daily digest sent via Pushover");
+  
+  if (currentHour === config.digest_pushover_hour) {
+    const lastDailySent = await env.BGDISPLAY_CONFIG.get("last_digest_pushover");
+    if (lastDailySent !== today) {
+      const digest = await env.BGDISPLAY_CONFIG.get("daily_digest", { type: "json" });
+      if (digest && digest.date === today) {
+        const title = "BGDisplay — Daily Summary";
+        const message = digest.text.slice(0, 1024);
+        const ok = await sendPushoverNotification(creds.user_key, creds.api_token, message, title);
+        if (ok) {
+          await env.BGDISPLAY_CONFIG.put("last_digest_pushover", today);
+          await appendChangeLog(env, "Daily digest sent via Pushover");
+        }
+      }
+    }
+  }
+  
+  // Check for hourly digest send (8 AM - 11 PM local time)
+  if (currentHour >= 14 || currentHour <= 5) {  // 2 PM-5 AM UTC covers 8 AM-11 PM CDT/CST roughly
+    const hourlyKey = `hourly_digest_${currentHour}`;
+    const lastHourlySent = await env.BGDISPLAY_CONFIG.get(`${hourlyKey}_pushover_sent`);
+    if (lastHourlySent !== today) {
+      const digest = await env.BGDISPLAY_CONFIG.get(hourlyKey, { type: "json" });
+      if (digest && digest.date === today) {
+        const title = "BGDisplay — Hourly Update";
+        const message = digest.text.slice(0, 1024);
+        const ok = await sendPushoverNotification(creds.user_key, creds.api_token, message, title);
+        if (ok) {
+          await env.BGDISPLAY_CONFIG.put(`${hourlyKey}_pushover_sent`, today);
+          await appendChangeLog(env, `Hourly digest sent via Pushover (hour ${currentHour})`);
+        }
+      }
+    }
   }
 }
 
@@ -1977,16 +2131,21 @@ export default {
 
   // ─── Scheduled handler (cron triggers) ──────────────────────────────────────
   async scheduled(event, env, ctx) {
-    // "0 11,12 * * *" = daily digest at 6AM CST/CDT (guarded internally to run once/day)
-    // "*/5 * * * *"   = Pushover BG alert check
-    if (event.cron === "0 11,12 * * *" || event.cron === "0 11 * * *" || event.cron === "0 12 * * *") {
-      ctx.waitUntil(generateDailyDigest(env));
+    // "45 12,13 * * *" = daily digest at 7:45 AM CST/CDT (guarded internally to run once/day)
+    // "0 14-23 * * *"  = hourly summaries (2 PM-11 PM UTC ≈ 8 AM-5 PM local)
+    // "0 0-5 * * *"    = hourly summaries (midnight-5 AM UTC ≈ 6 PM-11 PM local previous day)
+    // "*/5 * * * *"    = Pushover BG alert check and digest pushes
+    if (event.cron === "45 12,13 * * *" || event.cron === "45 12 * * *" || event.cron === "45 13 * * *") {
+      ctx.waitUntil(generateDailyDigest(env, false, "daily"));
+    } else if (event.cron === "0 14-23 * * *" || event.cron === "0 0-5 * * *" || /^0 (1[4-9]|2[0-3]|[0-5]) \* \* \*$/.test(event.cron)) {
+      ctx.waitUntil(generateDailyDigest(env, false, "hourly"));
     } else if (event.cron === "*/5 * * * *") {
       ctx.waitUntil(runPushoverAlertCheck(env));
       ctx.waitUntil(sendDigestPushover(env));
     } else {
-      // Both crons fire independently; handle by content
-      ctx.waitUntil(generateDailyDigest(env));
+      // Fallback: handle both
+      ctx.waitUntil(generateDailyDigest(env, false, "daily"));
+      ctx.waitUntil(generateDailyDigest(env, false, "hourly"));
       ctx.waitUntil(runPushoverAlertCheck(env));
     }
   },

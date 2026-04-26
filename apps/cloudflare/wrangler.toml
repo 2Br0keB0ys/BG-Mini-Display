@@ -27,7 +27,8 @@ new_classes = ["ConfigSyncRelay"]
 binding = "AI"
 
 # Cron triggers:
-#   Feature 2 — daily digest at 6 AM CST (12 UTC) and 6 AM CDT (11 UTC); guard inside prevents double-run
+#   Feature 2 — daily digest at 7:45 AM CST (1:45 PM UTC) and 7:45 AM CDT (12:45 PM UTC)
+#   Feature 3 — hourly summaries 8 AM-11 PM (1-5 PM UTC for CDT, 2-5 AM+1 UTC for CST, plus midnight-5 AM wrap)
 #   Feature 4 — Pushover BG alert check every 5 minutes
 [triggers]
-crons = ["0 11,12 * * *", "*/5 * * * *"]
+crons = ["45 12,13 * * *", "0 14-23 * * *", "0 0-5 * * *", "*/5 * * * *"]

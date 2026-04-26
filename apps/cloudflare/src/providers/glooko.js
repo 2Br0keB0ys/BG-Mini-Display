@@ -8,6 +8,7 @@ const KNOWN_SERVERS = {
 const ENDPOINTS = {
   login: "/api/v2/users/sign_in",
   latestCgmReadings: "/api/v2/cgm/readings",
+  graphData: "/api/v3/graph/data",
   lastGuid: "1e0c094e-1e54-4a4f-8e6a-f94484b53789",
 };
 
@@ -110,6 +111,131 @@ function pickReadingsArray(payload) {
   return [];
 }
 
+async function authenticateGlooko(config, fetchImpl, signal) {
+  const baseUrl = buildBaseUrl(config);
+  const response = await fetchImpl(`${baseUrl}${ENDPOINTS.login}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json, text/plain, */*",
+    },
+    body: JSON.stringify({
+      userLogin: {
+        email: config.email,
+        password: config.password,
+      },
+      deviceInformation: {
+        deviceModel: "BGDisplay",
+      },
+    }),
+    signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Glooko login failed (${response.status})`);
+  }
+
+  const cookie = parseSetCookie(response.headers);
+  const user = await response.json();
+  const patientCode = getPatientCode(user);
+  if (!patientCode) {
+    throw new Error("Glooko login response missing patient code");
+  }
+
+  return { baseUrl, cookie, patientCode };
+}
+
+function coerceSeriesArray(payload, name) {
+  const series = payload?.series || payload || {};
+  const arr = series?.[name];
+  return Array.isArray(arr) ? arr : [];
+}
+
+function parseEpochSeconds(value) {
+  if (value === null || value === undefined) return 0;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  if (n > 1e12) return Math.floor(n / 1000);
+  return Math.floor(n);
+}
+
+function latestByTimestamp(items) {
+  let latest = null;
+  let latestTs = 0;
+  for (const item of items || []) {
+    const ts = parseEpochSeconds(item?.timestamp ?? item?.x ?? item?.date ?? item?.ts);
+    if (ts > latestTs) {
+      latestTs = ts;
+      latest = item;
+    }
+  }
+  return { item: latest, ts: latestTs };
+}
+
+export async function fetchGlookoPumpSnapshot(config, deps = {}) {
+  const fetchImpl = deps.fetchImpl || fetch;
+  const nowFn = deps.now || (() => new Date());
+  const signal = deps.signal;
+
+  if (!config || !config.email || !config.password) {
+    throw new Error("Glooko pump snapshot requires email and password");
+  }
+
+  const auth = await authenticateGlooko(config, fetchImpl, signal);
+  const end = nowFn();
+  const start = new Date(end.getTime() - 3 * 24 * 60 * 60 * 1000);
+
+  const endpoint = new URL(ENDPOINTS.graphData, auth.baseUrl);
+  endpoint.searchParams.set("patient", auth.patientCode);
+  endpoint.searchParams.set("startDate", start.toISOString());
+  endpoint.searchParams.set("endDate", end.toISOString());
+  endpoint.searchParams.set("locale", "en-GB");
+  endpoint.searchParams.append("series[]", "deliveredBolus");
+  endpoint.searchParams.append("series[]", "setSiteChange");
+  endpoint.searchParams.append("series[]", "reservoirChange");
+
+  const response = await fetchImpl(endpoint.toString(), {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      Cookie: auth.cookie,
+      "X-Requested-With": "XMLHttpRequest",
+    },
+    signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Glooko pump snapshot fetch failed (${response.status})`);
+  }
+
+  const payload = await response.json();
+  const boluses = coerceSeriesArray(payload, "deliveredBolus");
+  const siteChanges = coerceSeriesArray(payload, "setSiteChange");
+  const reservoirChanges = coerceSeriesArray(payload, "reservoirChange");
+
+  const latestBolus = latestByTimestamp(boluses);
+  const latestSite = latestByTimestamp(siteChanges);
+  const latestReservoir = latestByTimestamp(reservoirChanges);
+
+  const bolusUnits = Number(
+    latestBolus.item?.insulinDelivered ??
+    latestBolus.item?.y ??
+    latestBolus.item?.value ??
+    -1,
+  );
+  const iob = Number(latestBolus.item?.insulinOnBoard ?? -1);
+  const podChangeTs = Math.max(latestSite.ts || 0, latestReservoir.ts || 0);
+
+  return {
+    insulin_on_board: Number.isFinite(iob) ? iob : -1,
+    last_bolus_units: Number.isFinite(bolusUnits) ? bolusUnits : -1,
+    last_bolus_timestamp: latestBolus.ts || 0,
+    pod_change_timestamp: podChangeTs || 0,
+    timestamp: Math.floor(end.getTime() / 1000),
+    source: "glooko",
+  };
+}
+
 /**
  * Create an isolated Glooko data provider.
  * No env lookups and no internal timers; all config and dependencies are injected.
@@ -126,40 +252,6 @@ export function createGlookoProvider(config, deps = {}) {
     throw new Error("Glooko provider requires email and password");
   }
 
-  async function authenticate(signal) {
-    const baseUrl = buildBaseUrl(config);
-    const response = await fetchImpl(`${baseUrl}${ENDPOINTS.login}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json, text/plain, */*",
-      },
-      body: JSON.stringify({
-        userLogin: {
-          email: config.email,
-          password: config.password,
-        },
-        deviceInformation: {
-          deviceModel: "BGDisplay",
-        },
-      }),
-      signal,
-    });
-
-    if (!response.ok) {
-      throw new Error(`Glooko login failed (${response.status})`);
-    }
-
-    const cookie = parseSetCookie(response.headers);
-    const user = await response.json();
-    const patientCode = getPatientCode(user);
-    if (!patientCode) {
-      throw new Error("Glooko login response missing patient code");
-    }
-
-    return { baseUrl, cookie, patientCode };
-  }
-
   return {
     async fetchReadings(options = {}) {
       const signal = options.signal;
@@ -169,7 +261,7 @@ export function createGlookoProvider(config, deps = {}) {
       const minutes = Math.max(5, Math.ceil((now.getTime() - since.getTime()) / (5 * 60 * 1000)) * 5);
       const limit = Math.max(1, options.limit || Math.ceil(minutes / 5));
 
-      const auth = await authenticate(signal);
+      const auth = await authenticateGlooko(config, fetchImpl, signal);
       const endpoint = buildReadingsUrl(auth.baseUrl, auth.patientCode, since, now, limit);
 
       const response = await fetchImpl(endpoint.toString(), {
