@@ -3,26 +3,17 @@
 		{
 			"name": "bgdisplay-root",
 			"path": "../.."
-		},
-		{
-			"name": "cloudflare",
-			"path": "../../cloudflare"
-		},
-		{
-			"name": "firmware",
-			"path": "../../firmware"
-		},
-		{
-			"name": "pages",
-			"path": "../../pages"
-		},
-		{
-			"name": "firmware-bgdisplay",
-			"path": "."
 		}
 	],
 	"settings": {
 		"claudeCode.useTerminal": true,
-		"debug.terminal.clearBeforeReusing": true
+		"debug.terminal.clearBeforeReusing": true,
+		"files.exclude": {
+			"**/.pio": true,
+			"**/.wrangler": true,
+			"**/node_modules": true,
+			"**/.DS_Store": true,
+			"**/Thumbs.db": true
+		}
 	}
 }
