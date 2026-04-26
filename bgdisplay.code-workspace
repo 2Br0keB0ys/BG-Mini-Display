@@ -3,6 +3,10 @@
     {
       "name": "bgdisplay-root",
       "path": "."
+    },
+    {
+      "name": "bgdisplay-firmware",
+      "path": "firmware/bgdisplay"
     }
   ],
   "settings": {

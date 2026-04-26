@@ -6,6 +6,8 @@ Thumbs.db
 
 # Firmware build artifacts
 firmware/bgdisplay/.pio/
+.pio/
+firmware/bgdisplay/src/*.ino.cpp
 
 # Local editor/workspace state
 **/.vscode/
