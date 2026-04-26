@@ -55,7 +55,7 @@ The main sketch is `bgdisplay.ino`. All modules are header-only files included b
 | `crypto.h` | AES-128-CBC via mbedTLS; key derived from unique ESP32 chip ID — stolen device = unreadable data |
 | `nightscout.h` | Polls `/api/v1/entries.json`, extracts sgv + trend + timestamp |
 | `dexcom.h` | Two-step Share API auth (email or phone), 4h session TTL, US/international regions |
-| `glooko.h` | Optional Glooko Omnipod status fetch (pod-focused data only) |
+| `glooko.h` | Pump data status fetch — supports multiple sources: Glooko (direct API), Tandem, Medtronic, Tidepool. Returns IOB, last bolus, pod change data. |
 | `wifi_setup.h` | AP mode captive portal on 192.168.4.1 for first-boot WiFi setup only; generates WiFi QR code |
 | `sd_logger.h` | Encrypted JSON log rotation at 100KB; uses same chip-derived key (different salt: `BGDisplay_SD_v1`) |
 | `ota.h` | `ArduinoOTA` — active when `ENABLE_OTA=1` (default) |
@@ -71,7 +71,7 @@ The main sketch is `bgdisplay.ino`. All modules are header-only files included b
 - **Log upload:** Firmware uploads decrypted SD logs to `/api/log-upload` every 2 minutes (small payload) and on `upload-logs` command.
 - **Auth:** Requests signed with HMAC-SHA256 (method + path + timestamp + nonce + body hash). API keys auto-rotate every 7 days with 48h overlap window.
 - **BG poll backoff:** On 3+ consecutive failures, poll interval is floored to 3 min; on 8+, floored to 5 min.
-- **Omnipod data poll:** Optional Worker-proxied Glooko Omnipod fetch every 30+ minutes (`glooko_poll_min`, clamped to 30-240).
+- **Pump data poll:** Optional multi-source pump sync (Glooko, Tandem, Medtronic, Tidepool) every 30+ minutes (`glooko_poll_min`, clamped to 30-240). Fetches IOB, last bolus, reservoir, pod expiry (if available).
 - **Credential handling:** Glooko endpoint/token are stored in cloud config and never sent to firmware `/api/config` payloads.
 - **Daily auto-reboot:** At 3:00 AM local time, once per calendar day, after device has been up 10+ min.
 - **Power button:** Single click → immediate config sync (DND wake). Hold once → arms factory reset; hold again within 10s → confirms factory reset.
@@ -93,8 +93,15 @@ Single file handling all backend logic. Two KV namespaces:
 
 **Bindings:**
 - `CONFIG_SYNC` — Durable Object (`ConfigSyncRelay`) for WebSocket relay; one instance per device
-- `AI` — Workers AI binding (used by `generateDailyDigest()`)
+- `AI` — Workers AI binding (used by `generateDailyDigest()` and `generateHourlyDigest()`)
 - `KV_ENCRYPT_KEY` — Worker secret (set via `wrangler secret put`); AES-256-GCM key for encrypting Pushover credentials in KV. If unset, Pushover credentials cannot be stored.
+
+**Pump Provider Modules** (`apps/cloudflare/src/providers/`):
+- `glooko.js` — Glooko API integration; direct pump data fetch (IOB, last bolus, pod change)
+- `tandem.js` — Tandem t:slim / Control-IQ API integration for pump data
+- `medtronic.js` — Medtronic CareLink API integration for MiniMed pump data
+- `tidepool.js` — Tidepool API integration for multi-device pump data fetch
+All adapters follow a common interface: authenticate, fetch latest pump data, return standardized `{insulin_on_board, last_bolus_units, last_bolus_timestamp, pod_change_timestamp, ...}` object.
 
 **Device endpoints** (X-Device-Key + HMAC signature auth):
 
@@ -135,8 +142,9 @@ Single file handling all backend logic. Two KV namespaces:
 | POST | `/mcp` | MCP server — tool calls for BG data, config read, digest |
 
 **Cron triggers** (defined in `wrangler.toml`):
-- `0 11,12 * * *` — `generateDailyDigest()`: generates AI summary via `@cf/meta/llama-3.1-8b-instruct` using last 24h of Nightscout readings. Guard inside prevents double-run on the same UTC day. Stores result in KV key `daily_digest`.
-- `*/5 * * * *` — `runPushoverAlertCheck()`: fetches latest BG from Nightscout, sends Pushover notification if critically low/high and cooldown has elapsed.
+- `45 12,13 * * *` — `generateDailyDigest(env, false, "daily")`: generates daily AI summary via `@cf/meta/llama-3.1-8b-instruct` using last 24h of Nightscout readings at 7:45 AM US/Central. Guard prevents double-run per calendar day. Stores in KV key `daily_digest`. Pushes to Pushover at configured hour if enabled.
+- `0 14-23 * * *` + `0 0-5 * * *` — `generateDailyDigest(env, false, "hourly")`: generates hourly summaries (1-hour window) every hour 8 AM–11 PM US/Central. Stored per-hour in KV keys like `hourly_digest_14`. Pushes to Pushover if digest push enabled. Uses shorter AI prompts (1-2 sentences, 120 token limit).
+- `*/5 * * * *` — `runPushoverAlertCheck()` + `sendDigestPushover()`: checks critical BG thresholds and sends Pushover notifications; also handles daily/hourly digest Pushover pushes on schedule.
 
 **Durable Object — `ConfigSyncRelay`:** Holds WebSocket connections for the device. When admin saves config (version bump), the worker broadcasts a `{"type":"config-changed","version":N}` message to all connected sockets, triggering an immediate device pull.
 
@@ -150,7 +158,7 @@ Security features: replay protection (nonce + ±5min timestamp), IP-based rate l
 
 Single HTML file — no build step. Dark mode only. `WORKER_URL` is hardcoded at the top of the `<script>` block and must be edited before deploying. Section open/closed state persists in `localStorage`. Render is fully string-template based — `render()` rebuilds the entire `#app` innerHTML each call. DND times are displayed and stored in 12-hour format in the UI, converted to 24-hour on save.
 
-**Sections:** Display, BG Sources (Nightscout + Dexcom), Alerts/DND, **Pushover alerts** (enable toggle, user key, API token, cooldown — creds sent to worker separately, not stored in config JSON), **Daily AI Digest** (shows today's digest text + schedule info), Security, Advanced.
+**Sections:** Display, BG Sources (Nightscout + Dexcom), Alerts/DND, **Pushover alerts** (enable toggle, user key, API token, cooldown — creds sent to worker separately, not stored in config JSON), **EndoAI** (shows today's AI-generated glucose summary text, generation button, model info, schedule details, Pushover push controls with time selector), Security, Advanced. **Top controls:** Global "Expand all" and "Collapse all" buttons for quick section navigation (state persisted in localStorage).
 
 ### Scripts (`firmware/bgdisplay/scripts/`)
 

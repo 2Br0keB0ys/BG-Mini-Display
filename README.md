@@ -99,9 +99,10 @@ From plain Windows shell, `pio` may need full path:
 Use the Cloudflare Pages UI for:
 - Display preferences
 - Dexcom and Nightscout credentials
-- Glooko Omnipod endpoint/token and 30-minute pod status polling
+- **Pump data source** (Glooko, Tandem, Medtronic, Tidepool) with 30+ minute polling
 - Alert thresholds and DND
-- Pushover alerts and daily digest push
+- **Pushover phone alerts** and digest push
+- **EndoAI** — AI-powered glucose summaries (daily at 7:45 AM, hourly 8 AM–11 PM)
 - Security and advanced options
 
 ## Display Features
@@ -109,8 +110,9 @@ Use the Cloudflare Pages UI for:
 ### Main Screen
 - **Large BG value** with trend arrow (updated every 5 minutes)
 - **Sparkline history** (24-point glucose trend chart)
-- **Omnipod summary line** (if Glooko enabled):
+- **Pump status line** (if pump data sync enabled):
     - Format: `Pod ON/OFF IOB X.XU Res X.XU Exp XhYZm`
+    - Supports **Glooko, Tandem, Medtronic, Tidepool** data sources
     - **Color-coded clinical thresholds:**
         - **GREEN:** Healthy (Res >25U, Exp >8h)
         - **YELLOW:** Warning (Res 15-25U, Exp 4-8h)
@@ -118,11 +120,16 @@ Use the Cloudflare Pages UI for:
         - **RED:** Critical (Res ≤5U, Exp <1h)
     - Color reflects most critical condition (reservoir or expiry)
 - **Status bar** with connection indicators and timestamp
+- **EndoAI Digest Display** (on boot): AI-generated glucose summary shown for 10 seconds, replayed via bottom-left tap
 
 ### Settings Menu
-- Dexcom, Nightscout, and Glooko Omnipod connection status
-- Alert and DND settings
-- Display brightness and theme options
+- Dexcom, Nightscout, and pump data source connection status
+- **EndoAI** section with today's summary, generation button, and hourly/daily schedule
+- Pump data source selection (Glooko, Tandem, Medtronic, Tidepool)
+- Alert and DND settings with per-day customization
+- Pushover phone alerts and digest push scheduling
+- Display brightness, timezone, and theme options
+- **Expand all / Collapse all** buttons for quick section navigation
 
 ## Troubleshooting
 
@@ -138,5 +145,7 @@ Use the Cloudflare Pages UI for:
 
 - OTA is implemented via `ArduinoOTA` when enabled in firmware.
 - Cellular fallback is a planned hardware path and not currently active.
-- There is no supported public direct Omnipod cloud API in this project; Omnipod data is integrated via Glooko endpoint polling.
-- See `CLAUDE.md` for endpoint lists, auth model, and full architecture details.
+- **Pump data sources:** Direct integrations with Glooko, Tandem, Medtronic, and Tidepool APIs
+- **EndoAI:** Daily summaries generated at 7:45 AM US/Central; hourly summaries every hour 8 AM–11 PM. Both can push to Pushover if credentials configured.
+- **Build optimizations:** Firmware uses Link-Time Optimization (`-flto`), disabled RTTI/exceptions, and `-O2` for fast compilation.
+- See `CLAUDE.md` for endpoint lists, auth model, pump provider details, and full architecture.
