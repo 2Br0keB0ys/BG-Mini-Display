@@ -24,12 +24,15 @@ pio device monitor              # serial monitor
 ```
 Flash requires USB-C connection to M5Stack Core2 at 1500000 baud. OTA is implemented via `ArduinoOTA` — hostname `bgdisplay-{last4-chip-id}.local`, password = device key.
 
+`pio` is installed inside VS Code's PlatformIO extension. From a plain shell use the full path: `~/.platformio/penv/Scripts/pio.exe` (Windows).
+
 ### Cloudflare Worker & Pages
 ```bash
 cd cloudflare
 npm run deploy:worker           # wrangler deploy (worker)
 npm run deploy:pages            # wrangler pages deploy (UI)
-npm run validate                # node syntax check on worker.js
+npm run deploy:all              # both in sequence
+node --check src/worker.js      # syntax check (no validate script)
 ```
 
 ### CI
@@ -46,20 +49,21 @@ The main sketch is `bgdisplay.ino`. All modules are header-only files included b
 | File | Responsibility |
 |------|---------------|
 | `config.h` | `AppConfig` struct (~40 fields), NVS save/load with AES-128-CBC encryption for sensitive fields |
-| `display.h` | Off-screen rendering via M5Canvas (double-buffering), dirty tracking, BG color coding, trend arrows, BG sparkline (24-pt history), battery meter |
+| `display.h` | Off-screen rendering via M5Canvas (double-buffering), dirty tracking, BG color coding, trend arrows, BG sparkline (24-pt history), battery meter, AI digest screen (`showDigestScreen`) |
 | `crypto.h` | AES-128-CBC via mbedTLS; key derived from unique ESP32 chip ID — stolen device = unreadable data |
 | `nightscout.h` | Polls `/api/v1/entries.json`, extracts sgv + trend + timestamp |
 | `dexcom.h` | Two-step Share API auth (email or phone), 4h session TTL, US/international regions |
 | `wifi_setup.h` | AP mode captive portal on 192.168.4.1 for first-boot WiFi setup only; generates WiFi QR code |
 | `sd_logger.h` | Encrypted JSON log rotation at 100KB; uses same chip-derived key (different salt: `BGDisplay_SD_v1`) |
 | `ota.h` | `ArduinoOTA` — active when `ENABLE_OTA=1` (default) |
+| `ws_sync.h` | Persistent WSS client to `/api/ws` (Durable Object relay); any `config-changed` push triggers immediate `pullCloudflareConfig()` |
 
 **NVS encrypted fields:** `deviceKey`, `wifiPass`, `nightscoutSecret`, `dexcomUser`, `dexcomPass`. All other fields stored plain. Salt: `BGDisplay_NVS_v1`.
 
 **Key patterns:**
 - **BG source priority:** Dexcom Share is tried first; Nightscout is the fallback. Both failing → display `---` and "STALE" banner after `staleDataWarnMin`.
 - **Display:** All drawing to off-screen `M5Canvas` sprite, pushed atomically to avoid flicker. Redraws only on dirty data (BG value, trend, time, RSSI coarse, stale state, key error). Includes BG sparkline and battery % top-right.
-- **Config sync:** Device pings `GET /api/ping?v={version}` capped at every 60s; only fetches full config on version change.
+- **Config sync:** WebSocket connection to `/api/ws` (Durable Object relay) is the primary push channel — on `config-changed` message the device immediately calls `pullCloudflareConfig()`. HTTPS ping fallback: 30s when WS is disconnected, `configPingMin` (capped 5 min) when WS is up.
 - **Command poll:** Device polls `GET /api/command` every 60s for remote commands (`reboot`, `sync-now`, `upload-logs`, `factory-reset`). Commands are HMAC-signed envelopes verified by firmware.
 - **Log upload:** Firmware uploads decrypted SD logs to `/api/log-upload` every 2 minutes (small payload) and on `upload-logs` command.
 - **Auth:** Requests signed with HMAC-SHA256 (method + path + timestamp + nonce + body hash). API keys auto-rotate every 7 days with 48h overlap window.
@@ -71,17 +75,27 @@ The main sketch is `bgdisplay.ino`. All modules are header-only files included b
 - **NVS encryption:** Chip ID acts as hardware root-of-trust. Same key used for SD logs (different salt).
 - **Stack:** `ARDUINO_LOOP_STACK_SIZE=16384` in `platformio.ini` (prevents overflow crash).
 - **Timezone support:** US/Central, US/Eastern, US/Mountain, US/Pacific (mapped to POSIX strings). NTP: NIST primary → public pool fallback.
+- **AI Daily Digest:** On boot (after WiFi + config), firmware calls `GET /api/digest`. If a digest is available, `showDigestScreen()` displays it for 10 s. Bottom-left tap (x<160, y>170) on the main screen replays the digest. Global `gDigestText[512]` holds it in memory.
+- **WebSocket reconnect:** `ws_sync.h` uses 8 s reconnect interval. WS event handler is flag-only (sets `_wsTriggerPull`); the actual config pull happens in `wsTick()` after `_wsClient.loop()` returns to avoid re-entrancy.
 
 ### Cloudflare Worker (`cloudflare/src/worker.js`)
 
+Current worker version: `2.0.0` (set in `wrangler.toml` `WORKER_VERSION` var).
+
 Single file handling all backend logic. Two KV namespaces:
-- `BGDISPLAY_CONFIG`: config JSON, version counter, changelog (50 entries), device status, telemetry (720 points), SD logs, commands
+- `BGDISPLAY_CONFIG`: config JSON, version counter, changelog (50 entries), device status, telemetry (720 points), SD logs, commands, `daily_digest`, `pushover_creds`, `last_pushover_alert`
 - `BGDISPLAY_AUTH`: key hashes + recovery key hash, nonce cache, rate limit buckets, admin sessions, lockout state
+
+**Bindings:**
+- `CONFIG_SYNC` — Durable Object (`ConfigSyncRelay`) for WebSocket relay; one instance per device
+- `AI` — Workers AI binding (used by `generateDailyDigest()`)
+- `KV_ENCRYPT_KEY` — Worker secret (set via `wrangler secret put`); AES-256-GCM key for encrypting Pushover credentials in KV. If unset, Pushover credentials cannot be stored.
 
 **Device endpoints** (X-Device-Key + HMAC signature auth):
 
 | Method | Path | Purpose |
 |--------|------|---------|
+| GET | `/api/ws` | WebSocket upgrade → Durable Object relay |
 | GET | `/api/ping?v=N` | Lightweight version check |
 | GET | `/api/config` | Full config pull + key rotation |
 | POST | `/api/key-ack` | ACK key rotation |
@@ -89,14 +103,15 @@ Single file handling all backend logic. Two KV namespaces:
 | GET | `/api/command` | Poll for pending command |
 | POST | `/api/command-ack` | ACK command execution |
 | POST | `/api/log-upload` | Upload decrypted SD logs |
+| GET | `/api/digest` | Fetch today's AI digest text (204 = none yet) |
 
 **Admin endpoints** (Cloudflare Access JWT + scoped session token):
 
 | Method | Path | Purpose |
 |--------|------|---------|
 | GET | `/api/admin/session` | Issue session token |
-| GET | `/api/admin/config` | Fetch config + all metadata |
-| POST | `/api/admin/config` | Save config, bump version |
+| GET | `/api/admin/config` | Fetch config + all metadata (includes `digest`, `pushoverConfigured`) |
+| POST | `/api/admin/config` | Save config, bump version; Pushover creds stored separately encrypted |
 | GET | `/api/admin/metrics` | Standalone telemetry metrics |
 | GET | `/api/admin/maintenance` | Maintenance signals |
 | POST | `/api/admin/command` | Queue device command |
@@ -105,16 +120,37 @@ Single file handling all backend logic. Two KV namespaces:
 | GET | `/api/admin/export` | Download config JSON |
 | POST | `/api/admin/import` | Restore config |
 | POST | `/api/admin/clear-log` | Wipe changelog |
+| GET | `/api/admin/digest` | View today's cached AI digest |
+
+**MCP endpoint** (JSON-RPC 2.0, device-key auth):
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/mcp` | MCP server — tool calls for BG data, config read, digest |
+
+**Cron triggers** (defined in `wrangler.toml`):
+- `0 11,12 * * *` — `generateDailyDigest()`: generates AI summary via `@cf/meta/llama-3.1-8b-instruct` using last 24h of Nightscout readings. Guard inside prevents double-run on the same UTC day. Stores result in KV key `daily_digest`.
+- `*/5 * * * *` — `runPushoverAlertCheck()`: fetches latest BG from Nightscout, sends Pushover notification if critically low/high and cooldown has elapsed.
+
+**Durable Object — `ConfigSyncRelay`:** Holds WebSocket connections for the device. When admin saves config (version bump), the worker broadcasts a `{"type":"config-changed","version":N}` message to all connected sockets, triggering an immediate device pull.
 
 **Recovery key:** A separate optional `bg_ro_*` key stored in auth KV. Accepted by firmware after a local flash wipe when the primary key is gone. Set via admin UI → Security section.
 
-Security features: replay protection (nonce + ±5min timestamp), IP-based rate limiting (general + device-write + admin-write buckets), IP lockout, request deduplication (`X-Request-Id`).
+Security features: replay protection (nonce + ±5min timestamp), IP-based rate limiting (general + device-write + admin-write buckets), IP lockout, request deduplication (`X-Request-Id`). Pushover API credentials never returned in API responses (redacted in `redactConfig()`).
 
 `normalizeConfig()` strips retired MQTT fields (`mqtt_host`, `mqtt_user`, `mqtt_pass`, `config_ping_sec`) from old backups on load.
 
 ### Config UI (`pages/index.html`)
 
-Single ~49KB HTML file — no build step. Dark mode only. `WORKER_URL` is hardcoded at the top of the `<script>` block and must be edited before deploying. Section open/closed state persists in `localStorage`. Render is fully string-template based — `render()` rebuilds the entire `#app` innerHTML each call. DND times are displayed and stored in 12-hour format in the UI, converted to 24-hour on save.
+Single HTML file — no build step. Dark mode only. `WORKER_URL` is hardcoded at the top of the `<script>` block and must be edited before deploying. Section open/closed state persists in `localStorage`. Render is fully string-template based — `render()` rebuilds the entire `#app` innerHTML each call. DND times are displayed and stored in 12-hour format in the UI, converted to 24-hour on save.
+
+**Sections:** Display, BG Sources (Nightscout + Dexcom), Alerts/DND, **Pushover alerts** (enable toggle, user key, API token, cooldown — creds sent to worker separately, not stored in config JSON), **Daily AI Digest** (shows today's digest text + schedule info), Security, Advanced.
+
+### Scripts (`firmware/bgdisplay/scripts/`)
+
+| Script | Purpose |
+|--------|---------|
+| `secure_provision.ps1` | ESP32 hardware security provisioning — burns flash encryption key + secure boot V1 key into eFuses, disables JTAG/download-mode decrypt. Dry-run by default; requires `-Apply` flag to make irreversible changes. Keys stored in `~/.bgdisplay-keys/`. **One-time operation per device — cannot be undone.** |
 
 ## Hardware
 
@@ -125,10 +161,12 @@ Single ~49KB HTML file — no build step. Dark mode only. `WORKER_URL` is hardco
 
 ## Setup Flow
 
-1. Flash firmware (with `secrets.h` containing real worker URL + device key)
-2. On first boot with no saved WiFi → AP mode (`BGDisplay-Setup-XXXX` network) — form only collects WiFi SSID + password
-3. Device connects to WiFi → immediately pulls full config from `/api/config` (gets Nightscout/Dexcom credentials from cloud)
-4. All future config changes via `https://setup.2brokeboys.uk` (Cloudflare Pages UI)
+1. Set Worker secrets: `wrangler secret put KV_ENCRYPT_KEY` (required for Pushover creds encryption)
+2. Deploy worker: `npm run deploy:worker` (creates Durable Object class on first deploy via migration tag `v1`)
+3. Flash firmware (with `secrets.h` containing real worker URL + device key)
+4. On first boot with no saved WiFi → AP mode (`BGDisplay-Setup-XXXX` network) — form only collects WiFi SSID + password
+5. Device connects to WiFi → immediately pulls full config from `/api/config`, opens WebSocket to `/api/ws`, fetches AI digest from `/api/digest`
+6. All future config changes via `https://setup.2brokeboys.uk` (Cloudflare Pages UI) — config saves trigger instant WS push to device
 
 ## Config Field Notes
 
