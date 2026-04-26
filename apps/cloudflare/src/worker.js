@@ -46,10 +46,15 @@ function normalizeDndSchedule(sched, fallbackFrom, fallbackTo) {
 const DEFAULT_CONFIG = {
   // WiFi
   wifi_ssid: "", wifi_pass: "", cellular_fallback: false, reconnect_attempts: 5,
-  // Nightscout (primary)
+  // Nightscout (fallback)
   nightscout_url: "", nightscout_secret: "",
-  // Dexcom (fallback)
+  // Dexcom (primary)
   dexcom_user: "", dexcom_pass: "", dexcom_region: "US",
+  // Glooko Omnipod (optional)
+  glooko_enabled: false,
+  glooko_omnipod_url: "",
+  glooko_token: "",
+  glooko_poll_min: 30,
   // Polling
   poll_interval_min: 5, stale_data_warn_min: 15, config_ping_min: 1,
   // BG thresholds
@@ -113,6 +118,7 @@ function normalizeConfig(cfg) {
   out.dnd_schedule = normalizeDndSchedule(out.dnd_schedule, out.dnd_from, out.dnd_to);
   out.pushover_alert_cooldown_min = Math.max(5, Math.min(60, Number(out.pushover_alert_cooldown_min || 15)));
   out.digest_pushover_hour = Math.max(0, Math.min(23, Number(out.digest_pushover_hour ?? 7)));
+  out.glooko_poll_min = Math.max(30, Math.min(240, Number(out.glooko_poll_min || 30)));
 
   const pumpType = String(out.insulin_pump_type || "none").trim().toLowerCase();
   out.insulin_pump_type = ["none", "pump", "patch-pump"].includes(pumpType) ? pumpType : "none";
@@ -310,6 +316,42 @@ async function fetchNightscoutHistory(config, count = 24) {
     if (!resp.ok) return [];
     return resp.json();
   } catch { return []; }
+}
+
+async function fetchGlookoOmnipod(config) {
+  if (!config.glooko_enabled || !config.glooko_omnipod_url) return null;
+  try {
+    const headers = { "Accept": "application/json" };
+    if (config.glooko_token) {
+      headers["Authorization"] = `Bearer ${config.glooko_token}`;
+    }
+    const resp = await fetch(config.glooko_omnipod_url, {
+      headers,
+      signal: AbortSignal.timeout(9000),
+    });
+    if (!resp.ok) return null;
+
+    const jsonBody = await resp.json();
+    const pod = (jsonBody && jsonBody.omnipod && typeof jsonBody.omnipod === "object") ? jsonBody.omnipod : jsonBody;
+    if (!pod || typeof pod !== "object") return null;
+
+    const active = (pod.pod_active ?? pod.active ?? false) === true;
+    const iob = Number(pod.insulin_on_board ?? pod.iob ?? -1);
+    const reservoir = Number(pod.reservoir_units ?? pod.reservoir ?? -1);
+    const minsToExpiry = Number(pod.minutes_to_expiry ?? pod.pod_expires_in_min ?? -1);
+    const rawTs = Number(pod.timestamp ?? pod.ts ?? jsonBody.timestamp ?? 0);
+    const tsSec = rawTs > 1000000000000 ? Math.floor(rawTs / 1000) : rawTs;
+
+    return {
+      pod_active: active,
+      insulin_on_board: Number.isFinite(iob) ? iob : -1,
+      reservoir_units: Number.isFinite(reservoir) ? reservoir : -1,
+      minutes_to_expiry: Number.isFinite(minsToExpiry) ? Math.floor(minsToExpiry) : -1,
+      timestamp: Number.isFinite(tsSec) ? tsSec : 0,
+    };
+  } catch {
+    return null;
+  }
 }
 
 // ─── DND Window Check (Worker-side, for cron Pushover guard) ──────────────────
@@ -605,7 +647,7 @@ const MCP_TOOLS = [
 
 function redactConfig(config) {
   const redacted = { ...config };
-  for (const k of ["wifi_pass", "nightscout_secret", "dexcom_pass", "dexcom_user"]) {
+  for (const k of ["wifi_pass", "nightscout_secret", "dexcom_pass", "dexcom_user", "glooko_token"]) {
     if (redacted[k]) redacted[k] = "••••••••";
   }
   return redacted;
@@ -1019,6 +1061,13 @@ async function updateDeviceStatus(env, ip, body, config) {
     nsOk: body.nsOk ?? 0, nsFail: body.nsFail ?? 0,
     dexOk: body.dexOk ?? 0, dexFail: body.dexFail ?? 0,
     bgPollFailStreak: body.bgPollFailStreak ?? 0,
+    omnipodConfigured: !!body.omnipodConfigured,
+    omnipodValid: !!body.omnipodValid,
+    omnipodActive: !!body.omnipodActive,
+    omnipodIob: body.omnipodIob ?? null,
+    omnipodReservoir: body.omnipodReservoir ?? null,
+    omnipodMinsToExp: body.omnipodMinsToExp ?? null,
+    omnipodDataTs: body.omnipodDataTs ?? null,
   };
   await env.BGDISPLAY_CONFIG.put("device_status", JSON.stringify(status));
 
@@ -1124,7 +1173,10 @@ export default {
       if (auth.pendingKeyHash && keyHash === auth.pendingKeyHash) {
         await promoteKey(env, auth); await clearFailedAuth(env, ip);
         const version = await getConfigVersion(env);
-        return json({ config, config_version: version, ts: Date.now(), keyConfirmed: true });
+        const deviceConfig = { ...config };
+        delete deviceConfig.glooko_token;
+        delete deviceConfig.glooko_omnipod_url;
+        return json({ config: deviceConfig, config_version: version, ts: Date.now(), keyConfirmed: true });
       }
       if (!isDeviceKeyValid(auth, keyHash)) {
         await recordFailedAuth(env, ip, config.lockout_attempts || 5, config.lockout_duration_min || 15);
@@ -1137,7 +1189,10 @@ export default {
       const pendingKey = await handleAutoRotation(env, auth);
       auth = await env.BGDISPLAY_CONFIG.get("auth", { type: "json" });
       const version = await getConfigVersion(env);
-      const resp = { config, config_version: version, ts: Date.now() };
+      const deviceConfig = { ...config };
+      delete deviceConfig.glooko_token;
+      delete deviceConfig.glooko_omnipod_url;
+      const resp = { config: deviceConfig, config_version: version, ts: Date.now() };
       if (pendingKey) { resp.newKey = pendingKey; resp.rotateNow = true; }
       return json(resp);
     }
@@ -1251,6 +1306,20 @@ export default {
       return json({ ok: true });
     }
 
+    // ── GET /api/omnipod — Device fetches proxied Omnipod status ─────────────
+    if (path === "/api/omnipod" && method === "GET") {
+      const deviceKey = request.headers.get("X-Device-Key");
+      if (!deviceKey) return json({ error: "Missing key" }, 401);
+      const keyHash = await sha256(deviceKey);
+      if (!isDeviceKeyValid(auth, keyHash)) return json({ error: "Invalid key" }, 401);
+      const sig = await verifyDeviceSignature(request, env, keyHash, "");
+      if (!sig.ok) return json({ error: sig.error }, 401);
+
+      const pod = await fetchGlookoOmnipod(config);
+      if (!pod) return json({ available: false, ts: Date.now() });
+      return json({ available: true, omnipod: pod, ts: Date.now() });
+    }
+
     // ── GET /api/digest — Device fetches AI daily summary ────────────────────
     if (path === "/api/digest" && method === "GET") {
       const deviceKey = request.headers.get("X-Device-Key");
@@ -1334,6 +1403,9 @@ export default {
       if (secretMeta.dexcomPassUpdatedAt && now - secretMeta.dexcomPassUpdatedAt > 30 * 86400000) {
         reminders.push({ key: "dexcom_pass", msg: "Dexcom password older than 30 days" });
       }
+      if (secretMeta.glookoTokenUpdatedAt && now - secretMeta.glookoTokenUpdatedAt > 30 * 86400000) {
+        reminders.push({ key: "glooko_token", msg: "Glooko token older than 30 days" });
+      }
 
       const configUpdatedAt = Number(await env.BGDISPLAY_CONFIG.get("config_updated_at") || 0) || null;
 
@@ -1403,6 +1475,9 @@ export default {
       }
       if (typeof body.dexcom_pass === "string" && body.dexcom_pass !== config.dexcom_pass) {
         secretMeta.dexcomPassUpdatedAt = Date.now();
+      }
+      if (typeof body.glooko_token === "string" && body.glooko_token !== config.glooko_token) {
+        secretMeta.glookoTokenUpdatedAt = Date.now();
       }
 
       const nowTs = Date.now();

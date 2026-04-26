@@ -35,6 +35,10 @@ struct AppConfig {
   char dexcomPass[64]="";
   char dexcomRegion[8]="US";
 
+  // Glooko Omnipod data
+  bool glookoEnabled=false;
+  int  glookoPollMin=30;
+
   // Polling
   int  pollIntervalMin=5;
   int  staleDataWarnMin=15;
@@ -71,6 +75,8 @@ inline void sanitizeConfig(AppConfig& c) {
   if (c.pollIntervalMin < 1) c.pollIntervalMin = 1;
   if (c.staleDataWarnMin < 1) c.staleDataWarnMin = 1;
   if (c.configPingMin < 1) c.configPingMin = 1;
+  if (c.glookoPollMin < 30) c.glookoPollMin = 30;
+  if (c.glookoPollMin > 240) c.glookoPollMin = 240;
 
   if (c.brightness < 0) c.brightness = 0;
   if (c.brightness > 100) c.brightness = 100;
@@ -107,6 +113,7 @@ inline void saveConfig(Preferences& p, const AppConfig& c) {
   p.putInt("pollMin",       c.pollIntervalMin);
   p.putInt("staleMin",      c.staleDataWarnMin);
   p.putInt("pingMin",       c.configPingMin);
+  p.putInt("gkPoll",        c.glookoPollMin);
   p.putInt("urgLow",        c.urgentLow);
   p.putInt("low",           c.low);
   p.putInt("high",          c.high);
@@ -115,6 +122,7 @@ inline void saveConfig(Preferences& p, const AppConfig& c) {
   p.putBool("showArrow",    c.showTrendArrow);
   p.putBool("clock24",      c.clock24hr);
   p.putBool("dndEnabled",   c.dndEnabled);
+  p.putBool("gkEn",         c.glookoEnabled);
   p.putInt("brightness",    c.brightness);
   p.putInt("autoDim",       c.autoDimMin);
   p.putInt("dimTo",         c.dimToPct);
@@ -152,6 +160,7 @@ inline void loadConfig(Preferences& p, AppConfig& c) {
   c.pollIntervalMin    = p.getInt("pollMin",5);
   c.staleDataWarnMin   = p.getInt("staleMin",15);
   c.configPingMin      = p.getInt("pingMin",1);
+  c.glookoPollMin      = p.getInt("gkPoll",30);
   c.urgentLow          = p.getInt("urgLow",55);
   c.low                = p.getInt("low",70);
   c.high               = p.getInt("high",180);
@@ -160,6 +169,7 @@ inline void loadConfig(Preferences& p, AppConfig& c) {
   c.showTrendArrow     = p.getBool("showArrow",true);
   c.clock24hr          = p.getBool("clock24",false);
   c.dndEnabled         = p.getBool("dndEnabled",false);
+  c.glookoEnabled      = p.getBool("gkEn",false);
   c.brightness         = p.getInt("brightness",75);
   c.autoDimMin         = p.getInt("autoDim",10);
   c.dimToPct           = p.getInt("dimTo",10);
