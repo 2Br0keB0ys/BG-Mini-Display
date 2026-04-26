@@ -32,6 +32,8 @@ cd apps/cloudflare
 npm run deploy:worker           # wrangler deploy (worker)
 npm run deploy:pages            # wrangler pages deploy to Pages production branch (UI)
 npm run deploy:all              # both in sequence
+npm run test:mcp                # MCP smoke test (metadata + tools/list)
+npm run test:mcp:bg             # MCP smoke test + live get_current_bg
 node --check src/worker.js      # syntax check (no validate script)
 ```
 

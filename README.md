@@ -42,6 +42,19 @@ Before first deploy, set Worker secrets as needed:
 wrangler secret put KV_ENCRYPT_KEY
 ```
 
+MCP smoke testing (using project test endpoint/key defaults):
+
+```bash
+cd apps/cloudflare
+npm run test:mcp
+npm run test:mcp:bg
+```
+
+- `test:mcp` verifies authenticated MCP metadata + `tools/list`.
+- `test:mcp:bg` additionally runs `get_current_bg`.
+- Override defaults when needed:
+    - `./scripts/test_mcp.ps1 -McpUrl "https://<worker>/mcp" -McpKey "bg_ro_..."`
+
 ## 2) Deploy Config UI (Cloudflare Pages)
 
 Edit `apps/pages/index.html` and set `WORKER_URL` at the top of the script block.
