@@ -77,6 +77,9 @@ const DEFAULT_CONFIG = {
   // Feature 4: Pushover alerts (non-sensitive fields only; credentials stored encrypted separately)
   pushover_enabled: false,
   pushover_alert_cooldown_min: 15,
+  // Feature 4b: Daily digest push to Pushover
+  digest_pushover_enabled: false,
+  digest_pushover_hour: 7,  // hour in US/Central time to send the digest (0–23)
   // AI context: insulin therapy / pump profile
   insulin_pump_type: "none",
   insulin_pump_brand: "",
@@ -109,6 +112,7 @@ function normalizeConfig(cfg) {
   out.dnd_use_schedule = out.dnd_use_schedule !== false;
   out.dnd_schedule = normalizeDndSchedule(out.dnd_schedule, out.dnd_from, out.dnd_to);
   out.pushover_alert_cooldown_min = Math.max(5, Math.min(60, Number(out.pushover_alert_cooldown_min || 15)));
+  out.digest_pushover_hour = Math.max(0, Math.min(23, Number(out.digest_pushover_hour ?? 7)));
 
   const pumpType = String(out.insulin_pump_type || "none").trim().toLowerCase();
   out.insulin_pump_type = ["none", "pump", "patch-pump"].includes(pumpType) ? pumpType : "none";
@@ -360,12 +364,12 @@ function directionToTrend(dir) {
 
 // ─── Feature 2: Daily AI Digest ────────────────────────────────────────────────
 
-async function generateDailyDigest(env) {
+async function generateDailyDigest(env, force = false) {
   const today = new Date().toISOString().slice(0, 10);
 
-  // Guard: only run once per calendar day
+  // Guard: only run once per calendar day (bypassed when force=true)
   const stored = await env.BGDISPLAY_CONFIG.get("daily_digest", { type: "json" });
-  if (stored?.date === today) return;
+  if (!force && stored?.date === today) return;
 
   const config = normalizeConfig(await env.BGDISPLAY_CONFIG.get("config", { type: "json" }));
 
@@ -436,6 +440,46 @@ async function generateDailyDigest(env) {
   };
   await env.BGDISPLAY_CONFIG.put("daily_digest", JSON.stringify(digest));
   await appendChangeLog(env, `Daily AI digest generated (TIR ${tir}%, ${values.length} readings)`);
+}
+
+// ─── Feature 4b: Digest Pushover Send ───────────────────────────────────────────
+
+async function sendDigestPushover(env) {
+  const config = normalizeConfig(await env.BGDISPLAY_CONFIG.get("config", { type: "json" }));
+  if (!config.digest_pushover_enabled) return;
+
+  // Decrypt Pushover credentials
+  let creds = null;
+  try {
+    const enc = await env.BGDISPLAY_CONFIG.get("pushover_creds");
+    if (enc && env.KV_ENCRYPT_KEY) {
+      const raw = await kvDecrypt(enc, env.KV_ENCRYPT_KEY);
+      if (raw) creds = JSON.parse(raw);
+    }
+  } catch {}
+  if (!creds?.user_key || !creds?.api_token) return;
+
+  // Already sent today?
+  const today = new Date().toISOString().slice(0, 10);
+  const lastSent = await env.BGDISPLAY_CONFIG.get("last_digest_pushover");
+  if (lastSent === today) return;
+
+  // Is it the configured hour in US/Central?
+  const nowCentral = new Date().toLocaleString("en-US", { timeZone: "America/Chicago", hour: "numeric", hour12: false });
+  const currentHour = Number(nowCentral) % 24;
+  if (currentHour !== config.digest_pushover_hour) return;
+
+  // Get today's digest
+  const digest = await env.BGDISPLAY_CONFIG.get("daily_digest", { type: "json" });
+  if (!digest || digest.date !== today) return;
+
+  const title = "BGDisplay — Daily Summary";
+  const message = digest.text.slice(0, 1024);
+  const ok = await sendPushoverNotification(creds.user_key, creds.api_token, message, title);
+  if (ok) {
+    await env.BGDISPLAY_CONFIG.put("last_digest_pushover", today);
+    await appendChangeLog(env, "Daily digest sent via Pushover");
+  }
 }
 
 // ─── Feature 4: Pushover Alert Check (runs every 5 min via cron) ──────────────
@@ -550,6 +594,11 @@ const MCP_TOOLS = [
   {
     name: "get_daily_digest",
     description: "Return today's AI-generated blood glucose morning summary",
+    inputSchema: { type: "object", properties: {}, required: [] },
+  },
+  {
+    name: "generate_digest",
+    description: "Force-generate today's AI blood glucose summary immediately, bypassing the once-per-day guard",
     inputSchema: { type: "object", properties: {}, required: [] },
   },
 ];
@@ -722,6 +771,13 @@ async function handleMCP(request, env, config, auth) {
       if (!digest) return mcpResult(id, { content: [{ type: "text", text: "No digest generated yet. Runs daily at 6 AM CST." }] });
       const txt = `Date: ${digest.date}\nGenerated: ${new Date(digest.generatedAt).toISOString()}\n\n${digest.text}`;
       return mcpResult(id, { content: [{ type: "text", text: txt }] });
+    }
+
+    if (toolName === "generate_digest") {
+      await generateDailyDigest(env, true);
+      const digest = await env.BGDISPLAY_CONFIG.get("daily_digest", { type: "json" });
+      if (!digest) return mcpResult(id, { content: [{ type: "text", text: "Digest generation failed." }] });
+      return mcpResult(id, { content: [{ type: "text", text: `Generated: ${digest.date}\n\n${digest.text}` }] });
     }
 
     return mcpError(id, -32601, `Tool not found: ${toolName}`);
@@ -1390,6 +1446,12 @@ export default {
       return json({ available: true, ...digest });
     }
 
+    if (path === "/api/admin/digest/generate" && method === "POST") {
+      await generateDailyDigest(env, true);
+      const digest = await env.BGDISPLAY_CONFIG.get("daily_digest", { type: "json" });
+      return json({ ok: true, digest: digest || null });
+    }
+
     if (path === "/api/admin/logs/latest" && method === "GET") {
       const meta = await env.BGDISPLAY_CONFIG.get("sdlog:last_meta", { type: "json" });
       const text = await env.BGDISPLAY_CONFIG.get("sdlog:last_text");
@@ -1506,6 +1568,7 @@ export default {
       ctx.waitUntil(generateDailyDigest(env));
     } else if (event.cron === "*/5 * * * *") {
       ctx.waitUntil(runPushoverAlertCheck(env));
+      ctx.waitUntil(sendDigestPushover(env));
     } else {
       // Both crons fire independently; handle by content
       ctx.waitUntil(generateDailyDigest(env));
