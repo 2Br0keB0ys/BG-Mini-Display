@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BGDisplay — Settings</title>
+<title>BG MiniView — Settings</title>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -186,7 +186,7 @@ input[type=text].wide,input[type=password].wide,input[type=url].wide{width:210px
 <div class="header">
   <div class="header-inner">
     <div class="logo"><svg viewBox="0 0 24 24"><path d="M12 2a7 7 0 017 7c0 5-7 13-7 13S5 14 5 9a7 7 0 017-7zm0 4a3 3 0 100 6 3 3 0 000-6z"/></svg></div>
-    <div><h1>BGDisplay</h1><div id="configMeta" class="header-meta">Last settings update: —</div></div>
+    <div><h1>BG MiniView</h1><div id="configMeta" class="header-meta">Last settings update: —</div></div>
     <div id="statusPill" class="status-pill offline"><span class="dot"></span>Loading...</div>
     <div class="save-bar"><button class="save-btn" onclick="saveConfig()">Save changes</button></div>
   </div>
@@ -833,7 +833,7 @@ function render(){
     field('Cloudflare Access','',badge('Enabled','green'))+
     field('Session timeout','Automatically sign out after inactivity.',sel('session_timeout_min',[[15,'15 min'],[30,'30 min'],[60,'1 hour'],[240,'4 hours']],c.session_timeout_min))+
     field('IP allowlist','Allow Worker access only from approved IPs.',tog('ip_allowlist_enabled',c.ip_allowlist_enabled))+
-    field('Device API key','Primary key used by the BGDisplay device.',`<span class="key-display">bg_ro_••••••••${m.keyTail||'????'}</span>`)+
+    field('Device API key','Primary key used by the BG MiniView device.',`<span class="key-display">bg_ro_••••••••${m.keyTail||'????'}</span>`)+
     field('Recovery device key','Optional backup key accepted after local flash wipe.',
       `<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
         <div style="display:flex;gap:8px;align-items:center">
@@ -952,7 +952,7 @@ function render(){
     <button class="btn" onclick="collapseAll()" style="padding:10px 16px;background:linear-gradient(145deg,#9E9E9E,#757575);color:white;border:none;border-radius:8px;cursor:pointer;font-weight:600">Collapse all</button>
   </div>
   <div class="grid">
-    ${section('wifi','icon-wifi',wifiIcon,'Wi-Fi setup','Connect BGDisplay to your network',wifiContent)}
+    ${section('wifi','icon-wifi',wifiIcon,'Wi-Fi setup','Connect BG MiniView to your network',wifiContent)}
     ${section('ns','icon-dex',dexIcon,'Data sources','Choose where glucose readings come from',nsContent)}
   </div>
   <div class="grid">

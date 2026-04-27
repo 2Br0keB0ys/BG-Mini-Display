@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-BGDisplay is an ESP32-based medical blood glucose display built on the M5Stack Core2. It shows real-time Dexcom G7 readings sourced from Dexcom Share (primary) with Nightscout as fallback. The system has three components: Arduino firmware, a Cloudflare Worker backend, and a single-page config UI hosted on Cloudflare Pages.
+BG MiniView is an ESP32-based medical blood glucose display built on the M5Stack Core2. It shows real-time Dexcom G7 readings sourced from Dexcom Share (primary) with Nightscout as fallback. The system has three components: Arduino firmware, a Cloudflare Worker backend, and a single-page config UI hosted on Cloudflare Pages.
 
 **Data flow:**
 ```
@@ -23,7 +23,7 @@ pio device monitor              # serial monitor
 ```
 `platformio.ini` at the workspace root sets `src_dir`, `build_dir`, and `libdeps_dir` — all pointing into `firmware/bgdisplay/`. Run PlatformIO from the workspace root; do **not** `cd firmware/bgdisplay` first (the nested `platformio.ini` there is the original and can still be used with `-d firmware/bgdisplay` if needed).
 
-Flash requires USB-C connection to M5Stack Core2 at 1500000 baud. OTA is implemented via `ArduinoOTA` — hostname `bgdisplay-{last4-chip-id}.local`, password = device key.
+Flash requires USB-C connection to M5Stack Core2 at 1500000 baud. OTA is implemented via `ArduinoOTA` — hostname `bg-miniview-{last4-chip-id}.local`, password = device key.
 
 `pio` is installed inside VS Code's PlatformIO extension. From a plain shell use the full path: `~/.platformio/penv/Scripts/pio.exe` (Windows).
 
@@ -45,14 +45,14 @@ GitHub Actions (`.github/workflows/ci.yml`) runs PlatformIO firmware build and w
 
 ### Firmware (`firmware/bgdisplay/src/`)
 
-Current firmware version: `3.0.0-S` (defined in `config.h`).
+Current firmware version: `4.0.1-S` (defined in `config.h`).
 
 The main sketch is `bgdisplay.ino`. All modules are header-only files included by the sketch:
 
 | File | Responsibility |
 |------|---------------|
 | `config.h` | `AppConfig` struct (~40 fields), NVS save/load with AES-128-CBC encryption for sensitive fields |
-| `display.h` | Off-screen rendering via M5Canvas (double-buffering), dirty tracking, BG color coding, trend arrows, BG sparkline (24-pt history), battery meter, AI digest screen (`showDigestScreen`), **Omnipod clinical thresholds** (severity-based color evaluation for reservoir 5U/15U/25U and expiry 1h/4h/8h) |
+| `display.h` | Off-screen rendering via M5Canvas (double-buffering), dirty tracking, BG color coding, trend arrows, BG sparkline (24-pt history), battery meter, **Omnipod clinical thresholds** (severity-based color evaluation for reservoir 5U/15U/25U and expiry 1h/4h/8h) |
 | `crypto.h` | AES-128-CBC via mbedTLS; key derived from unique ESP32 chip ID — stolen device = unreadable data |
 | `nightscout.h` | Polls `/api/v1/entries.json`, extracts sgv + trend + timestamp |
 | `dexcom.h` | Two-step Share API auth (email or phone), 4h session TTL, US/international regions |
@@ -81,7 +81,7 @@ The main sketch is `bgdisplay.ino`. All modules are header-only files included b
 - **NVS encryption:** Chip ID acts as hardware root-of-trust. Same key used for SD logs (different salt).
 - **Stack:** `ARDUINO_LOOP_STACK_SIZE=16384` in root `platformio.ini` (prevents overflow crash).
 - **Timezone support:** US/Central, US/Eastern, US/Mountain, US/Pacific (mapped to POSIX strings). NTP: NIST primary → public pool fallback.
-- **AI Daily Digest:** On boot (after WiFi + config), firmware calls `GET /api/digest`. If a digest is available, `showDigestScreen()` displays it for 10 s. Bottom-left tap (x<160, y>170) on the main screen replays the digest. Global `gDigestText[1024]` holds it in memory.
+- **AI Daily & Hourly Digests:** Generated on Worker via Cloudflare Workers AI; pushed to Pushover only (device display removed in v4.0.1-S). See **AI Architecture** section below.
 - **WebSocket reconnect:** `ws_sync.h` uses 8 s reconnect interval. WS event handler is flag-only (sets `_wsTriggerPull`); the actual config pull happens in `wsTick()` after `_wsClient.loop()` returns to avoid re-entrancy.
 
 ### Cloudflare Worker (`apps/cloudflare/src/worker.js`)
@@ -155,6 +155,94 @@ Security features: replay protection (nonce + ±5min timestamp), IP-based rate l
 
 `normalizeConfig()` strips retired MQTT fields (`mqtt_host`, `mqtt_user`, `mqtt_pass`, `config_ping_sec`) from old backups on load.
 
+### AI Architecture (Workers AI Integration)
+
+**Overview:** BG MiniView uses Cloudflare Workers AI to generate contextual glucose summary text via Llama 3.1 8B instruct model. Digests are generated on a cron schedule and delivered to the user via Pushover notifications (no device display). The system supports both daily summaries (24-hour window) and hourly summaries (rolling 1-hour window).
+
+**AI Model & Configuration:**
+- **Model:** `@cf/meta/llama-3.1-8b-instruct` (Cloudflare Workers AI)
+- **Temperature:** 0.7 (balanced creativity/consistency)
+- **Token limits:** Daily 280 tokens (≈180 words), Hourly 120 tokens (≈80 words)
+- **Binding:** `AI` (configured in `wrangler.toml` and `wrangler.toml` environment bindings)
+
+**Digest Input Data:**
+Each digest is generated from Nightscout glucose readings and computed statistics:
+- **Daily digest:** 288 readings (24 hours at 5-min intervals) — TIR %, reading count, min/max/avg, lows/highs above/below configured thresholds (default: low=70, high=180, urgent_low=55, urgent_high=250), overnight patterns
+- **Hourly digest:** 12 readings (1 hour at 5-min intervals) — rolling window stats, immediate BG status, trend direction
+- **Pump context:** When multi-source pump data enabled (Glooko/Tandem/Medtronic/Tidepool), prompt includes insulin pump type, brand, model, and loop mode (e.g., "Control-IQ" vs "manual") to tailor advice
+
+**Prompt Engineering:**
+
+*Daily digest system prompt:*
+```
+You are a concise diabetes health assistant for a Type 2 diabetic using a Dexcom G7 CGM. Write a morning summary of the past 24 hours in 3-4 sentences (under 180 words). Cover: time in range, notable lows or highs, overnight pattern, and one brief actionable observation. Adapt guidance to insulin delivery context (pump/no pump and loop mode when provided). If no pump is used, do not mention pump actions. No greeting or closing. Plain text only.
+```
+
+*Hourly digest system prompt:*
+```
+You are a concise diabetes health assistant for a Type 2 diabetic using a Dexcom G7 CGM. Write a brief summary of the past hour in 1-2 sentences (under 80 words). Cover: current status (in range or trend), any notable excursions. Plain text only.
+```
+
+Each prompt is paired with a user message containing:
+- Computed statistics (reading count, TIR, lows, highs, urgent events, min/max/avg)
+- Recent glucose values (12 most recent readings, newest first)
+- Pump profile JSON (type, brand, model, loop mode, notes)
+
+**Cron Schedule:**
+- **Daily digest:** Cron `45 12,13 * * *` (runs at **7:45 AM US/Central** every morning, accounting for UTC+6 offset)
+  - Guard: Only generates once per calendar day; bypass with `force=true` flag
+  - Stores in KV key `daily_digest` as JSON: `{ text, generatedAt, date, type: "daily", stats: { tir, min, max, avg, readingCount } }`
+  - Fallback: If no Nightscout URL configured or fetch fails, stores placeholder text
+
+- **Hourly digest:** Cron `0 12-23 * * *` + `0 0-2 * * *` (runs at top of each hour from **8 AM–10 PM US/Central**)
+  - Covers daytime/evening window when user most active
+  - Guard: Only generates once per calendar hour
+  - Stores in KV key `hourly_digest_HH` (e.g., `hourly_digest_14` for 2 PM) as JSON: `{ text, generatedAt, date, type: "hourly", stats: { ... } }`
+  - Fallback: Same placeholder logic as daily
+
+**Failure Handling:**
+- If Workers AI binding not configured → digest text = `"AI digest unavailable — Workers AI binding not configured."`
+- If Nightscout fetch fails or returns no readings → digest text = `"No readings available for digest."`
+- If AI request throws exception → digest text = `"AI error: [first 120 chars of error]"`
+- All errors are logged to worker stdout (CloudFlare Dashboard Logs)
+
+**Pushover Integration:**
+- **Feature:** `sendDigestPushover()` cron trigger (every 5 minutes: `*/5 * * * *`) checks for new digests and sends via Pushover
+- **Daily push:** Sent once per calendar day at configurable hour (default 8 AM, config field `digest_pushover_hour`, range 0–23)
+  - Title: `"BG MiniView — Daily Summary"`
+  - Priority: 0 (normal — informational, not urgent)
+  - Respects DND window: No push if DND active
+  - Guard: Tracked via KV key `last_digest_pushover` (value = date string) to prevent duplicate sends
+
+- **Hourly push:** Sent during active hours (8 AM–10 PM local time) if enabled and DND not active
+  - Title: `"BG MiniView — Hourly Update"`
+  - Priority: 0 (normal)
+  - Uses `digest_pushover_enabled` config flag
+  - Guard: Tracked per-hour to prevent duplicates
+
+**KV Storage:**
+- Namespace: `BGDISPLAY_CONFIG`
+- Keys:
+  - `daily_digest` — Latest daily summary (overwritten once per calendar day)
+  - `hourly_digest_HH` — Hourly summaries (12 keys for hours 12–23 and 0–1, each overwritten once per hour)
+- Schema: `{ text: string, generatedAt: number (ms since epoch), date: string (YYYY-MM-DD), type: "daily"|"hourly", stats?: { tir, min, max, avg, readingCount } }`
+- Retrieval: Device calls `GET /api/digest` to fetch today's `daily_digest`; admin UI views via `/api/admin/digest`
+
+**API Endpoints:**
+- `GET /api/digest` — Returns today's cached daily digest or `{ date, text: "" }` if not generated (device polls on boot; no longer displays on-screen in v4.0.1-S)
+- `GET /api/admin/digest` — Admin UI endpoint; returns full digest object including timestamp and stats
+- `POST /api/admin/config` with `force_digest_generation: true` — Triggers immediate digest generation (bypasses daily/hourly guard)
+
+**Admin UI Integration (`apps/pages/index.html`):**
+- **"EndoAI" section:** Shows today's cached digest text, generation timestamp, reading stats (TIR, min/max/avg)
+- **Manual generation:** "Generate Now" button calls `/api/admin/config` with force flag
+- **Pushover controls:** Toggles for daily/hourly push, time selector for daily push hour, display of configured Pushover user key (masked)
+- **Display note:** "Digests are sent via Pushover only; device display removed in v4.0.1-S"
+
+**Version History:**
+- **v4.0.1-S (current):** Removed device morning digest display; digests now Pushover-only
+- **v4.0.1 and earlier:** Digests displayed on device for 10 seconds at boot
+
 ### Config UI (`apps/pages/index.html`)
 
 Single HTML file — no build step. Dark mode only. `WORKER_URL` is hardcoded at the top of the `<script>` block and must be edited before deploying. Section open/closed state persists in `localStorage`. Render is fully string-template based — `render()` rebuilds the entire `#app` innerHTML each call. DND times are displayed and stored in 12-hour format in the UI, converted to 24-hour on save.
@@ -179,7 +267,7 @@ Single HTML file — no build step. Dark mode only. `WORKER_URL` is hardcoded at
 1. Set Worker secrets: `wrangler secret put KV_ENCRYPT_KEY` (required for Pushover creds encryption)
 2. Deploy worker: `npm run deploy:worker` (creates Durable Object class on first deploy via migration tag `v1`)
 3. Flash firmware (with `secrets.h` containing real worker URL + device key)
-4. On first boot with no saved WiFi → AP mode (`BGDisplay-Setup-XXXX` network) — form only collects WiFi SSID + password
+4. On first boot with no saved WiFi → AP mode (`BG_MiniView_XXXX` network) — form only collects WiFi SSID + password
 5. Device connects to WiFi → immediately pulls full config from `/api/config`, opens WebSocket to `/api/ws`, fetches AI digest from `/api/digest`
 6. All future config changes via `https://setup.2brokeboys.uk` (Cloudflare Pages UI) — config saves trigger instant WS push to device
 

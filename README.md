@@ -1,6 +1,6 @@
-# BGDisplay
+# BG MiniView
 
-BGDisplay is an ESP32-based blood glucose display for M5Stack Core2.
+BG MiniView is an ESP32-based blood glucose display for M5Stack Core2.
 
 Current architecture:
 - Dexcom Share is the primary data source
@@ -12,11 +12,11 @@ Current architecture:
 ## Repository Layout
 
 ```text
-bgdisplay/
+bg-miniview/
 ├── apps/
 │   ├── cloudflare/        # Worker + wrangler config
 │   └── pages/             # Single-file UI (index.html)
-├── firmware/bgdisplay/    # PlatformIO firmware for M5Stack Core2
+├── firmware/bgdisplay/    # PlatformIO firmware for BG MiniView on M5Stack Core2
 ├── CLAUDE.md              # Deep architecture and ops reference
 └── bgdisplay_context.md   # Current project snapshot
 ```
@@ -89,7 +89,7 @@ From plain Windows shell, `pio` may need full path:
 ## 4) First Boot
 
 1. If no WiFi is saved, device enters AP setup mode.
-2. Join `BGDisplay-Setup-XXXX` network.
+2. Join `BG_MiniView_XXXX` network.
 3. Open `http://192.168.4.1` if captive portal does not auto-open.
 4. Enter WiFi credentials.
 5. Device connects, pulls cloud config, then starts BG polling.

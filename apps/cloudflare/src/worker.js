@@ -1,4 +1,4 @@
-// BGDisplay Cloudflare Worker v3.0
+// BG MiniView Cloudflare Worker v3.0
 // Features: WebSocket relay (DO), Workers AI digest, MCP server, Pushover alerts
 
 import { createCgmDataProvider } from "./providers/registry.js";
@@ -832,7 +832,7 @@ async function sendDigestPushover(env) {
     if (lastDailySent !== today) {
       const digest = await env.BGDISPLAY_CONFIG.get("daily_digest", { type: "json" });
       if (digest && digest.date === today) {
-        const title = "BGDisplay — Daily Summary";
+        const title = "BG MiniView — Daily Summary";
         const message = truncateToSentence(digest.text, 1024);
         // priority 0 = normal; daily summaries are informational, not urgent
         const ok = await sendPushoverNotification(creds.user_key, creds.api_token, message, title, 0);
@@ -854,7 +854,7 @@ async function sendDigestPushover(env) {
       if (lastHourlySent !== today) {
         const digest = await env.BGDISPLAY_CONFIG.get(hourlyKey, { type: "json" });
         if (digest && digest.date === today) {
-          const title = "BGDisplay — Hourly Update";
+          const title = "BG MiniView — Hourly Update";
           const message = truncateToSentence(digest.text, 1024);
           // priority 0 = normal (respects device quiet hours); digests are informational
           const ok = await sendPushoverNotification(creds.user_key, creds.api_token, message, title, 0);
@@ -911,8 +911,8 @@ async function runDeviceOfflineCheck(env) {
   if (lastOfflineStr && Date.now() - Number(lastOfflineStr) < cooldownMs) return;
 
   const silentMinutes = Math.round(silentMs / 60000);
-  const message = `BGDisplay has not checked in for ${silentMinutes} minutes. Device may be offline or unreachable.`;
-  const ok = await sendPushoverNotification(creds.user_key, creds.api_token, message, "BGDisplay — Device Offline", 1);
+  const message = `BG MiniView has not checked in for ${silentMinutes} minutes. Device may be offline or unreachable.`;
+  const ok = await sendPushoverNotification(creds.user_key, creds.api_token, message, "BG MiniView — Device Offline", 1);
   if (ok) {
     await env.BGDISPLAY_CONFIG.put("last_offline_alert", String(Date.now()));
     await appendChangeLog(env, `Device offline alert sent (silent ${silentMinutes}m)`);
@@ -955,7 +955,7 @@ async function runPushoverAlertCheck(env) {
 
   const trend = entry.direction ? directionToTrend(entry.direction) : (entry.trend || 5);
   const fullMsg = `${alertMsg} • ${trendArrowText(trend)}`;
-  const title = isLow ? "BGDisplay — Low Alert" : "BGDisplay — High Alert";
+  const title = isLow ? "BG MiniView — Low Alert" : "BG MiniView — High Alert";
 
   // priority 1 = high (bypasses quiet hours on device) for urgent BG alerts
   const ok = await sendPushoverNotification(creds.user_key, creds.api_token, fullMsg, title, 1);
@@ -1079,7 +1079,7 @@ async function handleMCP(request, env, config, auth) {
     return mcpResult(id, {
       protocolVersion: "2024-11-05",
       capabilities: { tools: {} },
-      serverInfo: { name: "bgdisplay-mcp", version: "1.0.0" },
+      serverInfo: { name: "bg-miniview-mcp", version: "1.0.0" },
     });
   }
 
@@ -2032,8 +2032,8 @@ export default {
         if (!isDeviceKeyValid(auth, mcpKeyHash)) return json({ error: "Invalid device key" }, 401);
         if (method === "GET") {
           return json({
-            name: "bgdisplay-mcp", version: "1.0.0",
-            description: "BGDisplay Model Context Protocol server",
+            name: "bg-miniview-mcp", version: "1.0.0",
+            description: "BG MiniView Model Context Protocol server",
             endpoint: `${url.origin}/mcp`,
             tools: MCP_TOOLS.map(t => ({ name: t.name, description: t.description })),
           });
@@ -2249,7 +2249,7 @@ export default {
         return new Response(text, {
           status: 200,
           headers: { ...CORS_HEADERS, "Content-Type": "text/plain; charset=utf-8",
-            "Content-Disposition": `attachment; filename="bgdisplay-sd-logs-${ts}.log"` },
+            "Content-Disposition": `attachment; filename="bg-miniview-sd-logs-${ts}.log"` },
         });
       }
       return json({ meta, total: filtered.length, preview: filtered.slice(0, limit) });
@@ -2322,7 +2322,7 @@ export default {
       const version = await getConfigVersion(env);
       return new Response(JSON.stringify({ config, exportedAt: Date.now(), version: "3.0.0", config_version: version }, null, 2), {
         headers: { ...CORS_HEADERS, "Content-Type": "application/json",
-          "Content-Disposition": `attachment; filename="bgdisplay-config-${Date.now()}.json"` },
+          "Content-Disposition": `attachment; filename="bg-miniview-config-${Date.now()}.json"` },
       });
     }
 
