@@ -585,6 +585,24 @@ async function generateDigestNow(){
     toast('\u274c Digest generation failed');
   }finally{
     if(btn){ btn.textContent='Generate now'; btn.disabled=false; }
+
+  async function detectTimezoneNow(){
+    try{
+      const data=await apiGet('/api/detect-timezone');
+      if(data.detected){
+        const tzInput=document.getElementById('timezone');
+        if(tzInput){
+          tzInput.value=data.detected;
+          markDirty();
+          toast(`\u2713 Timezone detected: ${data.detected}`);
+        }
+      }else{
+        toast('\u274c Could not detect timezone');
+      }
+    }catch(e){
+      toast('\u274c Timezone detection failed');
+    }
+  }
   }
 }
 
@@ -798,7 +816,7 @@ function render(){
     field('Trend arrow','Show glucose direction next to the reading.',tog('show_trend_arrow',c.show_trend_arrow!==false))+
     field('Reading age','Show "X min ago" under the glucose value.',tog('show_last_reading_time',c.show_last_reading_time!==false))+
     field('24-hour clock','Use 24-hour time on the device screen.',tog('clock_24hr',c.clock_24hr))+
-    field('Timezone','',sel('timezone',[['US/Central','US / Central'],['US/Eastern','US / Eastern'],['US/Mountain','US / Mountain'],['US/Pacific','US / Pacific']],c.timezone))+
+    field('Timezone','Auto-detects from your IP on first boot. Change manually if needed.',`<div style="display:flex;gap:8px;align-items:center">${sel('timezone',[['US/Central','US / Central'],['US/Eastern','US / Eastern'],['US/Mountain','US / Mountain'],['US/Pacific','US / Pacific']],c.timezone)}<button class="btn" onclick="detectTimezoneNow()" style="flex-shrink:0">Auto-detect</button></div>`)+
     field('Screen brightness','After 5 minutes without touch, brightness drops to 15% until the screen is touched again.',sel('brightness',[[25,'25%'],[50,'50%'],[75,'75%'],[100,'100%']],c.brightness))+
     field('Do Not Disturb schedule','Turn the screen off during overnight quiet hours.',tog('dnd_enabled',c.dnd_enabled))+
     subfield('Sunday',`<div class="time-range"><input type="text" id="dnd_sun_from" value="${to12h(dndTime('sun','from','23:00'))}" style="width:88px"><span>to</span><input type="text" id="dnd_sun_to" value="${to12h(dndTime('sun','to','06:00'))}" style="width:88px"></div>`)+

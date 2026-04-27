@@ -49,6 +49,60 @@ function normalizeDndSchedule(sched, fallbackFrom, fallbackTo) {
   return out;
 }
 
+// ─── Geo IP Timezone Detection ──────────────────────────────────────────────
+// Maps Cloudflare's IANA timezone to BG MiniView's supported zones (US only for now)
+function detectTimezoneFromIANA(ianaName) {
+  const mapping = {
+    // Central Time
+    "America/Chicago": "US/Central",
+    "America/Mexico_City": "US/Central",
+    "America/Belize": "US/Central",
+    "America/Costa_Rica": "US/Central",
+    "America/Guatemala": "US/Central",
+    "America/Honduras": "US/Central",
+    "America/El_Salvador": "US/Central",
+    "America/Winnipeg": "US/Central",
+    "America/North_Dakota/Center": "US/Central",
+    "America/North_Dakota/New_Salem": "US/Central",
+    "CST6CDT": "US/Central",
+    // Eastern Time
+    "America/New_York": "US/Eastern",
+    "America/Detroit": "US/Eastern",
+    "America/Indiana/Indianapolis": "US/Eastern",
+    "America/Indiana/Knox": "US/Eastern",
+    "America/Indiana/Marengo": "US/Eastern",
+    "America/Indiana/Petersburg": "US/Eastern",
+    "America/Indiana/Tell_City": "US/Eastern",
+    "America/Indiana/Vevay": "US/Eastern",
+    "America/Indiana/Vincennes": "US/Eastern",
+    "America/Indiana/Winamac": "US/Eastern",
+    "America/Kentucky/Louisville": "US/Eastern",
+    "America/Kentucky/Monticello": "US/Eastern",
+    "America/Toronto": "US/Eastern",
+    "EST5EDT": "US/Eastern",
+    // Mountain Time
+    "America/Denver": "US/Mountain",
+    "America/Boise": "US/Mountain",
+    "America/Phoenix": "US/Mountain",
+    "America/Anchorage": "US/Mountain",
+    "America/Adak": "US/Mountain",
+    "America/Juneau": "US/Mountain",
+    "America/Metlakatla": "US/Mountain",
+    "America/Nome": "US/Mountain",
+    "America/Sitka": "US/Mountain",
+    "America/Yakutat": "US/Mountain",
+    "America/Fort_Nelson": "US/Mountain",
+    "America/Edmonton": "US/Mountain",
+    "MST7MDT": "US/Mountain",
+    // Pacific Time
+    "America/Los_Angeles": "US/Pacific",
+    "America/Vancouver": "US/Pacific",
+    "America/Tijuana": "US/Pacific",
+    "PST8PDT": "US/Pacific",
+  };
+  return mapping[ianaName] || "US/Central";
+}
+
 const DEFAULT_CONFIG = {
   // WiFi
   wifi_ssid: "", wifi_pass: "", cellular_fallback: false, reconnect_attempts: 5,
@@ -332,7 +386,10 @@ async function fetchGlookoLatest(config) {
       server: config.glooko_server,
     });
     const readings = await provider.fetchReadings({ limit: 1 });
-    if (!Array.isArray(readings) || !readings.length) return null;
+    if (!Array.isArray(readings) || !readings.length) {
+      console.warn("[Glooko] No readings returned from provider");
+      return null;
+    }
     const r = readings[0];
     return {
       value: r.sgv,
@@ -341,7 +398,10 @@ async function fetchGlookoLatest(config) {
       timestamp: r.timestamp instanceof Date ? r.timestamp.getTime() : null,
       device: r.device || "glooko",
     };
-  } catch {
+  } catch (err) {
+    const msg = String(err?.message || err || "unknown error");
+    console.error("[Glooko] fetch failed:", msg);
+    await appendChangeLog(config._env || {}, `Glooko error: ${msg.slice(0, 80)}`);
     return null;
   }
 }
@@ -784,9 +844,9 @@ async function sendDigestPushover(env) {
     }
   }
   
-  // Check for hourly digest send — local hours 8–23 (inclusive)
+  // Check for hourly digest send — local hours 8–22 (8 AM – 10 PM inclusive)
   // currentHour is already in America/Chicago local time from toLocaleString above
-  if (currentHour >= 8) {
+  if (currentHour >= 8 && currentHour <= 22) {
     // DND guard: don't wake user during DND even for digest updates
     if (!isInDNDWindow(config)) {
       const hourlyKey = `hourly_digest_${currentHour}`;
@@ -972,6 +1032,16 @@ const MCP_TOOLS = [
       },
       required: ["source"],
     },
+  },
+  {
+    name: "glooko_test",
+    description: "Test Glooko connection and credentials. Returns detailed diagnostic info about email/password validation and API response. Use this to debug Glooko auth failures.",
+    inputSchema: { type: "object", properties: {}, required: [] },
+  },
+  {
+    name: "detect_timezone",
+    description: "Detect user's timezone from their geo IP location. Returns detected IANA timezone and mapped zone (US/Central, US/Eastern, etc). Can be used to auto-set timezone on first boot.",
+    inputSchema: { type: "object", properties: {}, required: [] },
   },
   {
     name: "get_daily_digest",
@@ -1311,6 +1381,66 @@ async function handleMCP(request, env, config, auth) {
       return mcpResult(id, {
         content: [{ type: "text", text: JSON.stringify({ source: "omnipod", omnipod: pod }, null, 2) }],
       });
+    }
+
+    if (toolName === "glooko_test") {
+      const result = {
+        configured: !!(config.glooko_email && config.glooko_password),
+        email_present: !!config.glooko_email,
+        password_present: !!config.glooko_password,
+        email: config.glooko_email ? "••••••••" : "(empty)",
+        env: config.glooko_env || "default",
+        server: config.glooko_server || "(auto)",
+        test_result: null,
+        error: null,
+      };
+
+      if (!result.configured) {
+        result.error = "Glooko email and/or password not configured";
+        return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] });
+      }
+
+      try {
+        const provider = createCgmDataProvider("glooko", {
+          email: config.glooko_email,
+          password: config.glooko_password,
+          env: config.glooko_env,
+          server: config.glooko_server,
+        });
+        const readings = await Promise.race([
+          provider.fetchReadings({ limit: 1 }),
+          new Promise((_, rej) => setTimeout(() => rej(new Error("timeout after 15s")), 15000)),
+        ]);
+        if (Array.isArray(readings) && readings.length > 0) {
+          const r = readings[0];
+          result.test_result = "success";
+          result.latest_reading = {
+            value: r.sgv,
+            timestamp: r.timestamp ? r.timestamp.toISOString() : null,
+            direction: r.direction,
+          };
+        } else {
+          result.test_result = "no_readings";
+          result.error = "API returned empty readings array";
+        }
+      } catch (err) {
+        result.test_result = "failed";
+        result.error = String(err?.message || err || "unknown error");
+      }
+      return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] });
+    }
+
+    if (toolName === "detect_timezone") {
+      const cfTimeZone = request.cf?.timezone || "America/Chicago";
+      const detected = detectTimezoneFromIANA(cfTimeZone);
+      const result = {
+        detected: detected,
+        source_iana: cfTimeZone,
+        confidence: cfTimeZone !== "America/Chicago" ? "high" : "default",
+        supported_zones: ["US/Central", "US/Eastern", "US/Mountain", "US/Pacific"],
+        description: "Use this 'detected' value to auto-set timezone on first boot. Once manually set, user can override in config.",
+      };
+      return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] });
     }
 
     if (toolName === "get_daily_digest") {
@@ -1706,6 +1836,15 @@ export default {
       auth = await env.BGDISPLAY_CONFIG.get("auth", { type: "json" });
       const version = await getConfigVersion(env);
       const deviceConfig = { ...config };
+      // Auto-detect timezone on first config pull if empty
+      if (!deviceConfig.timezone || deviceConfig.timezone.trim() === "") {
+        const cfTimeZone = request.cf?.timezone || "America/Chicago";
+        deviceConfig.timezone = detectTimezoneFromIANA(cfTimeZone);
+        // Save the auto-detected timezone back to config for persistence
+        config.timezone = deviceConfig.timezone;
+        await env.BGDISPLAY_CONFIG.put("config", JSON.stringify(config));
+        await appendChangeLog(env, `Timezone auto-detected: ${deviceConfig.timezone} (from geo IP)`);
+      }
       delete deviceConfig.glooko_token;
       delete deviceConfig.glooko_email;
       delete deviceConfig.glooko_password;
@@ -1869,6 +2008,18 @@ export default {
       const digest = await env.BGDISPLAY_CONFIG.get("daily_digest", { type: "json" });
       if (!digest) return json({ available: false });
       return json({ available: true, text: digest.text, generatedAt: digest.generatedAt, date: digest.date, stats: digest.stats || null });
+    }
+
+    // ── /api/detect-timezone — Auto-detect timezone from geo IP (no auth required) ──
+    if (path === "/api/detect-timezone" && method === "GET") {
+      const cfTimeZone = request.cf?.timezone || "America/Chicago";
+      const detected = detectTimezoneFromIANA(cfTimeZone);
+      return json({
+        detected: detected,
+        source_iana: cfTimeZone,
+        confidence: cfTimeZone !== "America/Chicago" ? "high" : "default",
+        supported_zones: ["US/Central", "US/Eastern", "US/Mountain", "US/Pacific"],
+      });
     }
 
     // ── /mcp — MCP server (JSON-RPC 2.0, device-key or admin-session auth) ────
