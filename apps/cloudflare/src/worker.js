@@ -634,6 +634,21 @@ function directionToTrend(dir) {
   return m[dir] || 5;
 }
 
+function truncateToSentence(text, maxChars) {
+  const clean = String(text || "").replace(/\s+/g, " ").trim();
+  if (clean.length <= maxChars) return clean;
+
+  const clipped = clean.slice(0, maxChars);
+  const sentenceEnd = Math.max(clipped.lastIndexOf("."), clipped.lastIndexOf("!"), clipped.lastIndexOf("?"));
+  if (sentenceEnd >= Math.floor(maxChars * 0.6)) {
+    return clipped.slice(0, sentenceEnd + 1).trim();
+  }
+
+  const wordEnd = clipped.lastIndexOf(" ");
+  const safe = (wordEnd > 0 ? clipped.slice(0, wordEnd) : clipped).trim();
+  return `${safe}...`;
+}
+
 // ─── Feature 2: Daily & Hourly AI Digest ──────────────────────────────────────
 
 async function generateDailyDigest(env, force = false, type = "daily") {
@@ -709,7 +724,8 @@ async function generateDailyDigest(env, force = false, type = "daily") {
           },
         ],
       });
-      digestText = (aiResp?.response || "").trim().slice(0, type === "hourly" ? 200 : 950) || "AI returned empty response.";
+      const maxDigestChars = type === "hourly" ? 900 : 980;
+      digestText = truncateToSentence(aiResp?.response || "", maxDigestChars) || "AI returned empty response.";
     } catch (e) {
       digestText = `AI error: ${String(e).slice(0, 120)}`;
     }
@@ -757,8 +773,9 @@ async function sendDigestPushover(env) {
       const digest = await env.BGDISPLAY_CONFIG.get("daily_digest", { type: "json" });
       if (digest && digest.date === today) {
         const title = "BGDisplay — Daily Summary";
-        const message = digest.text.slice(0, 1024);
-        const ok = await sendPushoverNotification(creds.user_key, creds.api_token, message, title);
+        const message = truncateToSentence(digest.text, 1024);
+        // priority 0 = normal; daily summaries are informational, not urgent
+        const ok = await sendPushoverNotification(creds.user_key, creds.api_token, message, title, 0);
         if (ok) {
           await env.BGDISPLAY_CONFIG.put("last_digest_pushover", today);
           await appendChangeLog(env, "Daily digest sent via Pushover");
@@ -767,19 +784,24 @@ async function sendDigestPushover(env) {
     }
   }
   
-  // Check for hourly digest send (8 AM - 11 PM local time)
-  if (currentHour >= 14 || currentHour <= 5) {  // 2 PM-5 AM UTC covers 8 AM-11 PM CDT/CST roughly
-    const hourlyKey = `hourly_digest_${currentHour}`;
-    const lastHourlySent = await env.BGDISPLAY_CONFIG.get(`${hourlyKey}_pushover_sent`);
-    if (lastHourlySent !== today) {
-      const digest = await env.BGDISPLAY_CONFIG.get(hourlyKey, { type: "json" });
-      if (digest && digest.date === today) {
-        const title = "BGDisplay — Hourly Update";
-        const message = digest.text.slice(0, 1024);
-        const ok = await sendPushoverNotification(creds.user_key, creds.api_token, message, title);
-        if (ok) {
-          await env.BGDISPLAY_CONFIG.put(`${hourlyKey}_pushover_sent`, today);
-          await appendChangeLog(env, `Hourly digest sent via Pushover (hour ${currentHour})`);
+  // Check for hourly digest send — local hours 8–23 (inclusive)
+  // currentHour is already in America/Chicago local time from toLocaleString above
+  if (currentHour >= 8) {
+    // DND guard: don't wake user during DND even for digest updates
+    if (!isInDNDWindow(config)) {
+      const hourlyKey = `hourly_digest_${currentHour}`;
+      const lastHourlySent = await env.BGDISPLAY_CONFIG.get(`${hourlyKey}_pushover_sent`);
+      if (lastHourlySent !== today) {
+        const digest = await env.BGDISPLAY_CONFIG.get(hourlyKey, { type: "json" });
+        if (digest && digest.date === today) {
+          const title = "BGDisplay — Hourly Update";
+          const message = truncateToSentence(digest.text, 1024);
+          // priority 0 = normal (respects device quiet hours); digests are informational
+          const ok = await sendPushoverNotification(creds.user_key, creds.api_token, message, title, 0);
+          if (ok) {
+            await env.BGDISPLAY_CONFIG.put(`${hourlyKey}_pushover_sent`, today);
+            await appendChangeLog(env, `Hourly digest sent via Pushover (hour ${currentHour})`);
+          }
         }
       }
     }
@@ -788,8 +810,9 @@ async function sendDigestPushover(env) {
 
 // ─── Feature 4: Pushover Alert Check (runs every 5 min via cron) ──────────────
 
-async function sendPushoverNotification(userKey, apiToken, message, title) {
-  const body = new URLSearchParams({ token: apiToken, user: userKey, message, title, priority: "1" });
+// priority: -1=quiet, 0=normal, 1=high (bypasses quiet hours), 2=emergency
+async function sendPushoverNotification(userKey, apiToken, message, title, priority = 0) {
+  const body = new URLSearchParams({ token: apiToken, user: userKey, message, title, priority: String(priority) });
   const resp = await fetch("https://api.pushover.net/1/messages.json", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -797,6 +820,43 @@ async function sendPushoverNotification(userKey, apiToken, message, title) {
     signal: AbortSignal.timeout(8000),
   });
   return resp.ok;
+}
+
+// ─── Feature 4c: Device Offline Alert ────────────────────────────────────────
+
+async function runDeviceOfflineCheck(env) {
+  const config = normalizeConfig(await env.BGDISPLAY_CONFIG.get("config", { type: "json" }));
+  if (!config.pushover_enabled) return;
+
+  let creds = null;
+  try {
+    const enc = await env.BGDISPLAY_CONFIG.get("pushover_creds");
+    if (enc && env.KV_ENCRYPT_KEY) {
+      const raw = await kvDecrypt(enc, env.KV_ENCRYPT_KEY);
+      if (raw) creds = JSON.parse(raw);
+    }
+  } catch {}
+  if (!creds?.user_key || !creds?.api_token) return;
+
+  // Only fire if device has been silent longer than alert_offline_min
+  const offlineThresholdMs = Math.max(5, Number(config.alert_offline_min || 15)) * 60 * 1000;
+  const status = await env.BGDISPLAY_CONFIG.get("device_status", { type: "json" }) || {};
+  if (!status.lastSeen) return;
+  const silentMs = Date.now() - Number(status.lastSeen);
+  if (silentMs < offlineThresholdMs) return;
+
+  // Cooldown: don't repeat the offline alert more than once per cooldown window
+  const cooldownMs = Math.max(5, Number(config.alert_cooldown_min || 60)) * 60 * 1000;
+  const lastOfflineStr = await env.BGDISPLAY_CONFIG.get("last_offline_alert");
+  if (lastOfflineStr && Date.now() - Number(lastOfflineStr) < cooldownMs) return;
+
+  const silentMinutes = Math.round(silentMs / 60000);
+  const message = `BGDisplay has not checked in for ${silentMinutes} minutes. Device may be offline or unreachable.`;
+  const ok = await sendPushoverNotification(creds.user_key, creds.api_token, message, "BGDisplay — Device Offline", 1);
+  if (ok) {
+    await env.BGDISPLAY_CONFIG.put("last_offline_alert", String(Date.now()));
+    await appendChangeLog(env, `Device offline alert sent (silent ${silentMinutes}m)`);
+  }
 }
 
 async function runPushoverAlertCheck(env) {
@@ -837,7 +897,8 @@ async function runPushoverAlertCheck(env) {
   const fullMsg = `${alertMsg} • ${trendArrowText(trend)}`;
   const title = isLow ? "BGDisplay — Low Alert" : "BGDisplay — High Alert";
 
-  const ok = await sendPushoverNotification(creds.user_key, creds.api_token, fullMsg, title);
+  // priority 1 = high (bypasses quiet hours on device) for urgent BG alerts
+  const ok = await sendPushoverNotification(creds.user_key, creds.api_token, fullMsg, title, 1);
   if (ok) {
     await env.BGDISPLAY_CONFIG.put("last_pushover_alert", String(Date.now()));
     await appendChangeLog(env, `Pushover alert sent: ${fullMsg}`);
@@ -2143,6 +2204,7 @@ export default {
     } else if (event.cron === "*/5 * * * *") {
       ctx.waitUntil(runPushoverAlertCheck(env));
       ctx.waitUntil(sendDigestPushover(env));
+      ctx.waitUntil(runDeviceOfflineCheck(env));
     } else {
       // Fallback: handle both
       ctx.waitUntil(generateDailyDigest(env, false, "daily"));

@@ -44,13 +44,16 @@ inline void sdLogRawJson(const String& entry) {
     f.close();
   }
 
-  // Rotate log if too large (>100KB)
+  // Rotate log if too large (>100KB). Keep at most 2 rotated files so
+  // old logs don't accumulate indefinitely on the SD card.
   File check = SD.open(LOG_FILE);
   if (check) {
     size_t sz = check.size();
     check.close();
     if (sz > 102400) {
-      SD.remove("/bgdisplay.old.log");
+      // Drop oldest archive, shift .old.log → .old2.log, then rotate current
+      SD.remove("/bgdisplay.old2.log");
+      SD.rename("/bgdisplay.old.log", "/bgdisplay.old2.log");
       SD.rename(LOG_FILE, "/bgdisplay.old.log");
       Serial.println("SD: log rotated");
     }

@@ -12,16 +12,23 @@ static WebSocketsClient _wsClient;
 static volatile bool    _wsConnected      = false;
 static volatile bool    _wsTriggerPull    = false;
 static bool             _wsInitialized    = false;
+static uint32_t         _wsReconnectMs    = 8000;  // exponential backoff base
+static unsigned long    _wsLastDisconnect = 0;
 
 // Event callback — keep short; flag-only, no blocking calls here
 static void _wsEventHandler(WStype_t type, uint8_t* payload, size_t length) {
   switch (type) {
     case WStype_CONNECTED:
-      _wsConnected = true;
+      _wsConnected   = true;
+      _wsReconnectMs = 8000;  // reset backoff on successful connect
       sdLog("WS", "Connected to relay");
       break;
     case WStype_DISCONNECTED:
-      _wsConnected = false;
+      _wsConnected      = false;
+      _wsLastDisconnect = millis();
+      // Double interval up to 5 min cap on each disconnect
+      if (_wsReconnectMs < 300000U) _wsReconnectMs = min(_wsReconnectMs * 2U, 300000U);
+      _wsClient.setReconnectInterval(_wsReconnectMs);
       sdLog("WS", "Disconnected");
       break;
     case WStype_TEXT:
@@ -62,9 +69,10 @@ void wsInit(AppConfig& cfg) {
     _wsClient.begin(host.c_str(), port, "/api/ws");
   }
   _wsClient.onEvent(_wsEventHandler);
-  // Reconnect every 8s on drop; short enough to recover quickly,
-  // long enough to avoid hammering the Worker on repeated failures.
-  _wsClient.setReconnectInterval(8000);
+  // Start with an 8-second reconnect interval; backs off exponentially to 5 min
+  // on persistent failures to avoid hammering the Worker during outages.
+  _wsReconnectMs = 8000;
+  _wsClient.setReconnectInterval(_wsReconnectMs);
 
   _wsInitialized = true;
   sdLog("WS", "Client initialized");

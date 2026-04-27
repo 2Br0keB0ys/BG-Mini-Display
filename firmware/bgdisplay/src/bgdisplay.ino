@@ -63,9 +63,10 @@ struct SourceHealthStats {
 
 SourceHealthStats sourceHealth;
 char gResetReason[20] = "unknown";
-char gDigestText[1024] = "";
+char gDigestText[1024] = "";  // Worker caps daily digest at ~980 chars; safe with 1024-byte buffer
 bool gFactoryResetArmed = false;
 unsigned long gFactoryResetArmMs = 0;
+bool gLogUploadActive = false;   // set true during uploadSdLogs, prevents concurrent auto-reboot
 OmnipodStatus gOmnipodStatus;
 
 String normalizeWorkerBase(const char* raw) {
@@ -477,7 +478,9 @@ void loop() {
   if (WiFi.status()==WL_CONNECTED && now - lastLogUpload > 120000UL) {
     lastLogUpload = now;
     sdLogEx("SYS", "LOG_UPLOAD", "cadence_upload_tick");
+    gLogUploadActive = true;
     uploadSdLogs(appConfig, nullptr, 160, 28000, false);
+    gLogUploadActive = false;
   }
 
   // BG poll — every pollIntervalMin
@@ -603,6 +606,9 @@ void checkDailyAutoReboot() {
   int dayStamp = (t.tm_year + 1900) * 1000 + t.tm_yday;
   int lastStamp = prefs.getInt("autoRbDay", -1);
   if (lastStamp == dayStamp) return;
+
+  // Guard: don't reboot while a log upload or OTA update is in-flight.
+  if (gLogUploadActive) return;
 
   prefs.putInt("autoRbDay", dayStamp);
   sdLogfEx("SYS", "SYS", "daily_auto_reboot dayStamp:%d", dayStamp);

@@ -17,11 +17,12 @@ Nightscout (fallback)                                                           
 
 ### Firmware (PlatformIO)
 ```bash
-cd firmware/bgdisplay
-pio run -d .                    # compile
-pio run -d . -t upload          # compile + flash via USB
+pio run                         # compile (from workspace root)
+pio run -t upload               # compile + flash via USB
 pio device monitor              # serial monitor
 ```
+`platformio.ini` at the workspace root sets `src_dir`, `build_dir`, and `libdeps_dir` — all pointing into `firmware/bgdisplay/`. Run PlatformIO from the workspace root; do **not** `cd firmware/bgdisplay` first (the nested `platformio.ini` there is the original and can still be used with `-d firmware/bgdisplay` if needed).
+
 Flash requires USB-C connection to M5Stack Core2 at 1500000 baud. OTA is implemented via `ArduinoOTA` — hostname `bgdisplay-{last4-chip-id}.local`, password = device key.
 
 `pio` is installed inside VS Code's PlatformIO extension. From a plain shell use the full path: `~/.platformio/penv/Scripts/pio.exe` (Windows).
@@ -78,7 +79,7 @@ The main sketch is `bgdisplay.ino`. All modules are header-only files included b
 - **Factory reset:** Clears all NVS except `workerUrl`, `deviceKey`, and `timezone` (cloud identity preserved so device can pull config again after WiFi re-setup).
 - **First-flash bootstrap:** Worker URL and device key come from `secrets.h` macros (`BGDISPLAY_DEFAULT_WORKER_URL`, `BGDISPLAY_DEFAULT_DEVICE_KEY`). Copy `secrets.example.h` to `secrets.h` and fill in before flashing.
 - **NVS encryption:** Chip ID acts as hardware root-of-trust. Same key used for SD logs (different salt).
-- **Stack:** `ARDUINO_LOOP_STACK_SIZE=16384` in `platformio.ini` (prevents overflow crash).
+- **Stack:** `ARDUINO_LOOP_STACK_SIZE=16384` in root `platformio.ini` (prevents overflow crash).
 - **Timezone support:** US/Central, US/Eastern, US/Mountain, US/Pacific (mapped to POSIX strings). NTP: NIST primary → public pool fallback.
 - **AI Daily Digest:** On boot (after WiFi + config), firmware calls `GET /api/digest`. If a digest is available, `showDigestScreen()` displays it for 10 s. Bottom-left tap (x<160, y>170) on the main screen replays the digest. Global `gDigestText[1024]` holds it in memory.
 - **WebSocket reconnect:** `ws_sync.h` uses 8 s reconnect interval. WS event handler is flag-only (sets `_wsTriggerPull`); the actual config pull happens in `wsTick()` after `_wsClient.loop()` returns to avoid re-entrancy.
