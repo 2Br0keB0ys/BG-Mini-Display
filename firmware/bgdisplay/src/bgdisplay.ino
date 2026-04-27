@@ -1,4 +1,4 @@
-// BGDisplay v3.0.0-S — Dexcom primary, Nightscout fallback, encrypted, smart config sync
+// BG MiniView v4.0.1-S — Dexcom primary, Nightscout fallback, encrypted, smart config sync
 #include <M5Unified.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
@@ -291,9 +291,10 @@ void setup() {
   M5.begin(cfg);
   M5.Display.setRotation(1);
   Serial.begin(115200);
-  Serial.println("BGDisplay v" FIRMWARE_VERSION " booting...");
+  Serial.println("BG MiniView v" FIRMWARE_VERSION " booting...");
   strlcpy(gResetReason, resetReasonStr(esp_reset_reason()), sizeof(gResetReason));
 
+  // Keep legacy NVS namespace for seamless upgrades from previous firmware.
   prefs.begin("bgdisplay", false);
   loadConfig(prefs, appConfig);
   logConfigDiagnostics("after-load", appConfig);
@@ -370,10 +371,6 @@ void setup() {
     else if (lastReading.source == SOURCE_DEXCOM) src = "DEX";
     sdLogBG(lastReading.value, lastReading.trend, src);
     logRuntimeSnapshot("initial-fetch", appConfig, lastReading);
-    fetchDigest(appConfig);
-    if (strlen(gDigestText)) {
-      showDigestScreen(gDigestText, 10000UL);
-    }
   }
 }
 

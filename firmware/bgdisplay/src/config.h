@@ -3,7 +3,7 @@
 #include <Preferences.h>
 #include "crypto.h"
 
-#define FIRMWARE_VERSION "3.0.0-S"
+#define FIRMWARE_VERSION "4.0.1-S"
 
 #ifndef ENABLE_OTA
 #define ENABLE_OTA 1

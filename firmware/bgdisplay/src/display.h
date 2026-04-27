@@ -274,16 +274,36 @@ void initDisplay(AppConfig& cfg) {
 void showBootScreen() {
   int W = M5.Display.width(), H = M5.Display.height();
   canvas.fillScreen(CLR_BG);
+
+  // Brand card
+  const int cardW = 260;
+  const int cardH = 136;
+  const int cardX = (W - cardW) / 2;
+  const int cardY = (H - cardH) / 2;
+  canvas.fillRoundRect(cardX, cardY, cardW, cardH, 14, 0x18C3);
+  canvas.drawRoundRect(cardX, cardY, cardW, cardH, 14, CLR_SEP);
+
+  // Simple drop-shaped logo with BG initials.
+  const int logoCx = W / 2;
+  const int logoCy = cardY + 30;
+  canvas.fillCircle(logoCx, logoCy + 6, 16, CLR_RED);
+  canvas.fillTriangle(logoCx, logoCy - 15, logoCx - 14, logoCy + 2, logoCx + 14, logoCy + 2, CLR_RED);
+
   canvas.setTextDatum(middle_center);
   canvas.setFont(&fonts::FreeSansBold9pt7b);
   canvas.setTextColor(CLR_TEXT);
-  canvas.drawString("BGDisplay", W/2, H/2 - 24);
+  canvas.drawString("BG", logoCx, logoCy + 8);
+
+  canvas.setTextDatum(middle_center);
+  canvas.setFont(&fonts::FreeSansBold9pt7b);
+  canvas.setTextColor(CLR_TEXT);
+  canvas.drawString("BG MiniView", W/2, cardY + 74);
   canvas.setFont(&fonts::FreeSans9pt7b);
   canvas.setTextColor(CLR_MUTED);
-  canvas.drawString("Chip-ID encrypted", W/2, H/2 - 4);
+  canvas.drawString("Dexcom primary  Nightscout fallback", W/2, cardY + 96);
   canvas.setFont(&fonts::FreeSans9pt7b);
-  canvas.setTextColor(CLR_MUTED);
-  canvas.drawString("v" FIRMWARE_VERSION, W/2, H/2 + 18);
+  canvas.setTextColor(CLR_YELLOW);
+  canvas.drawString("v" FIRMWARE_VERSION, W/2, cardY + 118);
   canvas.pushSprite(0, 0);
   delay(1200);
   return;

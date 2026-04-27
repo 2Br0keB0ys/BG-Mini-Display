@@ -103,7 +103,7 @@ void sdInit() {
     if (f) {
       String entry =
         String("{\"t\":") + String(millis()) +
-        ",\"msg\":\"BGDisplay started\",\"fw\":\"" + String(FIRMWARE_VERSION) + "\"}";
+        ",\"msg\":\"BG MiniView started\",\"fw\":\"" + String(FIRMWARE_VERSION) + "\"}";
       f.println(aesEncrypt(entry, "BGDisplay_SD_v1"));
       f.close();
     }

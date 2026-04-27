@@ -14,7 +14,7 @@ inline void otaTick(const AppConfig& cfg) {
 
   if (!initialized) {
     uint64_t chip = ESP.getEfuseMac();
-    snprintf(hostname, sizeof(hostname), "bgdisplay-%04lx", (unsigned long)(chip & 0xFFFF));
+    snprintf(hostname, sizeof(hostname), "bg-miniview-%04lx", (unsigned long)(chip & 0xFFFF));
 
     ArduinoOTA.setHostname(hostname);
     if (strlen(cfg.deviceKey) > 0) {
