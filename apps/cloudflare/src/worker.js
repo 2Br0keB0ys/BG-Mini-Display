@@ -1,11 +1,10 @@
 // BG MiniView Cloudflare Worker v3.0
 // Features: WebSocket relay (DO), Workers AI digest, MCP server, Pushover alerts
 
-import { createCgmDataProvider } from "./providers/registry.js";
-import { fetchGlookoPumpSnapshot } from "./providers/glooko.js";
 import { fetchTandemPumpSnapshot } from "./providers/tandem.js";
 import { fetchMedtronicPumpSnapshot } from "./providers/medtronic.js";
 import { fetchTidepoolPumpSnapshot } from "./providers/tidepool.js";
+import puppeteer from "@cloudflare/puppeteer";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -49,7 +48,7 @@ function normalizeDndSchedule(sched, fallbackFrom, fallbackTo) {
   return out;
 }
 
-// ─── Geo IP Timezone Detection ──────────────────────────────────────────────
+// â”€â”€â”€ Geo IP Timezone Detection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Maps Cloudflare's IANA timezone to BG MiniView's supported zones (US only for now)
 function detectTimezoneFromIANA(ianaName) {
   const mapping = {
@@ -376,36 +375,94 @@ async function fetchDexcomShareLatest(config) {
   } catch { return null; }
 }
 
-async function fetchGlookoLatest(config) {
-  if (!config.glooko_email || !config.glooko_password) return null;
-  try {
-    const provider = createCgmDataProvider("glooko", {
-      email: config.glooko_email,
-      password: config.glooko_password,
-      env: config.glooko_env,
-      server: config.glooko_server,
-    });
-    const readings = await provider.fetchReadings({ limit: 1 });
-    if (!Array.isArray(readings) || !readings.length) {
-      console.warn("[Glooko] No readings returned from provider");
-      return null;
+// ─── Shared formatting helpers ─────────────────────────────────────────────────
+
+function formatAgeDays(epochSec, nowSec) {
+  if (!epochSec || epochSec <= 0) return null;
+  const diffSec = nowSec - epochSec;
+  if (diffSec < 0) return null;
+  const days = diffSec / 86400;
+  if (days < 1) return `${Math.round(diffSec / 3600)}h ago`;
+  return `${days.toFixed(1)} days ago`;
+}
+
+// ─── Dexcom Sensor Session ─────────────────────────────────────────────────────
+
+const DEXCOM_SENSOR_CACHE_KEY = "dexcom:sensor_session";
+const DEXCOM_SENSOR_CACHE_MAX_AGE_SEC = 3 * 60 * 60; // 3h — sensor session changes rarely
+
+async function fetchDexcomSensorSession(config, env) {
+  if (!config.dexcom_user || !config.dexcom_pass) return null;
+
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (env?.BGDISPLAY_CONFIG) {
+    const cached = await env.BGDISPLAY_CONFIG.get(DEXCOM_SENSOR_CACHE_KEY, { type: "json" });
+    const cacheTs = Number(cached?.fetchedAt || 0);
+    if (cached?.session_start_ts && (nowSec - cacheTs) <= DEXCOM_SENSOR_CACHE_MAX_AGE_SEC) {
+      return cached;
     }
-    const r = readings[0];
-    return {
-      value: r.sgv,
-      trend: null,
-      direction: r.direction || null,
-      timestamp: r.timestamp instanceof Date ? r.timestamp.getTime() : null,
-      device: r.device || "glooko",
-    };
-  } catch (err) {
-    const msg = String(err?.message || err || "unknown error");
-    console.error("[Glooko] fetch failed:", msg);
-    if (config?._env?.BGDISPLAY_CONFIG) {
-      await appendChangeLog(config._env, `Glooko error: ${msg.slice(0, 80)}`);
-    }
-    return null;
   }
+
+  const base = config.dexcom_region === "Non-US" ? DEXCOM_OUS_BASE : DEXCOM_US_BASE;
+  try {
+    const authResp = await fetch(`${base}/General/AuthenticatePublisherAccount`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      body: JSON.stringify({ accountName: config.dexcom_user, password: config.dexcom_pass, applicationId: DEXCOM_APP_ID }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!authResp.ok) return null;
+    const sessionId = (await authResp.text()).replace(/^"|"$/g, "").trim();
+    if (!sessionId || sessionId === "00000000-0000-0000-0000-000000000000") return null;
+
+    // Fetch 10 days of readings to find where current sensor session started
+    const readResp = await fetch(
+      `${base}/Publisher/ReadPublisherLatestGlucoseValues?sessionId=${encodeURIComponent(sessionId)}&minutes=14400&maxCount=2880`,
+      { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(12000) },
+    );
+    if (!readResp.ok) return null;
+    const data = await readResp.json();
+    if (!Array.isArray(data) || !data.length) return null;
+
+    // Parse timestamps (Dexcom format: "Date(1234567890123)")
+    const readings = data.map(r => {
+      const m = (r.WT || r.ST || "").match(/Date\((\d+)/);
+      return m ? Math.floor(parseInt(m[1], 10) / 1000) : 0;
+    }).filter(t => t > 0).sort((a, b) => b - a); // newest first
+
+    // Walk backwards to find the start of the current contiguous session
+    // A gap > 30 min (1800s) means a new sensor was inserted
+    const GAP_SEC = 1800;
+    let sessionStartTs = readings[readings.length - 1]; // default: oldest reading
+    for (let i = 0; i < readings.length - 1; i++) {
+      const gap = readings[i] - readings[i + 1];
+      if (gap > GAP_SEC) {
+        sessionStartTs = readings[i]; // reading just after the gap = current session start
+        break;
+      }
+    }
+
+    const sessionAgeDays = (nowSec - sessionStartTs) / 86400;
+    // G7 is 10-day sensor, G6 is also 10 days
+    const daysRemaining = Math.max(0, 10 - sessionAgeDays);
+
+    const result = {
+      session_start_ts: sessionStartTs,
+      session_start_iso: new Date(sessionStartTs * 1000).toISOString(),
+      session_age_days: parseFloat(sessionAgeDays.toFixed(2)),
+      days_remaining: parseFloat(daysRemaining.toFixed(2)),
+      fetchedAt: nowSec,
+    };
+
+    if (env?.BGDISPLAY_CONFIG) {
+      await env.BGDISPLAY_CONFIG.put(
+        DEXCOM_SENSOR_CACHE_KEY,
+        JSON.stringify(result),
+        { expirationTtl: 24 * 60 * 60 },
+      );
+    }
+    return result;
+  } catch { return null; }
 }
 
 // ─── Nightscout Fetch Helpers (used by cron jobs and MCP) ─────────────────────
@@ -440,7 +497,227 @@ async function fetchNightscoutHistory(config, count = 24) {
   } catch { return []; }
 }
 
-async function fetchOmnipodBridge(config, diag = null) {
+const GLOOKO_PUMP_CACHE_KEY = "glooko:pump_snapshot";
+const GLOOKO_PUMP_CACHE_MAX_AGE_SEC = 45 * 60;
+
+function deriveApiBaseFromPageUrl(pageUrl) {
+  return String(pageUrl || "https://my.glooko.com")
+    .replace(/:\/\/us\.my\./i, "://us.api.")
+    .replace(/:\/\/eu\.my\./i, "://eu.api.")
+    .replace(/:\/\/my\./i, "://api.")
+    .replace(/\/users\/sign_in.*/i, "");
+}
+
+function parseEpochSeconds(raw) {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  if (n > 1000000000000) return Math.floor(n / 1000);
+  return Math.floor(n);
+}
+
+function latestSeriesItem(items) {
+  let latest = null;
+  let latestTs = 0;
+  for (const item of Array.isArray(items) ? items : []) {
+    const ts = parseEpochSeconds(item?.timestamp ?? item?.x ?? item?.date ?? item?.ts);
+    if (ts > latestTs) {
+      latestTs = ts;
+      latest = item;
+    }
+  }
+  return { item: latest, ts: latestTs };
+}
+
+function buildPumpSnapshotFromGraph(payload, nowSec, source = "glooko") {
+  const series = payload?.series || payload || {};
+  const boluses = Array.isArray(series.deliveredBolus) ? series.deliveredBolus : [];
+  const siteChanges = Array.isArray(series.setSiteChange) ? series.setSiteChange : [];
+  const reservoirChanges = Array.isArray(series.reservoirChange) ? series.reservoirChange : [];
+
+  const latestBolus = latestSeriesItem(boluses);
+  const latestSite = latestSeriesItem(siteChanges);
+  const latestReservoir = latestSeriesItem(reservoirChanges);
+
+  const podChangeTs = Math.max(latestSite.ts || 0, latestReservoir.ts || 0);
+  const hasAnyPumpSeries = !!(latestBolus.ts || latestSite.ts || latestReservoir.ts);
+
+  return {
+    source,
+    pod_active: hasAnyPumpSeries,
+    minutes_to_expiry: -1,
+    pod_change_timestamp: podChangeTs || 0,
+    site_change_timestamp: latestSite.ts || 0,
+    reservoir_change_timestamp: latestReservoir.ts || 0,
+    timestamp: nowSec,
+  };
+}
+
+async function fetchGlookoPumpSnapshotBrowser(config, env, diag = null) {
+  if (!config.glooko_email || !config.glooko_password) {
+    if (diag) diag.reason = "missing_glooko_credentials";
+    return null;
+  }
+  if (!env?.MYBROWSER) {
+    if (diag) diag.reason = "browser_binding_missing";
+    return null;
+  }
+
+  const nowSec = Math.floor(Date.now() / 1000);
+  const cached = await env.BGDISPLAY_CONFIG.get(GLOOKO_PUMP_CACHE_KEY, { type: "json" });
+  const cachedTs = Number(cached?.snapshot?.timestamp || 0);
+  if (cached?.snapshot && cachedTs > 0 && (nowSec - cachedTs) <= GLOOKO_PUMP_CACHE_MAX_AGE_SEC) {
+    if (diag) {
+      diag.reason = "ok_cache";
+      diag.cacheAgeSec = nowSec - cachedTs;
+    }
+    return cached.snapshot;
+  }
+
+  let browser = null;
+  try {
+    browser = await puppeteer.launch(env.MYBROWSER);
+    const page = await browser.newPage();
+    await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36");
+
+    // Step 1: load sign-in page — cap at 20s so we get a real error if it hangs
+    await page.goto("https://us.my.glooko.com/users/sign_in?id=login_form&locale=en-US", {
+      waitUntil: "domcontentloaded",
+      timeout: 20000,
+    }).catch(e => { throw new Error(`browser_goto_timeout:${String(e.message).slice(0, 80)}`); });
+
+    // Step 2: wait for login form fields
+    await page.waitForSelector("#user_email", { timeout: 10000 })
+      .catch(() => { throw new Error(`browser_selector_missing:user_email at ${page.url()}`); });
+    await page.waitForSelector("#user_password", { timeout: 5000 })
+      .catch(() => { throw new Error(`browser_selector_missing:user_password at ${page.url()}`); });
+
+    await page.type("#user_email", config.glooko_email, { delay: 15 });
+    await page.type("#user_password", config.glooko_password, { delay: 15 });
+
+    const submitSelector = "#sign-in-button, button[type='submit']";
+    const hasSubmit = await page.$(submitSelector);
+    if (!hasSubmit) {
+      throw new Error("browser_login_submit_missing");
+    }
+    await Promise.all([
+      page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 20000 }).catch(() => null),
+      page.click(submitSelector),
+    ]);
+
+    // Some login pages keep URL stable; force-submit the form once if still on sign-in.
+    if (/\/users\/sign_in/i.test(page.url())) {
+      await Promise.all([
+        page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 20000 }).catch(() => null),
+        page.evaluate(() => {
+          const form = document.querySelector("form#new_user, form[action*='sign_in']");
+          if (form) form.submit();
+        }),
+      ]);
+    }
+
+    const currentUrl = page.url();
+    if (/\/users\/sign_in/i.test(currentUrl)) {
+      const loginErr = await page.evaluate(() => {
+        const text = (document.body?.innerText || "").replace(/\s+/g, " ").trim();
+        const m = text.match(/invalid email or password|incorrect email or password|authentication failed|account locked|too many attempts/i);
+        return m ? m[0] : null;
+      });
+      if (loginErr) {
+        throw new Error(`browser_login_rejected:${loginErr}`);
+      }
+      throw new Error(`browser_login_still_on_signin:${currentUrl}`);
+    }
+
+    const authCtx = await page.evaluate(() => {
+      const html = document.documentElement?.outerHTML || "";
+      const patientFromWindow = globalThis?.window?.patient || globalThis?.window?.user?.userLogin?.glookoCode || null;
+      const patientFromHtml = (html.match(/window\.patient\s*=\s*["']([^"']+)["']/i) || [])[1] || null;
+      const apiFromHtml =
+        (html.match(/apiUrl\s*[:=]\s*["']([^"']+)["']/i) || [])[1] ||
+        (html.match(/apiUrl\\?"\s*:\s*\\?"([^\\\"]+)\\?"/i) || [])[1] ||
+        null;
+      return {
+        patient: patientFromWindow || patientFromHtml,
+        apiUrl: apiFromHtml,
+        pageUrl: location.href,
+      };
+    });
+
+    if (!authCtx?.patient) {
+      throw new Error(`browser_missing_patient:${authCtx?.pageUrl || currentUrl}`);
+    }
+
+    const apiBase = String(authCtx.apiUrl || deriveApiBaseFromPageUrl(authCtx.pageUrl || currentUrl)).replace(/\/$/, "");
+    const startIso = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+    const endIso = new Date().toISOString();
+
+    const graph = await page.evaluate(async ({ apiBase, patient, startIso, endIso }) => {
+      const query = [
+        `patient=${encodeURIComponent(patient)}`,
+        `startDate=${encodeURIComponent(startIso)}`,
+        `endDate=${encodeURIComponent(endIso)}`,
+        "locale=en-GB",
+        "series[]=deliveredBolus",
+        "series[]=setSiteChange",
+        "series[]=reservoirChange",
+      ].join("&");
+      const url = `${apiBase}/api/v3/graph/data?${query}`;
+      const resp = await fetch(url, {
+        method: "GET",
+        credentials: "include",
+        headers: {
+          Accept: "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+      });
+      const text = await resp.text();
+      let data = null;
+      try { data = JSON.parse(text); } catch {}
+      return {
+        ok: resp.ok,
+        status: resp.status,
+        data,
+        preview: text.slice(0, 180),
+      };
+    }, {
+      apiBase,
+      patient: authCtx.patient,
+      startIso,
+      endIso,
+    });
+
+    if (!graph?.ok || !graph?.data) {
+      throw new Error(`browser_graph_failed:${graph?.status || 0}:${graph?.preview || "empty"}`);
+    }
+
+    const snapshot = buildPumpSnapshotFromGraph(graph.data, nowSec, "glooko");
+    await env.BGDISPLAY_CONFIG.put(
+      GLOOKO_PUMP_CACHE_KEY,
+      JSON.stringify({ snapshot, updatedAt: Date.now() }),
+      { expirationTtl: 2 * 24 * 60 * 60 },
+    );
+
+    if (diag) diag.reason = "ok_browser";
+    return snapshot;
+  } catch (err) {
+    const msg = String(err?.message || err || "unknown_error").slice(0, 220);
+    if (diag) diag.reason = `browser_fetch_failed:${msg}`;
+    if (cached?.snapshot) {
+      if (diag) {
+        diag.reason = `${diag.reason}|cache_fallback`;
+        diag.cacheAgeSec = cachedTs > 0 ? nowSec - cachedTs : null;
+      }
+      return cached.snapshot;
+    }
+    return null;
+  } finally {
+    if (browser) {
+      try { await browser.close(); } catch {}
+    }
+  }
+}
+
+async function fetchOmnipodBridge(config, env, diag = null) {
   if (!config.glooko_enabled) {
     if (diag) {
       diag.reason = "sync_disabled";
@@ -466,33 +743,14 @@ async function fetchOmnipodBridge(config, diag = null) {
     }
     if (!endpoint) {
       if (source === "glooko" && hasSourceCreds) {
-        try {
-          const direct = await fetchGlookoPumpSnapshot({
-            email: config.glooko_email,
-            password: config.glooko_password,
-            env: config.glooko_env,
-            server: config.glooko_server,
-          }, {
-            signal: AbortSignal.timeout(9000),
-          });
-
-          if (diag) diag.reason = "ok_direct_glooko";
-          return {
-            source,
-            pod_active: true,
-            insulin_on_board: Number.isFinite(Number(direct.insulin_on_board)) ? Number(direct.insulin_on_board) : -1,
-            reservoir_units: -1,
-            minutes_to_expiry: -1,
-            last_bolus_units: Number.isFinite(Number(direct.last_bolus_units)) ? Number(direct.last_bolus_units) : -1,
-            last_bolus_timestamp: Number.isFinite(Number(direct.last_bolus_timestamp)) ? Math.floor(Number(direct.last_bolus_timestamp)) : 0,
-            pod_change_timestamp: Number.isFinite(Number(direct.pod_change_timestamp)) ? Math.floor(Number(direct.pod_change_timestamp)) : 0,
-            timestamp: Number.isFinite(Number(direct.timestamp)) ? Math.floor(Number(direct.timestamp)) : Math.floor(Date.now() / 1000),
-          };
-        } catch (err) {
-          const msg = String(err?.message || err || "unknown_error").slice(0, 220);
-          if (diag) diag.reason = `direct_source_fetch_failed:${msg}`;
-          return null;
+        const browserData = await fetchGlookoPumpSnapshotBrowser(config, env, diag);
+        if (browserData) {
+          if (diag && (diag.reason === "ok_browser" || diag.reason === "ok_cache")) {
+            diag.reason = `ok_${diag.reason}_glooko`;
+          }
+          return { ...browserData, source };
         }
+        return null;
       }
 
       if (source === "tandem" && hasSourceCreds) {
@@ -508,12 +766,10 @@ async function fetchOmnipodBridge(config, diag = null) {
           return {
             source,
             pod_active: true,
-            insulin_on_board: Number.isFinite(Number(direct.insulin_on_board)) ? Number(direct.insulin_on_board) : -1,
-            reservoir_units: Number.isFinite(Number(direct.reservoir_units)) ? Number(direct.reservoir_units) : -1,
             minutes_to_expiry: Number.isFinite(Number(direct.minutes_to_expiry)) ? Number(direct.minutes_to_expiry) : -1,
-            last_bolus_units: Number.isFinite(Number(direct.last_bolus_units)) ? Number(direct.last_bolus_units) : -1,
-            last_bolus_timestamp: Number.isFinite(Number(direct.last_bolus_timestamp)) ? Math.floor(Number(direct.last_bolus_timestamp)) : 0,
             pod_change_timestamp: Number.isFinite(Number(direct.pod_change_timestamp)) ? Math.floor(Number(direct.pod_change_timestamp)) : 0,
+            site_change_timestamp: Number.isFinite(Number(direct.site_change_timestamp)) ? Math.floor(Number(direct.site_change_timestamp)) : 0,
+            reservoir_change_timestamp: Number.isFinite(Number(direct.reservoir_change_timestamp)) ? Math.floor(Number(direct.reservoir_change_timestamp)) : 0,
             timestamp: Number.isFinite(Number(direct.timestamp)) ? Math.floor(Number(direct.timestamp)) : Math.floor(Date.now() / 1000),
           };
         } catch (err) {
@@ -536,12 +792,10 @@ async function fetchOmnipodBridge(config, diag = null) {
           return {
             source,
             pod_active: true,
-            insulin_on_board: Number.isFinite(Number(direct.insulin_on_board)) ? Number(direct.insulin_on_board) : -1,
-            reservoir_units: Number.isFinite(Number(direct.reservoir_units)) ? Number(direct.reservoir_units) : -1,
             minutes_to_expiry: Number.isFinite(Number(direct.minutes_to_expiry)) ? Number(direct.minutes_to_expiry) : -1,
-            last_bolus_units: Number.isFinite(Number(direct.last_bolus_units)) ? Number(direct.last_bolus_units) : -1,
-            last_bolus_timestamp: Number.isFinite(Number(direct.last_bolus_timestamp)) ? Math.floor(Number(direct.last_bolus_timestamp)) : 0,
             pod_change_timestamp: Number.isFinite(Number(direct.pod_change_timestamp)) ? Math.floor(Number(direct.pod_change_timestamp)) : 0,
+            site_change_timestamp: Number.isFinite(Number(direct.site_change_timestamp)) ? Math.floor(Number(direct.site_change_timestamp)) : 0,
+            reservoir_change_timestamp: Number.isFinite(Number(direct.reservoir_change_timestamp)) ? Math.floor(Number(direct.reservoir_change_timestamp)) : 0,
             timestamp: Number.isFinite(Number(direct.timestamp)) ? Math.floor(Number(direct.timestamp)) : Math.floor(Date.now() / 1000),
           };
         } catch (err) {
@@ -564,12 +818,10 @@ async function fetchOmnipodBridge(config, diag = null) {
           return {
             source,
             pod_active: true,
-            insulin_on_board: Number.isFinite(Number(direct.insulin_on_board)) ? Number(direct.insulin_on_board) : -1,
-            reservoir_units: Number.isFinite(Number(direct.reservoir_units)) ? Number(direct.reservoir_units) : -1,
             minutes_to_expiry: Number.isFinite(Number(direct.minutes_to_expiry)) ? Number(direct.minutes_to_expiry) : -1,
-            last_bolus_units: Number.isFinite(Number(direct.last_bolus_units)) ? Number(direct.last_bolus_units) : -1,
-            last_bolus_timestamp: Number.isFinite(Number(direct.last_bolus_timestamp)) ? Math.floor(Number(direct.last_bolus_timestamp)) : 0,
             pod_change_timestamp: Number.isFinite(Number(direct.pod_change_timestamp)) ? Math.floor(Number(direct.pod_change_timestamp)) : 0,
+            site_change_timestamp: Number.isFinite(Number(direct.site_change_timestamp)) ? Math.floor(Number(direct.site_change_timestamp)) : 0,
+            reservoir_change_timestamp: Number.isFinite(Number(direct.reservoir_change_timestamp)) ? Math.floor(Number(direct.reservoir_change_timestamp)) : 0,
             timestamp: Number.isFinite(Number(direct.timestamp)) ? Math.floor(Number(direct.timestamp)) : Math.floor(Date.now() / 1000),
           };
         } catch {
@@ -619,26 +871,23 @@ async function fetchOmnipodBridge(config, diag = null) {
     }
 
     const active = (pod.pod_active ?? pod.active ?? false) === true;
-    const iob = Number(pod.insulin_on_board ?? pod.iob ?? -1);
-    const reservoir = Number(pod.reservoir_units ?? pod.reservoir ?? -1);
     const minsToExpiry = Number(pod.minutes_to_expiry ?? pod.pod_expires_in_min ?? -1);
-    const lastBolusUnits = Number(pod.last_bolus_units ?? pod.lastBolusUnits ?? pod.bolus_units ?? -1);
-    const rawLastBolusTs = Number(pod.last_bolus_timestamp ?? pod.lastBolusTimestamp ?? pod.last_bolus_ts ?? 0);
     const rawPodChangeTs = Number(pod.pod_change_timestamp ?? pod.podChangeTimestamp ?? pod.last_pod_change_ts ?? 0);
+    const rawSiteChangeTs = Number(pod.site_change_timestamp ?? 0);
+    const rawReservoirChangeTs = Number(pod.reservoir_change_timestamp ?? 0);
     const rawTs = Number(pod.timestamp ?? pod.ts ?? jsonBody.timestamp ?? 0);
-    const lastBolusTsSec = rawLastBolusTs > 1000000000000 ? Math.floor(rawLastBolusTs / 1000) : rawLastBolusTs;
     const podChangeTsSec = rawPodChangeTs > 1000000000000 ? Math.floor(rawPodChangeTs / 1000) : rawPodChangeTs;
+    const siteChangeTsSec = rawSiteChangeTs > 1000000000000 ? Math.floor(rawSiteChangeTs / 1000) : rawSiteChangeTs;
+    const reservoirChangeTsSec = rawReservoirChangeTs > 1000000000000 ? Math.floor(rawReservoirChangeTs / 1000) : rawReservoirChangeTs;
     const tsSec = rawTs > 1000000000000 ? Math.floor(rawTs / 1000) : rawTs;
 
     const out = {
       source,
       pod_active: active,
-      insulin_on_board: Number.isFinite(iob) ? iob : -1,
-      reservoir_units: Number.isFinite(reservoir) ? reservoir : -1,
       minutes_to_expiry: Number.isFinite(minsToExpiry) ? Math.floor(minsToExpiry) : -1,
-      last_bolus_units: Number.isFinite(lastBolusUnits) ? lastBolusUnits : -1,
-      last_bolus_timestamp: Number.isFinite(lastBolusTsSec) ? Math.floor(lastBolusTsSec) : 0,
       pod_change_timestamp: Number.isFinite(podChangeTsSec) ? Math.floor(podChangeTsSec) : 0,
+      site_change_timestamp: Number.isFinite(siteChangeTsSec) ? Math.floor(siteChangeTsSec) : 0,
+      reservoir_change_timestamp: Number.isFinite(reservoirChangeTsSec) ? Math.floor(reservoirChangeTsSec) : 0,
       timestamp: Number.isFinite(tsSec) ? tsSec : 0,
     };
     if (diag) diag.reason = "ok";
@@ -768,25 +1017,67 @@ async function generateDailyDigest(env, force = false, type = "daily") {
     notes: config.insulin_pump_notes || "",
   };
 
+  // Fetch live Glooko pump snapshot from cache (browser-sync, no new browser fetch)
+  let pumpSnapshot = null;
+  if (config.glooko_enabled && config.glooko_email) {
+    try {
+      const cached = await env.BGDISPLAY_CONFIG.get(GLOOKO_PUMP_CACHE_KEY, { type: "json" });
+      const nowSec = Math.floor(Date.now() / 1000);
+      const cacheTs = Number(cached?.snapshot?.timestamp || 0);
+      if (cached?.snapshot && cacheTs > 0 && (nowSec - cacheTs) <= GLOOKO_PUMP_CACHE_MAX_AGE_SEC * 4) {
+        pumpSnapshot = cached.snapshot;
+      }
+    } catch {}
+  }
+
+  // Fetch Dexcom sensor session age
+  let sensorSession = null;
+  if (config.dexcom_user && config.dexcom_pass) {
+    try { sensorSession = await fetchDexcomSensorSession(config, env); } catch {}
+  }
+
+  const nowSec = Math.floor(Date.now() / 1000);
+
+  // Build pump context line for AI prompt
+  let pumpContextLine = "";
+  if (pumpSnapshot) {
+    const siteTs = Number(pumpSnapshot.site_change_timestamp || pumpSnapshot.pod_change_timestamp || 0);
+    const podAgeDays = siteTs > 0 ? ((nowSec - siteTs) / 86400).toFixed(1) : null;
+    const parts = [];
+    if (podAgeDays !== null) parts.push(`site/pod change: ${podAgeDays} days ago`);
+    if (parts.length) pumpContextLine = `Live pump data — ${parts.join(", ")}.`;
+  }
+
+  // Build sensor context line for AI prompt
+  let sensorContextLine = "";
+  if (sensorSession?.session_age_days != null) {
+    const daysLeft = sensorSession.days_remaining;
+    sensorContextLine = `Dexcom sensor: ${sensorSession.session_age_days.toFixed(1)} days old, ~${daysLeft.toFixed(1)} days remaining.`;
+  }
+
+  const aiModel = config.ai_model || "@cf/meta/llama-3.1-8b-instruct";
+
   let digestText = "AI digest unavailable — Workers AI binding not configured.";
 
   if (env.AI) {
     try {
       const systemPrompt = type === "hourly"
-        ? "You are a concise diabetes health assistant for a Type 2 diabetic using a Dexcom G7 CGM. Write a brief summary of the past hour in 1-2 sentences (under 80 words). Cover: current status (in range or trend), any notable excursions. Plain text only."
-        : "You are a concise diabetes health assistant for a Type 2 diabetic using a Dexcom G7 CGM. Write a morning summary of the past 24 hours in 3-4 sentences (under 180 words). Cover: time in range, notable lows or highs, overnight pattern, and one brief actionable observation. Adapt guidance to insulin delivery context (pump/no pump and loop mode when provided). If no pump is used, do not mention pump actions. No greeting or closing. Plain text only.";
-      
-      const aiResp = await env.AI.run("@cf/meta/llama-3.1-8b-instruct", {
+        ? "You are a concise diabetes health assistant for a Type 2 diabetic using a Dexcom G7 CGM. Write a brief summary of the past hour in 1-2 sentences (under 80 words). Cover: current status (in range or trend), any notable excursions. If live insulin data is provided, briefly note if active insulin may explain any trends. Plain text only."
+        : "You are a concise diabetes health assistant for a Type 2 diabetic using a Dexcom G7 CGM. Write a morning summary of the past 24 hours in 3-4 sentences (under 180 words). Cover: time in range, notable lows or highs, overnight pattern, and one brief actionable observation. If site change age is provided, mention it if the pod is older than 2 days as a possible factor in absorption variability. If sensor age is provided and within 1 day of expiry, note it. Adapt guidance to insulin delivery context (pump/no pump and loop mode when provided). If no pump is used, do not mention pump actions. No greeting or closing. Plain text only.";
+
+      const userContent = [
+        `Stats: ${statsLine}`,
+        `Most recent values (newest first): ${recentStr} mg/dL.`,
+        pumpContextLine ? pumpContextLine : null,
+        sensorContextLine ? sensorContextLine : null,
+        `Pump profile: ${JSON.stringify(pumpProfile)}.`,
+      ].filter(Boolean).join(" ");
+
+      const aiResp = await env.AI.run(aiModel, {
         max_tokens: type === "hourly" ? 120 : 280,
         messages: [
-          {
-            role: "system",
-            content: systemPrompt,
-          },
-          {
-            role: "user",
-            content: `Stats: ${statsLine} Most recent values (newest first): ${recentStr} mg/dL. Pump profile: ${JSON.stringify(pumpProfile)}.`,
-          },
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userContent },
         ],
       });
       const maxDigestChars = type === "hourly" ? 900 : 980;
@@ -803,6 +1094,8 @@ async function generateDailyDigest(env, force = false, type = "daily") {
     date: today,
     type,
     stats: { tir: Number(tir), min: minVal, max: maxVal, avg: avgVal, readingCount: values.length },
+    ai_model: aiModel,
+    pump_data_included: !!pumpContextLine,
   };
   await env.BGDISPLAY_CONFIG.put(key, JSON.stringify(digest));
   const logMsg = type === "hourly" ? `Hourly AI digest generated (TIR ${tir}%, ${values.length} readings)` : `Daily AI digest generated (TIR ${tir}%, ${values.length} readings)`;
@@ -877,11 +1170,11 @@ async function sendDigestPushover(env) {
 
 // priority: -1=quiet, 0=normal, 1=high (bypasses quiet hours), 2=emergency
 async function sendPushoverNotification(userKey, apiToken, message, title, priority = 0) {
-  const body = new URLSearchParams({ token: apiToken, user: userKey, message, title, priority: String(priority) });
+  const body = JSON.stringify({ token: apiToken, user: userKey, message, title, priority });
   const resp = await fetch("https://api.pushover.net/1/messages.json", {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: body.toString(),
+    headers: { "Content-Type": "application/json" },
+    body,
     signal: AbortSignal.timeout(8000),
   });
   return resp.ok;
@@ -976,7 +1269,7 @@ async function runPushoverAlertCheck(env) {
 const MCP_TOOLS = [
   {
     name: "get_current_bg",
-    description: "Fetch the latest blood glucose reading. Tries Dexcom Share first, then Glooko if configured, then falls back to Nightscout. Returns value, trend direction as both numeric (Dexcom 0–8 scale) and human-readable string (e.g. \"Flat\", \"SingleUp\"), ISO timestamp, source used (\"dexcom\", \"glooko\", or \"nightscout\"), and staleness in minutes.",
+    description: "Fetch the latest blood glucose reading. Tries Dexcom Share first, then falls back to Nightscout. Returns value, trend direction as both numeric (Dexcom 0–8 scale) and human-readable string (e.g. \"Flat\", \"SingleUp\"), ISO timestamp, source used (\"dexcom\" or \"nightscout\"), and staleness in minutes.",
     inputSchema: { type: "object", properties: {}, required: [] },
   },
   {
@@ -1040,7 +1333,7 @@ const MCP_TOOLS = [
   },
   {
     name: "glooko_test",
-    description: "Test Glooko connection and credentials. Returns detailed diagnostic info about email/password validation and API response. Use this to debug Glooko auth failures.",
+    description: "Test Glooko browser-based sync and credentials. Returns diagnostic info about Browser Run login/session and pump snapshot fetch path.",
     inputSchema: { type: "object", properties: {}, required: [] },
   },
   {
@@ -1057,6 +1350,43 @@ const MCP_TOOLS = [
     name: "generate_digest",
     description: "Force-generate today's AI blood glucose summary immediately, bypassing the once-per-day guard",
     inputSchema: { type: "object", properties: {}, required: [] },
+  },
+  {
+    name: "get_device_ages",
+    description: "Return current ages and remaining life for the Dexcom G7 sensor session and Glooko pod/site change. Dexcom sensor age is inferred from reading gaps (assumes 10-day G7). Site change age comes from Glooko browser-sync cache.",
+    inputSchema: { type: "object", properties: {}, required: [] },
+  },
+  {
+    name: "clear_cache",
+    description: "Clear one or more cached data entries from KV storage. Use target='glooko_pump' to force a fresh browser sync on next call, 'digests' to clear all AI digest cache (daily + all hourly), 'alerts' to reset Pushover alert history/cooldowns, or 'all' for everything.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        target: { type: "string", description: "glooko_pump | digests | alerts | all" },
+      },
+      required: ["target"],
+    },
+  },
+  {
+    name: "get_maintenance_status",
+    description: "Return a full health snapshot: cache ages, last digest dates, binding availability (AI, Browser Run), alert cooldown state, and KV key inventory. Use this before running maintenance.",
+    inputSchema: { type: "object", properties: {}, required: [] },
+  },
+  {
+    name: "run_maintenance",
+    description: "Run a full maintenance sweep: clear all stale caches (older than their TTL), force-regenerate the daily AI digest with latest pump data, and return a before/after status report.",
+    inputSchema: { type: "object", properties: {}, required: [] },
+  },
+  {
+    name: "set_ai_model",
+    description: "Change the Workers AI model used for digest generation. Available models: llama-3.1-8b (default, fast), llama-3.3-70b (higher quality, slower), llama-3.2-3b (fastest), mistral-7b, gemma-7b. Pass model alias or full @cf/ path.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        model: { type: "string", description: "Model alias: llama-3.1-8b | llama-3.3-70b | llama-3.2-3b | mistral-7b | gemma-7b, or full @cf/ path" },
+      },
+      required: ["model"],
+    },
   },
 ];
 
@@ -1108,15 +1438,6 @@ async function handleMCP(request, env, config, auth) {
       if (config.dexcom_user && config.dexcom_pass) {
         rawEntry = await fetchDexcomShareLatest(config);
         if (rawEntry) source = "dexcom";
-      }
-
-      // Try Glooko next
-      if (!rawEntry) {
-        const glookoEntry = await fetchGlookoLatest(config);
-        if (glookoEntry) {
-          rawEntry = glookoEntry;
-          source = "glooko";
-        }
       }
 
       // Fall back to Nightscout
@@ -1293,16 +1614,20 @@ async function handleMCP(request, env, config, auth) {
       }
 
       if (checks.glooko.configured) {
-        const latest = await fetchGlookoLatest(config);
-        checks.glooko.reachable = !!(latest && latest.value);
-        checks.glooko.note = checks.glooko.reachable ? "Latest reading available" : "No reading returned";
+        const diag = {};
+        const snap = await fetchGlookoPumpSnapshotBrowser(config, env, diag);
+        checks.glooko.reachable = !!snap;
+        checks.glooko.note = checks.glooko.reachable
+          ? "Browser sync pump snapshot available"
+          : `Browser sync unavailable (${diag.reason || "unknown"})`;
+        checks.glooko.reason = diag.reason || null;
       } else {
         checks.glooko.note = "Glooko credentials missing";
       }
 
       if (checks.omnipod.configured) {
         const diag = {};
-        const pod = await fetchOmnipodBridge(config, diag);
+        const pod = await fetchOmnipodBridge(config, env, diag);
         checks.omnipod.reachable = !!pod;
         checks.omnipod.note = checks.omnipod.reachable ? "Omnipod payload available" : `No Omnipod payload returned (${diag.reason || "unknown"})`;
         checks.omnipod.reason = diag.reason || null;
@@ -1340,17 +1665,20 @@ async function handleMCP(request, env, config, auth) {
       }
 
       if (source === "glooko") {
-        const latest = await fetchGlookoLatest(config);
-        if (!latest) return mcpResult(id, { content: [{ type: "text", text: "No Glooko data available." }] });
-        const trend = normalizeTrend(latest.trend, latest.direction);
+        const diag = {};
+        const latest = await fetchGlookoPumpSnapshotBrowser(config, env, diag);
+        if (!latest) {
+          return mcpResult(id, { content: [{ type: "text", text: `No Glooko browser-sync data available (${diag.reason || "unknown"}).` }] });
+        }
         return mcpResult(id, {
           content: [{ type: "text", text: JSON.stringify({
             source: "glooko",
-            value: latest.value,
-            trend_numeric: trend.numeric,
-            trend_name: trend.name,
-            timestamp: latest.timestamp ? new Date(latest.timestamp).toISOString() : null,
-            device: latest.device || "glooko",
+            insulin_on_board: latest.insulin_on_board,
+            last_bolus_units: latest.last_bolus_units,
+            last_bolus_timestamp: latest.last_bolus_timestamp ? new Date(latest.last_bolus_timestamp * 1000).toISOString() : null,
+            pod_change_timestamp: latest.pod_change_timestamp ? new Date(latest.pod_change_timestamp * 1000).toISOString() : null,
+            timestamp: latest.timestamp ? new Date(latest.timestamp * 1000).toISOString() : null,
+            path: diag.reason || "ok_browser",
           }, null, 2) }],
         });
       }
@@ -1369,7 +1697,7 @@ async function handleMCP(request, env, config, auth) {
       }
 
       const diag = {};
-      const pod = await fetchOmnipodBridge(config, diag);
+      const pod = await fetchOmnipodBridge(config, env, diag);
       if (!pod) {
         return mcpResult(id, {
           content: [{ type: "text", text: JSON.stringify({
@@ -1406,27 +1734,24 @@ async function handleMCP(request, env, config, auth) {
       }
 
       try {
-        const provider = createCgmDataProvider("glooko", {
-          email: config.glooko_email,
-          password: config.glooko_password,
-          env: config.glooko_env,
-          server: config.glooko_server,
-        });
-        const readings = await Promise.race([
-          provider.fetchReadings({ limit: 1 }),
-          new Promise((_, rej) => setTimeout(() => rej(new Error("timeout after 15s")), 15000)),
+        const diag = {};
+        const snap = await Promise.race([
+          fetchGlookoPumpSnapshotBrowser(config, env, diag),
+          new Promise((_, rej) => setTimeout(() => rej(new Error("timeout after 60s")), 60000)),
         ]);
-        if (Array.isArray(readings) && readings.length > 0) {
-          const r = readings[0];
+        if (snap) {
           result.test_result = "success";
-          result.latest_reading = {
-            value: r.sgv,
-            timestamp: r.timestamp ? r.timestamp.toISOString() : null,
-            direction: r.direction,
+          result.latest_snapshot = {
+            insulin_on_board: snap.insulin_on_board,
+            last_bolus_units: snap.last_bolus_units,
+            last_bolus_timestamp: snap.last_bolus_timestamp ? new Date(snap.last_bolus_timestamp * 1000).toISOString() : null,
+            pod_change_timestamp: snap.pod_change_timestamp ? new Date(snap.pod_change_timestamp * 1000).toISOString() : null,
+            timestamp: snap.timestamp ? new Date(snap.timestamp * 1000).toISOString() : null,
           };
+          result.path = diag.reason || "ok_browser";
         } else {
-          result.test_result = "no_readings";
-          result.error = "API returned empty readings array";
+          result.test_result = "no_data";
+          result.error = diag.reason || "Browser sync returned no snapshot";
         }
       } catch (err) {
         result.test_result = "failed";
@@ -1460,6 +1785,268 @@ async function handleMCP(request, env, config, auth) {
       const digest = await env.BGDISPLAY_CONFIG.get("daily_digest", { type: "json" });
       if (!digest) return mcpResult(id, { content: [{ type: "text", text: "Digest generation failed." }] });
       return mcpResult(id, { content: [{ type: "text", text: `Generated: ${digest.date}\n\n${digest.text}` }] });
+    }
+
+    if (toolName === "get_device_ages") {
+      const nowSec = Math.floor(Date.now() / 1000);
+      const result = { dexcom_sensor: null, glooko_site_change: null };
+
+      // Dexcom sensor session
+      if (config.dexcom_user && config.dexcom_pass) {
+        const sess = await fetchDexcomSensorSession(config, env);
+        if (sess) {
+          result.dexcom_sensor = {
+            session_start: sess.session_start_iso,
+            age: formatAgeDays(sess.session_start_ts, nowSec),
+            age_days: sess.session_age_days,
+            days_remaining: sess.days_remaining,
+            pct_used: parseFloat(((sess.session_age_days / 10) * 100).toFixed(1)),
+            status: sess.days_remaining < 1 ? "expiring_soon" : sess.days_remaining < 2 ? "warning" : "ok",
+          };
+        } else {
+          result.dexcom_sensor = { error: "Could not fetch sensor session (Dexcom auth failed or no readings)" };
+        }
+      } else {
+        result.dexcom_sensor = { error: "Dexcom credentials not configured" };
+      }
+
+      // Glooko site change from cache
+      const glookoRaw = await env.BGDISPLAY_CONFIG.get(GLOOKO_PUMP_CACHE_KEY, { type: "json" });
+      const siteTs = Number(glookoRaw?.snapshot?.site_change_timestamp || 0);
+      const reservoirTs = Number(glookoRaw?.snapshot?.reservoir_change_timestamp || 0);
+      const podChangeTs = Math.max(siteTs, reservoirTs);
+      if (glookoRaw?.snapshot) {
+        result.glooko_site_change = {
+          site_change: siteTs > 0 ? {
+            timestamp: new Date(siteTs * 1000).toISOString(),
+            age: formatAgeDays(siteTs, nowSec),
+            age_days: parseFloat(((nowSec - siteTs) / 86400).toFixed(2)),
+          } : null,
+          reservoir_change: reservoirTs > 0 ? {
+            timestamp: new Date(reservoirTs * 1000).toISOString(),
+            age: formatAgeDays(reservoirTs, nowSec),
+            age_days: parseFloat(((nowSec - reservoirTs) / 86400).toFixed(2)),
+          } : null,
+          pod_change: podChangeTs > 0 ? {
+            timestamp: new Date(podChangeTs * 1000).toISOString(),
+            age: formatAgeDays(podChangeTs, nowSec),
+            age_days: parseFloat(((nowSec - podChangeTs) / 86400).toFixed(2)),
+          } : null,
+          cache_age_min: glookoRaw.snapshot.timestamp ? Math.round((nowSec - glookoRaw.snapshot.timestamp) / 60) : null,
+          note: siteTs === 0 && reservoirTs === 0 ? "No site/reservoir change events found in Glooko data (pump may not be linked)" : null,
+        };
+      } else {
+        result.glooko_site_change = { error: "No Glooko pump cache. Run glooko_test first to populate it." };
+      }
+
+      return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] });
+    }
+
+    if (toolName === "clear_cache") {
+      const target = String(params?.arguments?.target || "").toLowerCase();
+      const validTargets = ["glooko_pump", "digests", "alerts", "all"];
+      if (!validTargets.includes(target)) {
+        return mcpResult(id, { content: [{ type: "text", text: JSON.stringify({ error: `Invalid target. Use: ${validTargets.join(" | ")}` }) }] });
+      }
+      const cleared = [];
+      if (target === "glooko_pump" || target === "all") {
+        await env.BGDISPLAY_CONFIG.delete(GLOOKO_PUMP_CACHE_KEY);
+        cleared.push("glooko:pump_snapshot");
+      }
+      if (target === "digests" || target === "all") {
+        await env.BGDISPLAY_CONFIG.delete("daily_digest");
+        cleared.push("daily_digest");
+        for (let h = 0; h < 24; h++) {
+          await env.BGDISPLAY_CONFIG.delete(`hourly_digest_${h}`);
+          await env.BGDISPLAY_CONFIG.delete(`hourly_digest_${h}_pushover_sent`);
+        }
+        cleared.push("hourly_digest_0..23", "hourly_digest_*_pushover_sent");
+      }
+      if (target === "alerts" || target === "all") {
+        await env.BGDISPLAY_CONFIG.delete("last_pushover_alert");
+        await env.BGDISPLAY_CONFIG.delete("last_digest_pushover");
+        await env.BGDISPLAY_CONFIG.delete("last_offline_alert");
+        cleared.push("last_pushover_alert", "last_digest_pushover", "last_offline_alert");
+      }
+      await appendChangeLog(env, `MCP maintenance: cleared cache target=${target}`);
+      return mcpResult(id, { content: [{ type: "text", text: JSON.stringify({ cleared, note: "These KV keys have been deleted. Next relevant operation will regenerate them." }, null, 2) }] });
+    }
+
+    if (toolName === "get_maintenance_status") {
+      const nowMs = Date.now();
+      const nowSec = Math.floor(nowMs / 1000);
+      const [glookoRaw, dailyDigest, deviceStatus, lastAlert, lastDigestPush, lastOffline] = await Promise.all([
+        env.BGDISPLAY_CONFIG.get(GLOOKO_PUMP_CACHE_KEY, { type: "json" }),
+      ]);
+      const [sensorCacheRaw] = await Promise.all([
+        env.BGDISPLAY_CONFIG.get(DEXCOM_SENSOR_CACHE_KEY, { type: "json" }),
+      ]);
+      const [glookoRaw2, dailyDigest, deviceStatus, lastAlert, lastDigestPush, lastOffline] = await Promise.all([
+        Promise.resolve(glookoRaw),
+        env.BGDISPLAY_CONFIG.get("daily_digest", { type: "json" }),
+        env.BGDISPLAY_CONFIG.get("device_status", { type: "json" }),
+        env.BGDISPLAY_CONFIG.get("last_pushover_alert"),
+        env.BGDISPLAY_CONFIG.get("last_digest_pushover"),
+        env.BGDISPLAY_CONFIG.get("last_offline_alert"),
+      ]);
+      const glookoCacheTs = Number(glookoRaw?.snapshot?.timestamp || 0);
+      const glookoCacheAgeSec = glookoCacheTs > 0 ? nowSec - glookoCacheTs : null;
+      const status = {
+        bindings: {
+          ai: !!env.AI,
+          browser_run: !!env.MYBROWSER,
+          kv_encrypt: !!env.KV_ENCRYPT_KEY,
+        },
+        glooko_pump_cache: {
+          exists: !!glookoRaw?.snapshot,
+          age_sec: glookoCacheAgeSec,
+          age_minutes: glookoCacheAgeSec !== null ? Math.round(glookoCacheAgeSec / 60) : null,
+          ttl_sec: GLOOKO_PUMP_CACHE_MAX_AGE_SEC,
+          stale: glookoCacheAgeSec !== null ? glookoCacheAgeSec > GLOOKO_PUMP_CACHE_MAX_AGE_SEC : true,
+          iob: glookoRaw?.snapshot?.insulin_on_board ?? null,
+          last_bolus_units: glookoRaw?.snapshot?.last_bolus_units ?? null,
+        },
+        const glookoCacheTs2 = Number(glookoRaw?.snapshot?.timestamp || 0);
+        const siteTs = Number(glookoRaw?.snapshot?.site_change_timestamp || 0);
+        const reservoirTs = Number(glookoRaw?.snapshot?.reservoir_change_timestamp || 0);
+        daily_digest: {
+          exists: !!dailyDigest,
+          date: dailyDigest?.date || null,
+          generated_at: dailyDigest?.generatedAt ? new Date(dailyDigest.generatedAt).toISOString() : null,
+          age_minutes: dailyDigest?.generatedAt ? Math.round((nowMs - dailyDigest.generatedAt) / 60000) : null,
+          tir: dailyDigest?.stats?.tir ?? null,
+        },
+        device: {
+          last_seen: deviceStatus?.timestamp ? new Date(deviceStatus.timestamp * 1000).toISOString() : null,
+          online: deviceStatus?.online ?? null,
+          fw_version: deviceStatus?.fw_version || null,
+        },
+        alerts: {
+          last_bg_alert: lastAlert ? new Date(Number(lastAlert)).toISOString() : null,
+          last_bg_alert_age_min: lastAlert ? Math.round((nowMs - Number(lastAlert)) / 60000) : null,
+          last_digest_pushover: lastDigestPush || null,
+          last_offline_alert: lastOffline ? new Date(Number(lastOffline)).toISOString() : null,
+        },
+        ai_model: config.ai_model || "@cf/meta/llama-3.1-8b-instruct",
+      };
+      return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(status, null, 2) }] });
+    }
+      if (toolName === "get_maintenance_status") {
+      if (toolName === "get_maintenance_status") {
+        const nowMs = Date.now();
+        const nowSec = Math.floor(nowMs / 1000);
+        const [glookoRaw, sensorCacheRaw, dailyDigest, deviceStatus, lastAlert, lastDigestPush, lastOffline] = await Promise.all([
+          env.BGDISPLAY_CONFIG.get(GLOOKO_PUMP_CACHE_KEY, { type: "json" }),
+          env.BGDISPLAY_CONFIG.get(DEXCOM_SENSOR_CACHE_KEY, { type: "json" }),
+          env.BGDISPLAY_CONFIG.get("daily_digest", { type: "json" }),
+          env.BGDISPLAY_CONFIG.get("device_status", { type: "json" }),
+          env.BGDISPLAY_CONFIG.get("last_pushover_alert"),
+          env.BGDISPLAY_CONFIG.get("last_digest_pushover"),
+          env.BGDISPLAY_CONFIG.get("last_offline_alert"),
+        ]);
+        const glookoCacheTs = Number(glookoRaw?.snapshot?.timestamp || 0);
+        const glookoCacheAgeSec = glookoCacheTs > 0 ? nowSec - glookoCacheTs : null;
+        const siteTs = Number(glookoRaw?.snapshot?.site_change_timestamp || 0);
+        const reservoirTs = Number(glookoRaw?.snapshot?.reservoir_change_timestamp || 0);
+        const status = {
+          bindings: {
+            ai: !!env.AI,
+            browser_run: !!env.MYBROWSER,
+            kv_encrypt: !!env.KV_ENCRYPT_KEY,
+          },
+          glooko_pump_cache: {
+            exists: !!glookoRaw?.snapshot,
+            age_minutes: glookoCacheAgeSec !== null ? Math.round(glookoCacheAgeSec / 60) : null,
+            stale: glookoCacheAgeSec !== null ? glookoCacheAgeSec > GLOOKO_PUMP_CACHE_MAX_AGE_SEC : true,
+            site_change: siteTs > 0 ? { timestamp: new Date(siteTs * 1000).toISOString(), age: formatAgeDays(siteTs, nowSec) } : null,
+            reservoir_change: reservoirTs > 0 ? { timestamp: new Date(reservoirTs * 1000).toISOString(), age: formatAgeDays(reservoirTs, nowSec) } : null,
+          },
+          dexcom_sensor_cache: {
+            exists: !!sensorCacheRaw?.session_start_ts,
+            session_start: sensorCacheRaw?.session_start_iso || null,
+            age_days: sensorCacheRaw?.session_age_days ?? null,
+            days_remaining: sensorCacheRaw?.days_remaining ?? null,
+            cache_age_min: sensorCacheRaw?.fetchedAt ? Math.round((nowSec - sensorCacheRaw.fetchedAt) / 60) : null,
+          },
+          daily_digest: {
+            exists: !!dailyDigest,
+            date: dailyDigest?.date || null,
+            generated_at: dailyDigest?.generatedAt ? new Date(dailyDigest.generatedAt).toISOString() : null,
+            age_minutes: dailyDigest?.generatedAt ? Math.round((nowMs - dailyDigest.generatedAt) / 60000) : null,
+            tir: dailyDigest?.stats?.tir ?? null,
+            ai_model: dailyDigest?.ai_model || null,
+            pump_data_included: dailyDigest?.pump_data_included ?? null,
+          },
+          device: {
+            last_seen: deviceStatus?.timestamp ? new Date(deviceStatus.timestamp * 1000).toISOString() : null,
+            online: deviceStatus?.online ?? null,
+            fw_version: deviceStatus?.fw_version || null,
+          },
+          alerts: {
+            last_bg_alert: lastAlert ? new Date(Number(lastAlert)).toISOString() : null,
+            last_bg_alert_age_min: lastAlert ? Math.round((nowMs - Number(lastAlert)) / 60000) : null,
+            last_digest_pushover: lastDigestPush || null,
+            last_offline_alert: lastOffline ? new Date(Number(lastOffline)).toISOString() : null,
+          },
+          ai_model: config.ai_model || "@cf/meta/llama-3.1-8b-instruct",
+        };
+        return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(status, null, 2) }] });
+      }
+
+    if (toolName === "run_maintenance") {
+      const nowMs = Date.now();
+      const nowSec = Math.floor(nowMs / 1000);
+      const report = { steps: [], errors: [] };
+
+      // 1. Check + clear stale Glooko pump cache
+      try {
+        const glookoRaw = await env.BGDISPLAY_CONFIG.get(GLOOKO_PUMP_CACHE_KEY, { type: "json" });
+        const glookoCacheTs = Number(glookoRaw?.snapshot?.timestamp || 0);
+        if (glookoRaw?.snapshot && (nowSec - glookoCacheTs) > GLOOKO_PUMP_CACHE_MAX_AGE_SEC) {
+          await env.BGDISPLAY_CONFIG.delete(GLOOKO_PUMP_CACHE_KEY);
+          report.steps.push(`glooko_pump_cache: cleared (was ${Math.round((nowSec - glookoCacheTs) / 60)}m old, TTL ${GLOOKO_PUMP_CACHE_MAX_AGE_SEC / 60}m)`);
+        } else if (!glookoRaw?.snapshot) {
+          report.steps.push("glooko_pump_cache: already empty");
+        } else {
+          report.steps.push(`glooko_pump_cache: fresh (${Math.round((nowSec - glookoCacheTs) / 60)}m old), kept`);
+        }
+      } catch (e) { report.errors.push(`glooko_cache: ${e.message}`); }
+
+      // 2. Force-regenerate daily digest
+      try {
+        await generateDailyDigest(env, true);
+        const digest = await env.BGDISPLAY_CONFIG.get("daily_digest", { type: "json" });
+        report.steps.push(`daily_digest: regenerated — TIR ${digest?.stats?.tir ?? "?"}%, "${(digest?.text || "").slice(0, 80)}..."`);
+      } catch (e) { report.errors.push(`daily_digest: ${e.message}`); }
+
+      // 3. Clear hourly digests (fresh set next cron cycle)
+      try {
+        for (let h = 0; h < 24; h++) await env.BGDISPLAY_CONFIG.delete(`hourly_digest_${h}`);
+        report.steps.push("hourly_digests: cleared (24 slots reset, will regenerate on next cron)");
+      } catch (e) { report.errors.push(`hourly_digests: ${e.message}`); }
+
+      await appendChangeLog(env, "MCP run_maintenance completed");
+      return mcpResult(id, { content: [{ type: "text", text: JSON.stringify({ ok: report.errors.length === 0, ...report }, null, 2) }] });
+    }
+
+    if (toolName === "set_ai_model") {
+      const MODEL_ALIASES = {
+        "llama-3.1-8b":  "@cf/meta/llama-3.1-8b-instruct",
+        "llama-3.3-70b": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+        "llama-3.2-3b":  "@cf/meta/llama-3.2-3b-instruct",
+        "mistral-7b":    "@cf/mistral/mistral-7b-instruct-v0.2",
+        "gemma-7b":      "@cf/google/gemma-7b-it",
+      };
+      const raw = String(params?.arguments?.model || "").trim();
+      const resolved = MODEL_ALIASES[raw] || (raw.startsWith("@cf/") ? raw : null);
+      if (!resolved) {
+        return mcpResult(id, { content: [{ type: "text", text: JSON.stringify({ error: `Unknown model "${raw}". Valid aliases: ${Object.keys(MODEL_ALIASES).join(", ")}, or full @cf/ path.` }) }] });
+      }
+      const existing = normalizeConfig(await env.BGDISPLAY_CONFIG.get("config", { type: "json" }));
+      const updated = { ...existing, ai_model: resolved };
+      await env.BGDISPLAY_CONFIG.put("config", JSON.stringify(updated));
+      await appendChangeLog(env, `AI model set to ${resolved} via MCP`);
+      return mcpResult(id, { content: [{ type: "text", text: JSON.stringify({ ok: true, ai_model: resolved, previous: existing.ai_model || "@cf/meta/llama-3.1-8b-instruct (default)" }, null, 2) }] });
     }
 
     return mcpError(id, -32601, `Tool not found: ${toolName}`);
@@ -1987,7 +2574,7 @@ export default {
       if (!sig.ok) return json({ error: sig.error }, 401);
 
       const diag = {};
-      const pod = await fetchOmnipodBridge(config, diag);
+      const pod = await fetchOmnipodBridge(config, env, diag);
       if (!pod) {
         return json({
           available: false,

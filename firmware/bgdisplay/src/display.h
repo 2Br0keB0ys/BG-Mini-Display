@@ -420,50 +420,30 @@ void drawFrame(AppConfig& cfg, BGReading& reading, DisplayState& state) {
   canvas.drawLine(leftPanelX, 56, leftPanelX + leftPanelW, 56, CLR_DIM);
 
   if (gOmnipodStatus.valid) {
-    char exp[12] = "--";
-    if (gOmnipodStatus.minutesToExpiry >= 0) {
-      int hrs = gOmnipodStatus.minutesToExpiry / 60;
-      int mins = gOmnipodStatus.minutesToExpiry % 60;
-      snprintf(exp, sizeof(exp), "%dh%02dm", hrs, mins);
-    }
-
-    uint16_t reservoirColor = CLR_MUTED;
-    uint16_t expiryColor = CLR_MUTED;
-    if (gOmnipodStatus.reservoirUnits >= 0) {
-      if (gOmnipodStatus.reservoirUnits > 25) reservoirColor = CLR_GREEN;
-      else if (gOmnipodStatus.reservoirUnits > 15) reservoirColor = CLR_YELLOW;
-      else if (gOmnipodStatus.reservoirUnits > 5) reservoirColor = CLR_ORANGE;
-      else reservoirColor = CLR_RED;
-    }
-    if (gOmnipodStatus.minutesToExpiry >= 0) {
-      int expiryHours = gOmnipodStatus.minutesToExpiry / 60;
-      if (expiryHours < 1) expiryColor = CLR_RED;
-      else if (expiryHours < 4) expiryColor = CLR_ORANGE;
-      else if (expiryHours < 8) expiryColor = CLR_YELLOW;
-      else expiryColor = CLR_GREEN;
-    }
-
     char line[40];
+
+    // Pod active status
     canvas.setTextColor(CLR_TEXT);
     snprintf(line, sizeof(line), "Pod: %s", gOmnipodStatus.podActive ? "ON" : "OFF");
     canvas.drawString(line, leftPanelX + 2, 78);
 
-    snprintf(line, sizeof(line), "IOB: %.1f U", gOmnipodStatus.insulinOnBoard);
-    canvas.drawString(line, leftPanelX + 2, 102);
-
-    canvas.setTextColor(reservoirColor);
-    snprintf(line, sizeof(line), "Res: %.1f U", gOmnipodStatus.reservoirUnits);
-    canvas.drawString(line, leftPanelX + 2, 126);
-
-    canvas.setTextColor(expiryColor);
-    snprintf(line, sizeof(line), "Exp: %s", exp);
-    canvas.drawString(line, leftPanelX + 2, 150);
-
-    if (gOmnipodStatus.lastBolusUnits >= 0) {
-      canvas.setTextColor(CLR_MUTED);
-      snprintf(line, sizeof(line), "Bolus: %.1f U", gOmnipodStatus.lastBolusUnits);
-      canvas.drawString(line, leftPanelX + 2, 174);
+    // Site change age
+    {
+      char siteAge[16] = "--";
+      if (gOmnipodStatus.siteChangeTimestamp > 0) {
+        time_t now = time(nullptr);
+        if (now > gOmnipodStatus.siteChangeTimestamp) {
+          long ageSec = (long)(now - gOmnipodStatus.siteChangeTimestamp);
+          if (ageSec >= 86400) snprintf(siteAge, sizeof(siteAge), "%.1fd", ageSec / 86400.0f);
+          else if (ageSec >= 3600) snprintf(siteAge, sizeof(siteAge), "%dh", (int)(ageSec / 3600));
+          else snprintf(siteAge, sizeof(siteAge), "%dm", (int)(ageSec / 60));
+        }
+      }
+      canvas.setTextColor(CLR_TEXT);
+      snprintf(line, sizeof(line), "Site: %s", siteAge);
+      canvas.drawString(line, leftPanelX + 2, 102);
     }
+
   } else {
     canvas.setTextColor(CLR_DIM);
     canvas.drawString("No pump data", leftPanelX + 2, 94);

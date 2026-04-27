@@ -12,12 +12,9 @@ extern void addSignedHeaders(HTTPClient& http, const char* method, const String&
 struct OmnipodStatus {
   bool valid = false;
   bool podActive = false;
-  float insulinOnBoard = -1.0f;
-  float reservoirUnits = -1.0f;
   int minutesToExpiry = -1;
-  float lastBolusUnits = -1.0f;
-  time_t lastBolusTimestamp = 0;
   time_t podChangeTimestamp = 0;
+  time_t siteChangeTimestamp = 0;
   time_t dataTimestamp = 0;
   unsigned long fetchedAtMs = 0;
 };
@@ -118,47 +115,11 @@ inline bool fetchGlookoOmnipod(AppConfig& cfg, OmnipodStatus& out) {
     touched = true;
   }
 
-  if (pod.containsKey("insulin_on_board")) {
-    out.insulinOnBoard = pod["insulin_on_board"].as<float>();
-    touched = true;
-  } else if (pod.containsKey("iob")) {
-    out.insulinOnBoard = pod["iob"].as<float>();
-    touched = true;
-  }
-
-  if (pod.containsKey("reservoir_units")) {
-    out.reservoirUnits = pod["reservoir_units"].as<float>();
-    touched = true;
-  } else if (pod.containsKey("reservoir")) {
-    out.reservoirUnits = pod["reservoir"].as<float>();
-    touched = true;
-  }
-
   if (pod.containsKey("minutes_to_expiry")) {
     out.minutesToExpiry = pod["minutes_to_expiry"].as<int>();
     touched = true;
   } else if (pod.containsKey("pod_expires_in_min")) {
     out.minutesToExpiry = pod["pod_expires_in_min"].as<int>();
-    touched = true;
-  }
-
-  if (pod.containsKey("last_bolus_units")) {
-    out.lastBolusUnits = pod["last_bolus_units"].as<float>();
-    touched = true;
-  } else if (pod.containsKey("lastBolusUnits")) {
-    out.lastBolusUnits = pod["lastBolusUnits"].as<float>();
-    touched = true;
-  } else if (pod.containsKey("bolus_units")) {
-    out.lastBolusUnits = pod["bolus_units"].as<float>();
-    touched = true;
-  }
-
-  time_t bolusTs = 0;
-  if (pod.containsKey("last_bolus_timestamp")) bolusTs = parseEpochSeconds(pod["last_bolus_timestamp"]);
-  if (!bolusTs && pod.containsKey("lastBolusTimestamp")) bolusTs = parseEpochSeconds(pod["lastBolusTimestamp"]);
-  if (!bolusTs && pod.containsKey("last_bolus_ts")) bolusTs = parseEpochSeconds(pod["last_bolus_ts"]);
-  if (bolusTs > 0) {
-    out.lastBolusTimestamp = bolusTs;
     touched = true;
   }
 
@@ -168,6 +129,13 @@ inline bool fetchGlookoOmnipod(AppConfig& cfg, OmnipodStatus& out) {
   if (!podChangeTs && pod.containsKey("last_pod_change_ts")) podChangeTs = parseEpochSeconds(pod["last_pod_change_ts"]);
   if (podChangeTs > 0) {
     out.podChangeTimestamp = podChangeTs;
+    touched = true;
+  }
+
+  time_t siteChangeTs = 0;
+  if (pod.containsKey("site_change_timestamp")) siteChangeTs = parseEpochSeconds(pod["site_change_timestamp"]);
+  if (siteChangeTs > 0) {
+    out.siteChangeTimestamp = siteChangeTs;
     touched = true;
   }
 
@@ -184,13 +152,10 @@ inline bool fetchGlookoOmnipod(AppConfig& cfg, OmnipodStatus& out) {
     sdLogfEx(
       "POD",
       "POD_SYNC",
-      "ok active:%d iob:%.2f reservoir:%.2f expMin:%d lastBolus:%.2f lastBolusTs:%lu podChangeTs:%lu ts:%lu",
+      "ok active:%d expMin:%d siteChangeTs:%lu podChangeTs:%lu ts:%lu",
       out.podActive ? 1 : 0,
-      out.insulinOnBoard,
-      out.reservoirUnits,
       out.minutesToExpiry,
-      out.lastBolusUnits,
-      (unsigned long)out.lastBolusTimestamp,
+      (unsigned long)out.siteChangeTimestamp,
       (unsigned long)out.podChangeTimestamp,
       (unsigned long)out.dataTimestamp
     );
@@ -198,14 +163,10 @@ inline bool fetchGlookoOmnipod(AppConfig& cfg, OmnipodStatus& out) {
     sdLogfEx(
       "ERR",
       "POD_SYNC",
-      "payload_missing_fields active:%d iob:%d reservoir:%d expiry:%d lastBolus:%d lastBolusTs:%d podChangeTs:%d",
+      "payload_missing_fields active:%d expiry:%d siteChange:%d",
       pod.containsKey("pod_active") || pod.containsKey("active") ? 1 : 0,
-      pod.containsKey("insulin_on_board") || pod.containsKey("iob") ? 1 : 0,
-      pod.containsKey("reservoir_units") || pod.containsKey("reservoir") ? 1 : 0,
       pod.containsKey("minutes_to_expiry") || pod.containsKey("pod_expires_in_min") ? 1 : 0,
-      pod.containsKey("last_bolus_units") || pod.containsKey("lastBolusUnits") || pod.containsKey("bolus_units") ? 1 : 0,
-      pod.containsKey("last_bolus_timestamp") || pod.containsKey("lastBolusTimestamp") || pod.containsKey("last_bolus_ts") ? 1 : 0,
-      pod.containsKey("pod_change_timestamp") || pod.containsKey("podChangeTimestamp") || pod.containsKey("last_pod_change_ts") ? 1 : 0
+      pod.containsKey("site_change_timestamp") ? 1 : 0
     );
   }
   return out.valid;
