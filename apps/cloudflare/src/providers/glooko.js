@@ -3,6 +3,7 @@ const KNOWN_SERVERS = {
   development: "api.glooko.work",
   production: "externalapi.glooko.com",
   eu: "eu.api.glooko.com",
+  us: "us.api.glooko.com",
 };
 
 const ENDPOINTS = {
@@ -23,11 +24,139 @@ function buildBaseUrl(config) {
   return `https://${normalizeServer(config)}`;
 }
 
+function deriveApiBaseFromDashboard(urlStr) {
+  try {
+    const u = new URL(urlStr);
+    const apiHost = u.hostname
+      .replace(/^eu\.my\./i, "eu.api.")
+      .replace(/^my\./i, "api.");
+    return `${u.protocol}//${apiHost}`;
+  } catch {
+    return "https://api.glooko.com";
+  }
+}
+
+function buildDashboardOrigin(baseUrl) {
+  try {
+    const u = new URL(baseUrl);
+    const host = u.hostname
+      .replace(/^externalapi\./i, "my.")
+      .replace(/^eu\.api\./i, "eu.my.")
+      .replace(/^api\./i, "my.");
+    return `${u.protocol}//${host}`;
+  } catch {
+    return "https://my.glooko.com";
+  }
+}
+
 function parseSetCookie(headers) {
   if (!headers) return "";
   const raw = headers.get("set-cookie") || "";
   // Keep only the cookie pair section before first ';'.
   return raw.split(";")[0] || "";
+}
+
+function parseMetaCsrfToken(html) {
+  if (!html) return "";
+  const m = html.match(/name=["']csrf-token["'][^>]*content=["']([^"']+)["']/i);
+  return m ? m[1] : "";
+}
+
+function parseDashboardPatientCode(html) {
+  if (!html) return "";
+  let m = html.match(/window\.patient\s*=\s*["']([^"']+)["']/i);
+  if (m && m[1]) return m[1];
+  m = html.match(/glookoCode["']?\s*[:=]\s*["']([^"'\\]+)["']/i);
+  if (m && m[1]) return m[1];
+  // Some pages serialize data with escaped quotes in inline script JSON.
+  m = html.match(/glookoCode\\?\"\s*:\s*\\?\"([^\\\"]+)\\?\"/i);
+  return m && m[1] ? m[1] : "";
+}
+
+function parseDashboardApiUrl(html) {
+  if (!html) return "";
+  let m = html.match(/apiUrl\s*:\s*["']([^"']+)["']/i);
+  if (m && m[1]) return m[1];
+  m = html.match(/apiUrl["']?\s*[:=]\s*["']([^"']+)["']/i);
+  return m && m[1] ? m[1] : "";
+}
+
+async function authenticateViaWebLogin(config, fetchImpl, signal) {
+  const loginUrl = "https://my.glooko.com/users/sign_in?id=login_form&locale=en-GB";
+  const loginPage = await fetchImpl(loginUrl, {
+    method: "GET",
+    headers: {
+      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "User-Agent": "Mozilla/5.0",
+    },
+    redirect: "follow",
+    signal,
+  });
+
+  if (!loginPage.ok) {
+    throw new Error(`Glooko web login page failed (${loginPage.status})`);
+  }
+
+  const loginCookie = parseSetCookie(loginPage.headers);
+
+  const pageHtml = await loginPage.text();
+  const csrf = parseMetaCsrfToken(pageHtml);
+  if (!csrf) {
+    throw new Error("Glooko web login missing CSRF token");
+  }
+
+  const regionalUrl = loginPage.url || loginUrl;
+  const form = new URLSearchParams();
+  form.set("authenticity_token", csrf);
+  form.set("user[email]", config.email);
+  form.set("user[password]", config.password);
+  form.set("commit", "Log In");
+
+  const authResp = await fetchImpl(regionalUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      Referer: regionalUrl,
+      Origin: (() => {
+        try { return new URL(regionalUrl).origin; } catch { return "https://my.glooko.com"; }
+      })(),
+      "User-Agent": "Mozilla/5.0",
+      ...(loginCookie ? { Cookie: loginCookie } : {}),
+    },
+    body: form.toString(),
+    redirect: "follow",
+    signal,
+  });
+
+  if (!authResp.ok) {
+    throw new Error(`Glooko web auth failed (${authResp.status})`);
+  }
+
+  const cookie = parseSetCookie(authResp.headers) || parseSetCookie(loginPage.headers);
+  if (!cookie) {
+    throw new Error("Glooko web auth missing session cookie");
+  }
+
+  const dashboardHtml = await authResp.text();
+  const looksLikeLoginPage = /name=["']?user\[email\]["']?|id=["']?user_email["']?/i.test(dashboardHtml);
+  const hasCredError = /invalid email or password|incorrect email or password|authentication failed/i.test(dashboardHtml);
+  const hasLockError = /account (?:is )?locked|too many attempts/i.test(dashboardHtml);
+
+  if (looksLikeLoginPage) {
+    if (hasCredError) throw new Error("Glooko web auth rejected credentials");
+    if (hasLockError) throw new Error("Glooko web auth account locked/rate-limited");
+    throw new Error(`Glooko web auth did not establish session (url: ${authResp.url || regionalUrl})`);
+  }
+
+  const patientCode = parseDashboardPatientCode(dashboardHtml);
+  if (!patientCode) {
+    throw new Error(`Glooko web auth missing patient code (url: ${authResp.url || regionalUrl})`);
+  }
+
+  const discoveredApiUrl = parseDashboardApiUrl(dashboardHtml);
+  const baseUrl = discoveredApiUrl || deriveApiBaseFromDashboard(authResp.url || regionalUrl);
+  return { baseUrl, cookie, patientCode };
 }
 
 function coerceTimestamp(reading) {
@@ -112,37 +241,64 @@ function pickReadingsArray(payload) {
 }
 
 async function authenticateGlooko(config, fetchImpl, signal) {
-  const baseUrl = buildBaseUrl(config);
-  const response = await fetchImpl(`${baseUrl}${ENDPOINTS.login}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json, text/plain, */*",
+  const explicitServer = String(config.server || "").trim();
+  const preferred = normalizeServer(config);
+  const candidates = explicitServer
+    ? [explicitServer]
+    : [preferred, KNOWN_SERVERS.default, KNOWN_SERVERS.us, KNOWN_SERVERS.production, KNOWN_SERVERS.eu, KNOWN_SERVERS.development]
+      .filter((v, i, arr) => !!v && arr.indexOf(v) === i);
+
+  const payload = JSON.stringify({
+    userLogin: {
+      email: config.email,
+      password: config.password,
     },
-    body: JSON.stringify({
-      userLogin: {
-        email: config.email,
-        password: config.password,
-      },
-      deviceInformation: {
-        deviceModel: "BGDisplay",
-      },
-    }),
-    signal,
+    deviceInformation: {
+      deviceModel: "BGDisplay",
+    },
   });
 
-  if (!response.ok) {
-    throw new Error(`Glooko login failed (${response.status})`);
+  const attempts = [];
+  let lastError = "Glooko login failed";
+  for (const server of candidates) {
+    const baseUrl = `https://${server}`;
+    const response = await fetchImpl(`${baseUrl}${ENDPOINTS.login}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json, text/plain, */*",
+      },
+      body: payload,
+      signal,
+    });
+
+    if (!response.ok) {
+      lastError = `Glooko login failed (${response.status}) via ${server}`;
+      attempts.push(`${server}:${response.status}`);
+      continue;
+    }
+
+    const cookie = parseSetCookie(response.headers);
+    const user = await response.json();
+    const patientCode = getPatientCode(user);
+    if (!patientCode) {
+      lastError = `Glooko login missing patient code via ${server}`;
+      attempts.push(`${server}:missing_patient_code`);
+      continue;
+    }
+
+    return { baseUrl, cookie, patientCode };
   }
 
-  const cookie = parseSetCookie(response.headers);
-  const user = await response.json();
-  const patientCode = getPatientCode(user);
-  if (!patientCode) {
-    throw new Error("Glooko login response missing patient code");
+  try {
+    return await authenticateViaWebLogin(config, fetchImpl, signal);
+  } catch (webErr) {
+    const webMsg = String(webErr?.message || webErr || "web_login_failed");
+    if (attempts.length > 0) {
+      throw new Error(`Glooko login failed across servers (${attempts.join(", ")}); web fallback failed: ${webMsg}`);
+    }
+    throw new Error(`${lastError}; web fallback failed: ${webMsg}`);
   }
-
-  return { baseUrl, cookie, patientCode };
 }
 
 function coerceSeriesArray(payload, name) {
@@ -184,22 +340,27 @@ export async function fetchGlookoPumpSnapshot(config, deps = {}) {
   const auth = await authenticateGlooko(config, fetchImpl, signal);
   const end = nowFn();
   const start = new Date(end.getTime() - 3 * 24 * 60 * 60 * 1000);
+  const dashboardOrigin = buildDashboardOrigin(auth.baseUrl);
+  const query = [
+    `patient=${encodeURIComponent(auth.patientCode)}`,
+    `startDate=${encodeURIComponent(start.toISOString())}`,
+    `endDate=${encodeURIComponent(end.toISOString())}`,
+    "locale=en-GB",
+    // Glooko graph endpoint is sensitive to encoded [] in series names.
+    "series[]=deliveredBolus",
+    "series[]=setSiteChange",
+    "series[]=reservoirChange",
+  ].join("&");
+  const endpoint = `${auth.baseUrl}${ENDPOINTS.graphData}?${query}`;
 
-  const endpoint = new URL(ENDPOINTS.graphData, auth.baseUrl);
-  endpoint.searchParams.set("patient", auth.patientCode);
-  endpoint.searchParams.set("startDate", start.toISOString());
-  endpoint.searchParams.set("endDate", end.toISOString());
-  endpoint.searchParams.set("locale", "en-GB");
-  endpoint.searchParams.append("series[]", "deliveredBolus");
-  endpoint.searchParams.append("series[]", "setSiteChange");
-  endpoint.searchParams.append("series[]", "reservoirChange");
-
-  const response = await fetchImpl(endpoint.toString(), {
+  const response = await fetchImpl(endpoint, {
     method: "GET",
     headers: {
       Accept: "application/json",
       Cookie: auth.cookie,
       "X-Requested-With": "XMLHttpRequest",
+      Origin: dashboardOrigin,
+      Referer: `${dashboardOrigin}/`,
     },
     signal,
   });

@@ -401,7 +401,9 @@ async function fetchGlookoLatest(config) {
   } catch (err) {
     const msg = String(err?.message || err || "unknown error");
     console.error("[Glooko] fetch failed:", msg);
-    await appendChangeLog(config._env || {}, `Glooko error: ${msg.slice(0, 80)}`);
+    if (config?._env?.BGDISPLAY_CONFIG) {
+      await appendChangeLog(config._env, `Glooko error: ${msg.slice(0, 80)}`);
+    }
     return null;
   }
 }
@@ -486,8 +488,9 @@ async function fetchOmnipodBridge(config, diag = null) {
             pod_change_timestamp: Number.isFinite(Number(direct.pod_change_timestamp)) ? Math.floor(Number(direct.pod_change_timestamp)) : 0,
             timestamp: Number.isFinite(Number(direct.timestamp)) ? Math.floor(Number(direct.timestamp)) : Math.floor(Date.now() / 1000),
           };
-        } catch {
-          if (diag) diag.reason = "direct_source_fetch_failed";
+        } catch (err) {
+          const msg = String(err?.message || err || "unknown_error").slice(0, 220);
+          if (diag) diag.reason = `direct_source_fetch_failed:${msg}`;
           return null;
         }
       }
@@ -513,8 +516,9 @@ async function fetchOmnipodBridge(config, diag = null) {
             pod_change_timestamp: Number.isFinite(Number(direct.pod_change_timestamp)) ? Math.floor(Number(direct.pod_change_timestamp)) : 0,
             timestamp: Number.isFinite(Number(direct.timestamp)) ? Math.floor(Number(direct.timestamp)) : Math.floor(Date.now() / 1000),
           };
-        } catch {
-          if (diag) diag.reason = "direct_source_fetch_failed";
+        } catch (err) {
+          const msg = String(err?.message || err || "unknown_error").slice(0, 220);
+          if (diag) diag.reason = `direct_source_fetch_failed:${msg}`;
           return null;
         }
       }
@@ -540,8 +544,9 @@ async function fetchOmnipodBridge(config, diag = null) {
             pod_change_timestamp: Number.isFinite(Number(direct.pod_change_timestamp)) ? Math.floor(Number(direct.pod_change_timestamp)) : 0,
             timestamp: Number.isFinite(Number(direct.timestamp)) ? Math.floor(Number(direct.timestamp)) : Math.floor(Date.now() / 1000),
           };
-        } catch {
-          if (diag) diag.reason = "direct_source_fetch_failed";
+        } catch (err) {
+          const msg = String(err?.message || err || "unknown_error").slice(0, 220);
+          if (diag) diag.reason = `direct_source_fetch_failed:${msg}`;
           return null;
         }
       }
