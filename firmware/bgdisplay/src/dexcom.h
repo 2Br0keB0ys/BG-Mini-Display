@@ -89,6 +89,36 @@ bool dexAuthenticateAccount(AppConfig& cfg) {
   dexAccountId = "";
   dexSessionId = "";
   http.end();
+
+  // If configured region failed, transparently retry with the alternate region.
+  // This handles misconfigured region without requiring a manual config change.
+  if (code != 200) {
+    const char* altUrl = isUS
+      ? "https://shareous1.dexcom.com/ShareWebServices/Services/General/AuthenticatePublisherAccount"
+      : "https://share2.dexcom.com/ShareWebServices/Services/General/AuthenticatePublisherAccount";
+    sdLogfEx("DEX", "DEX_AUTH", "trying_alt_region isUS:%d", (int)isUS);
+    HTTPClient http2;
+    http2.begin(altUrl);
+    http2.addHeader("Content-Type", "application/json");
+    http2.addHeader("Accept",       "application/json");
+    http2.addHeader("User-Agent",   "share2nightscout-bridge/0.2.5");
+    http2.setTimeout(10000);
+    String bs2; serializeJson(body, bs2);
+    int code2 = http2.POST(bs2);
+    if (code2 == 200) {
+      String r2 = http2.getString();
+      r2.replace("\"", ""); r2.trim();
+      if (r2.length() > 10) {
+        dexAccountId = r2;
+        http2.end();
+        sdLogfEx("DEX", "DEX_AUTH", "alt_region_ok accountIdLen:%u", (unsigned)dexAccountId.length());
+        return true;
+      }
+    }
+    sdLogfEx("ERR", "DEX_AUTH", "alt_region_also_failed code:%d", code2);
+    http2.end();
+  }
+
   return false;
 }
 

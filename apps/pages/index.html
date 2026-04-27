@@ -201,6 +201,9 @@ const WORKER_URL = "https://bgdisplay-worker.zanebaize.workers.dev";
 let CONFIG = {}, META = {}, METRICS = null;
 let ADMIN_SESSION = "";
 let LOGS = { meta: null, preview: [], total: 0 };
+let gDirty = false;
+function markDirty() { gDirty = true; }
+window.addEventListener('beforeunload', e => { if (gDirty) { e.preventDefault(); e.returnValue = ''; } });
 let MAINT = null;
 
 // ── API ──────────────────────────────────────────────────────────────────────
@@ -430,11 +433,34 @@ function collectConfig(){
 }
 
 // ── Actions ──────────────────────────────────────────────────────────────────
+function validateConfig(c) {
+  const errors = [];
+  const n = k => Number(c[k]);
+  if (c.urgent_low && c.low && n('urgent_low') >= n('low'))
+    errors.push(`Urgent low (${c.urgent_low}) must be less than Low (${c.low}).`);
+  if (c.low && c.high && n('low') >= n('high'))
+    errors.push(`Low threshold (${c.low}) must be less than High (${c.high}).`);
+  if (c.high && c.urgent_high && n('high') >= n('urgent_high'))
+    errors.push(`High threshold (${c.high}) must be less than Urgent high (${c.urgent_high}).`);
+  if (c.nightscout_url && !/^https?:\/\/.+/.test(c.nightscout_url))
+    errors.push('Nightscout URL must start with http:// or https://');
+  if (c.poll_interval_min !== undefined && (n('poll_interval_min') < 1 || n('poll_interval_min') > 240))
+    errors.push('Reading refresh interval must be between 1 and 240 minutes.');
+  if (c.glooko_poll_min !== undefined && (n('glooko_poll_min') < 30 || n('glooko_poll_min') > 240))
+    errors.push('Pump data poll interval must be between 30 and 240 minutes.');
+  return errors;
+}
+
 async function saveConfig(){
   const btn=document.querySelector('.save-btn');
   if(btn){ btn.textContent='Saving...'; btn.disabled=true; }
   try{
     const updates=collectConfig();
+    const validationErrors = validateConfig(updates);
+    if (validationErrors.length) {
+      toast('❌ ' + validationErrors[0]);
+      return;
+    }
     const prevSsid = CONFIG.wifi_ssid || '';
     const wifiOpen = !!document.getElementById('wifi_open')?.checked;
     const wifiPassTyped = (document.getElementById('wifi_pass')?.value || '') !== '';
@@ -442,6 +468,7 @@ async function saveConfig(){
     const wifiPassChanged = updates.wifi_pass === '' || wifiPassTyped;
 
     await apiPost('/api/admin/config',updates);
+    gDirty = false;
     CONFIG={...CONFIG,...updates};
     if (wifiSsidChanged || wifiPassChanged || wifiOpen) {
       toast('✓ Saved. Wi-Fi was updated — device will reboot to reconnect.', 5000);
@@ -628,15 +655,15 @@ function subfield(label,control){
 }
 
 function sel(id,options,val){
-  return `<select id="${id}">${options.map(([v,l])=>`<option value="${v}"${val==v?' selected':''}>${l}</option>`).join('')}</select>`;
+  return `<select id="${id}" onchange="markDirty()">${options.map(([v,l])=>`<option value="${v}"${val==v?' selected':''}>${l}</option>`).join('')}</select>`;
 }
 
 function tog(id,val){
-  return `<label class="toggle"><input type="checkbox" id="${id}"${val?' checked':''}><span class="track"></span></label>`;
+  return `<label class="toggle"><input type="checkbox" id="${id}" onchange="markDirty()"${val?' checked':''}><span class="track"></span></label>`;
 }
 
 function inp(id,type,val,ph,cls='wide'){
-  return `<input type="${type}" id="${id}" class="${cls}" value="${val||''}" placeholder="${ph||''}">`;
+  return `<input type="${type}" id="${id}" class="${cls}" value="${val||\'\'}" placeholder="${ph||''}" oninput="markDirty()">`;
 }
 
 function syncWifiOpenUi(){
@@ -695,7 +722,8 @@ function render(){
   const wifiContent =
     field('Wi-Fi network (SSID)',`Current network: ${c.wifi_ssid||'Not set yet'}`,inp('wifi_ssid','text',c.wifi_ssid,'HomeWiFi'))+
     field('Wi-Fi password','Leave blank to keep the current password. Use Open network only for networks with no password.',inp('wifi_pass','password','','Enter a new Wi-Fi password'))+
-    field('Open network','Turn on only for unsecured Wi-Fi networks.',`<label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="wifi_open" onchange="syncWifiOpenUi()"${wifiOpen?' checked':''}> <span style="font-size:12px;color:var(--muted)">This network has no password</span></label>`);
+    field('Open network','Turn on only for unsecured Wi-Fi networks.',`<label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="wifi_open" onchange="syncWifiOpenUi();markDirty()"${wifiOpen?' checked':''}> <span style="font-size:12px;color:var(--muted)">This network has no password</span></label>`)+
+    `<div class="field"><div class="field-label"><div class="name">Cellular LTE fallback</div><div class="desc">Automatic failover to LTE when Wi-Fi is unavailable (M5Stack SIM7600G module required). <span style="color:var(--amber);font-weight:600">Coming soon — module not yet in stock.</span></div></div><span style="color:var(--muted);font-size:12px">Not available</span></div>`;
 
   // Data sources section
   const nsContent =
