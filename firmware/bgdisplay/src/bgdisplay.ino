@@ -545,10 +545,8 @@ void loop() {
       sdLogfEx(
         "POD",
         "POD_SYNC",
-        "poll_ok iob:%.2f bolus:%.2f bolusTs:%lu podChangeTs:%lu",
-        gOmnipodStatus.insulinOnBoard,
-        gOmnipodStatus.lastBolusUnits,
-        (unsigned long)gOmnipodStatus.lastBolusTimestamp,
+        "poll_ok siteChangeTs:%lu podChangeTs:%lu",
+        (unsigned long)gOmnipodStatus.siteChangeTimestamp,
         (unsigned long)gOmnipodStatus.podChangeTimestamp
       );
     }
@@ -974,11 +972,8 @@ bool pushStatus(AppConfig& cfg) {
   doc["omnipodConfigured"] = omnipodConfigured(cfg);
   doc["omnipodValid"]      = gOmnipodStatus.valid;
   doc["omnipodActive"]     = gOmnipodStatus.podActive;
-  doc["omnipodIob"]        = gOmnipodStatus.insulinOnBoard;
-  doc["omnipodReservoir"]  = gOmnipodStatus.reservoirUnits;
   doc["omnipodMinsToExp"]  = gOmnipodStatus.minutesToExpiry;
-  doc["omnipodLastBolusU"] = gOmnipodStatus.lastBolusUnits;
-  doc["omnipodLastBolusTs"] = (long)gOmnipodStatus.lastBolusTimestamp;
+  doc["omnipodSiteChangeTs"] = (long)gOmnipodStatus.siteChangeTimestamp;
   doc["omnipodPodChangeTs"] = (long)gOmnipodStatus.podChangeTimestamp;
   doc["omnipodDataTs"]     = (long)gOmnipodStatus.dataTimestamp;
   String body; serializeJson(doc, body);
