@@ -5,179 +5,321 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>BG MiniView — Settings</title>
 <style>
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap');
+
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#f0f0f0;--surface:#fff;--border:rgba(0,0,0,0.09);--border-mid:rgba(0,0,0,0.15);
-  --text:#1a1a1a;--muted:#666;--faint:#999;
-  --accent:#E24B4A;--accent-bg:#fff5f5;
-  --green:#16a34a;--green-bg:#dcfce7;
-  --amber:#92400e;--amber-bg:#fef3c7;
-  --red:#b91c1c;--red-bg:#fee2e2;
-  --blue:#1d4ed8;--blue-bg:#dbeafe;
-  --r:8px;--rl:12px;--mono:'Courier New',monospace;
+  --bg:#070b12;
+  --bg-soft:#0c1320;
+  --surface:#111a2a;
+  --surface-2:#162338;
+  --border:rgba(255,255,255,0.11);
+  --border-mid:rgba(255,255,255,0.2);
+  --text:#ecf3ff;
+  --muted:#99a8bf;
+  --faint:#6e7d95;
+  --accent:#ff7a48;
+  --accent-2:#ffb648;
+  --accent-bg:rgba(255,122,72,.17);
+  --green:#52e4a4;
+  --green-bg:rgba(82,228,164,.16);
+  --amber:#ffd166;
+  --amber-bg:rgba(255,209,102,.14);
+  --red:#ff8e8e;
+  --red-bg:rgba(255,142,142,.15);
+  --blue:#6cb4ff;
+  --blue-bg:rgba(108,180,255,.14);
+  --r:10px;
+  --rl:15px;
+  --mono:'Courier New',monospace;
 }
-body{font-family:'Trebuchet MS','Segoe UI',Verdana,sans-serif;background:radial-gradient(1200px 700px at 20% -20%,rgba(255,107,106,.12),transparent 55%),radial-gradient(900px 500px at 100% 0,rgba(96,165,250,.12),transparent 45%),var(--bg);color:var(--text);font-size:14px;line-height:1.5;min-height:100vh}
+body{
+  font-family:'Manrope','Segoe UI',sans-serif;
+  background:
+    radial-gradient(900px 480px at -4% -12%,rgba(255,183,76,.18),transparent 60%),
+    radial-gradient(980px 620px at 100% -10%,rgba(76,166,255,.2),transparent 55%),
+    linear-gradient(180deg,var(--bg) 0%,#05070d 100%);
+  color:var(--text);
+  font-size:14px;
+  line-height:1.5;
+  min-height:100vh;
+}
 
-/* ── Header ── */
-.header{background:color-mix(in srgb,var(--surface) 82%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;padding:0 1.5rem}
-.header-inner{max-width:1280px;margin:0 auto;display:flex;align-items:center;gap:12px;height:62px}
-.logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(145deg,#ff8f70,#e24b4a 65%);box-shadow:0 8px 18px rgba(226,75,74,.25);display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.logo svg{width:18px;height:18px;fill:white}
-.header h1{font-size:16px;font-weight:700;letter-spacing:.01em}
-.header p{font-size:12px;color:var(--muted)}
+/* Header */
+.header{
+  background:linear-gradient(180deg,rgba(10,16,28,.86),rgba(10,16,28,.74));
+  backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--border);
+  position:sticky;
+  top:0;
+  z-index:100;
+  padding:0 1.2rem;
+}
+.header-inner{
+  max-width:1320px;
+  margin:0 auto;
+  display:flex;
+  align-items:center;
+  gap:12px;
+  min-height:72px;
+}
+.logo{
+  width:38px;
+  height:38px;
+  border-radius:12px;
+  background:linear-gradient(145deg,#ff8b57,#ff5b4a 52%,#ffb648);
+  box-shadow:0 12px 22px rgba(255,91,74,.25);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex-shrink:0;
+}
+.logo svg{width:19px;height:19px;fill:white}
+.header h1{
+  font-family:'Space Grotesk','Manrope',sans-serif;
+  font-size:17px;
+  font-weight:700;
+  letter-spacing:.02em;
+}
 .header-meta{font-size:11px;color:var(--muted);margin-top:1px}
-.status-pill{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;padding:5px 11px;border-radius:99px;white-space:nowrap;flex-shrink:0;border:1px solid transparent}
-.status-pill.online{color:var(--green);background:var(--green-bg)}
-.status-pill.offline{color:var(--red);background:var(--red-bg)}
+.status-pill{
+  margin-left:auto;
+  display:flex;
+  align-items:center;
+  gap:6px;
+  font-size:12px;
+  padding:6px 12px;
+  border-radius:99px;
+  white-space:nowrap;
+  flex-shrink:0;
+  border:1px solid transparent;
+  font-weight:700;
+}
+.status-pill.online{color:var(--green);background:var(--green-bg);border-color:rgba(82,228,164,.38)}
+.status-pill.offline{color:var(--red);background:var(--red-bg);border-color:rgba(255,142,142,.35)}
 .dot{width:6px;height:6px;border-radius:50%;background:currentColor}
-.save-bar{margin-left:12px}
-.save-btn{padding:8px 18px;background:linear-gradient(145deg,#ff8578,#e24b4a 70%);color:white;border:1px solid rgba(255,255,255,.2);border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;transition:transform .15s,filter .15s}
-.save-btn:hover{transform:translateY(-1px);filter:brightness(1.05)}
+.save-bar{margin-left:8px}
+.save-btn{
+  padding:10px 18px;
+  background:linear-gradient(140deg,var(--accent),var(--accent-2));
+  color:#22150f;
+  border:1px solid rgba(255,255,255,.15);
+  border-radius:12px;
+  font-size:13px;
+  font-weight:800;
+  cursor:pointer;
+  transition:transform .16s,filter .16s,box-shadow .16s;
+  box-shadow:0 8px 18px rgba(255,122,72,.3);
+}
+.save-btn:hover{transform:translateY(-1px);filter:brightness(1.06)}
+.save-btn:disabled{opacity:.75;cursor:not-allowed;transform:none}
 
-/* ── Layout ── */
-.page{max-width:1280px;margin:0 auto;padding:1.25rem 1.5rem 2rem}
-.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1.15rem;align-items:start}
+/* Layout */
+.page{max-width:1320px;margin:0 auto;padding:1.25rem 1.2rem 2.1rem}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem;align-items:start}
 .grid.full{grid-template-columns:1fr}
-@media(max-width:720px){.grid{grid-template-columns:1fr}}
 
-/* ── Section ── */
-.section{background:linear-gradient(180deg,color-mix(in srgb,var(--surface) 92%,#fff 8%),var(--surface));border:1px solid var(--border);border-radius:14px;overflow:hidden;box-shadow:0 6px 20px rgba(0,0,0,.08)}
-.section-head{display:flex;align-items:center;gap:10px;padding:12px 16px;cursor:pointer;user-select:none;border-bottom:1px solid transparent;transition:background .15s}
-.section-head:hover{background:#fafafa}
+.hero-wrap{
+  display:grid;
+  grid-template-columns:1.3fr .7fr;
+  gap:1rem;
+  margin-bottom:.95rem;
+}
+.hero{
+  border:1px solid var(--border);
+  border-radius:16px;
+  padding:1rem 1.05rem;
+  background:linear-gradient(145deg,rgba(22,35,56,.95),rgba(17,26,42,.92));
+  box-shadow:0 14px 28px rgba(0,0,0,.28);
+}
+.hero h2{
+  font-family:'Space Grotesk','Manrope',sans-serif;
+  font-size:15px;
+  letter-spacing:.01em;
+}
+.hero p{margin-top:4px;font-size:12px;color:var(--muted)}
+.hero-actions{display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap}
+.toolbar-chip{
+  font-size:11px;
+  color:var(--muted);
+  border:1px solid var(--border);
+  border-radius:999px;
+  padding:4px 9px;
+  background:rgba(255,255,255,.03);
+}
+
+.quick-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:.7rem;
+}
+.quick-tile{
+  border:1px solid var(--border);
+  border-radius:13px;
+  padding:.75rem;
+  background:linear-gradient(150deg,rgba(20,32,50,.95),rgba(12,20,33,.95));
+}
+.quick-tile .k{font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.08em;font-weight:700}
+.quick-tile .v{font-size:13px;font-weight:700;margin-top:5px}
+.stack{display:flex;flex-direction:column;gap:1rem}
+
+/* Section */
+.section{
+  background:linear-gradient(175deg,rgba(17,26,42,.95),rgba(12,19,31,.95));
+  border:1px solid var(--border);
+  border-radius:16px;
+  overflow:hidden;
+  box-shadow:0 10px 24px rgba(0,0,0,.26);
+}
+.section-head{
+  display:flex;
+  align-items:center;
+  gap:11px;
+  padding:13px 16px;
+  cursor:pointer;
+  user-select:none;
+  border-bottom:1px solid transparent;
+  transition:background .16s;
+}
+.section-head:hover{background:rgba(255,255,255,.03)}
 .section-head.open{border-bottom-color:var(--border)}
-.section-icon{width:28px;height:28px;border-radius:var(--r);display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.section-icon svg{width:14px;height:14px}
-.section-title{font-size:13px;font-weight:700;flex:1}
+.section-icon{width:30px;height:30px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;border:1px solid rgba(255,255,255,.12)}
+.section-icon svg{width:15px;height:15px}
+.section-title{font-family:'Space Grotesk','Manrope',sans-serif;font-size:13px;font-weight:700;flex:1;letter-spacing:.01em}
 .section-sub{font-size:11px;color:var(--muted);margin-top:1px}
 .chevron{width:16px;height:16px;color:var(--faint);transition:transform .2s;flex-shrink:0}
 .chevron.open{transform:rotate(180deg)}
-.section-body{display:none}
+.section-body{display:none;animation:fadeSlide .18s ease}
 .section-body.open{display:block}
 
-/* ── Field ── */
-.field{padding:11px 16px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border)}
+/* Field */
+.field{padding:12px 16px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border)}
 .field:last-child{border-bottom:none}
 .field-label{flex:1;min-width:0}
-.field-label .name{font-size:13px;font-weight:600}
+.field-label .name{font-size:13px;font-weight:700}
 .field-label .desc{font-size:11px;color:var(--muted);margin-top:2px;line-height:1.35}
-.subfield{padding:8px 16px 8px 28px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border);background:#fafafa}
+.subfield{padding:9px 16px 9px 26px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border);background:rgba(255,255,255,.02)}
 .subfield:last-child{border-bottom:none}
-.subfield .field-label .name{font-size:12px;font-weight:400;color:var(--muted)}
+.subfield .field-label .name{font-size:12px;font-weight:600;color:var(--muted)}
 
-/* ── Inputs ── */
+/* Inputs */
 input[type=text],input[type=password],input[type=url],input[type=number],select{
-  font-size:13px;padding:7px 10px;border-radius:10px;border:1px solid var(--border-mid);
-  background:#fafafa;color:var(--text);outline:none;transition:border .15s,box-shadow .15s}
-input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(226,75,74,.1)}
-input[type=number]{width:80px}
+  font-size:13px;
+  padding:8px 11px;
+  border-radius:10px;
+  border:1px solid var(--border-mid);
+  background:var(--surface-2);
+  color:var(--text);
+  outline:none;
+  transition:border .14s,box-shadow .14s,transform .14s;
+}
+input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(255,122,72,.18)}
+input[type=number]{width:82px}
 select{min-width:120px}
-.wide{width:210px}
-input[type=text].wide,input[type=password].wide,input[type=url].wide{width:210px}
+.wide{width:220px}
+input[type=text].wide,input[type=password].wide,input[type=url].wide{width:220px}
 
-/* ── Toggle ── */
-.toggle{position:relative;width:38px;height:21px;flex-shrink:0}
+/* Toggle */
+.toggle{position:relative;width:40px;height:22px;flex-shrink:0}
 .toggle input{opacity:0;width:0;height:0}
-.track{position:absolute;inset:0;background:#d1d5db;border-radius:99px;cursor:pointer;transition:background .2s}
-.track::before{content:'';position:absolute;width:15px;height:15px;left:3px;top:3px;background:white;border-radius:50%;transition:transform .2s;box-shadow:0 1px 2px rgba(0,0,0,.2)}
-.toggle input:checked+.track{background:var(--accent)}
-.toggle input:checked+.track::before{transform:translateX(17px)}
+.track{position:absolute;inset:0;background:#46566f;border-radius:99px;cursor:pointer;transition:background .2s}
+.track::before{content:'';position:absolute;width:16px;height:16px;left:3px;top:3px;background:#f5f8ff;border-radius:50%;transition:transform .2s;box-shadow:0 1px 2px rgba(0,0,0,.25)}
+.toggle input:checked+.track{background:linear-gradient(120deg,var(--accent),var(--accent-2))}
+.toggle input:checked+.track::before{transform:translateX(18px)}
 
-/* ── Radio ── */
-.radio-group{display:flex;gap:6px;flex-wrap:wrap}
-.radio-opt{display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;padding:4px 9px;border-radius:var(--r);border:1px solid var(--border-mid);background:#fafafa;transition:all .15s}
-.radio-opt:has(input:checked){border-color:var(--accent);background:var(--accent-bg);color:var(--accent)}
+/* Radio */
+.radio-group{display:flex;gap:7px;flex-wrap:wrap}
+.radio-opt{display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;padding:5px 10px;border-radius:10px;border:1px solid var(--border-mid);background:var(--surface-2);transition:all .15s}
+.radio-opt:has(input:checked){border-color:var(--accent);background:var(--accent-bg);color:#ffd8c7}
 .radio-opt input{accent-color:var(--accent)}
 
-/* ── Badges ── */
-.badge{font-size:11px;padding:2px 7px;border-radius:99px;font-weight:600;white-space:nowrap}
+/* Badges */
+.badge{font-size:11px;padding:3px 8px;border-radius:99px;font-weight:700;white-space:nowrap}
 .badge.green{background:var(--green-bg);color:var(--green)}
 .badge.amber{background:var(--amber-bg);color:var(--amber)}
 .badge.red{background:var(--red-bg);color:var(--red)}
 .badge.blue{background:var(--blue-bg);color:var(--blue)}
 
-/* ── Buttons ── */
-.btn{font-size:12px;padding:6px 12px;border-radius:10px;border:1px solid var(--border-mid);background:white;color:var(--text);cursor:pointer;transition:background .15s,transform .15s;white-space:nowrap}
-.btn:hover{background:#f5f5f5;transform:translateY(-1px)}
-.btn.danger{color:var(--red);border-color:#fca5a5}
+/* Buttons */
+.btn{font-size:12px;padding:7px 12px;border-radius:10px;border:1px solid var(--border-mid);background:var(--surface-2);color:var(--text);cursor:pointer;transition:background .15s,transform .15s,border-color .15s;white-space:nowrap}
+.btn:hover{background:#21324c;transform:translateY(-1px)}
+.btn.danger{color:var(--red);border-color:rgba(255,142,142,.45)}
 .btn.danger:hover{background:var(--red-bg)}
-.btn.full{width:100%;padding:9px;margin-top:6px;text-align:center}
+.btn.full{width:100%;padding:10px;margin-top:6px;text-align:center}
+.btn.ghost{background:transparent;border-color:var(--border)}
+.btn.primary{
+  background:linear-gradient(140deg,var(--accent),var(--accent-2));
+  color:#25170f;
+  border-color:rgba(255,255,255,.15);
+  font-weight:800;
+}
 
-/* ── Key display ── */
-.key-display{font-family:var(--mono);font-size:11px;background:#f1f5f9;padding:3px 8px;border-radius:var(--r);color:var(--muted);border:1px solid var(--border)}
-
-/* ── Rotate ring ── */
+/* Misc */
+.key-display{font-family:var(--mono);font-size:11px;background:var(--surface-2);padding:3px 8px;border-radius:var(--r);color:var(--muted);border:1px solid var(--border)}
 .rotate-block{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
 .rotate-meta{font-size:11px;color:var(--muted);text-align:right}
-
-/* ── Diag rows ── */
 .diag-row{display:flex;justify-content:space-between;align-items:center;padding:8px 16px;font-size:12px;border-bottom:1px solid var(--border)}
 .diag-row:last-child{border-bottom:none}
-
-/* ── Version rows ── */
 .vrow{display:flex;justify-content:space-between;align-items:center;padding:8px 16px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)}
 .vrow:last-child{border-bottom:none}
 .vrow .label{color:var(--text)}
-
-/* ── Log ── */
 .log-row{display:flex;justify-content:space-between;padding:4px 16px;font-size:11px;color:var(--muted);border-bottom:1px solid var(--border)}
 .log-row:last-child{border-bottom:none}
-
-/* ── Threshold row ── */
 .thr-row{display:flex;align-items:center;gap:6px}
 .thr-row input{width:68px}
 .thr-row span{font-size:11px;color:var(--muted)}
-
-/* ── Toast ── */
-.toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:#1a1a1a;color:white;padding:9px 18px;border-radius:var(--rl);font-size:13px;z-index:999;opacity:0;transition:opacity .3s;pointer-events:none}
+.toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:#0c1628;color:white;padding:9px 18px;border-radius:var(--rl);font-size:13px;z-index:999;opacity:0;transition:opacity .3s;pointer-events:none;border:1px solid var(--border)}
 .toast.show{opacity:1}
-
-/* ── Time range ── */
 .time-range{display:flex;align-items:center;gap:6px}
-.time-range select{width:90px}
 .time-range span{font-size:12px;color:var(--muted)}
+.top-actions{display:flex;gap:8px;flex-wrap:wrap}
+.segmented{display:inline-flex;gap:4px;padding:4px;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:12px}
+.seg-btn{padding:6px 10px;font-size:12px;font-weight:700;border:1px solid transparent;border-radius:9px;background:transparent;color:var(--muted);cursor:pointer;transition:all .14s}
+.seg-btn.active{background:var(--surface-2);color:var(--text);border-color:var(--border-mid)}
+.helper-tip{margin:10px 16px 6px;padding:9px 10px;border-radius:10px;border:1px solid var(--border);background:rgba(255,255,255,.03);font-size:11px;line-height:1.45;color:var(--muted)}
+.helper-tip b{color:var(--text);font-weight:700}
+.helper-tip strong{color:#ffd9bf;font-weight:700}
+.task-nav{display:flex;gap:8px;flex-wrap:wrap}
+.task-btn{padding:7px 11px;border-radius:10px;border:1px solid var(--border);background:rgba(255,255,255,.03);color:var(--muted);font-size:12px;font-weight:700;cursor:pointer;transition:all .14s}
+.task-btn.active{background:var(--surface-2);color:var(--text);border-color:var(--border-mid)}
+.advanced-overlay{position:fixed;inset:0;background:rgba(3,6,12,.58);z-index:220;opacity:0;pointer-events:none;transition:opacity .2s}
+.advanced-overlay.show{opacity:1;pointer-events:auto}
+.advanced-drawer{position:fixed;top:0;right:0;width:min(760px,96vw);height:100vh;background:linear-gradient(180deg,#0d1524,#0b111c);border-left:1px solid var(--border);z-index:221;transform:translateX(101%);transition:transform .25s ease;overflow:auto;padding:1rem .9rem 1.4rem;box-shadow:-24px 0 42px rgba(0,0,0,.36)}
+.advanced-drawer.show{transform:translateX(0)}
+.drawer-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem;padding:0 .2rem}
+.drawer-title{font-family:'Space Grotesk','Manrope',sans-serif;font-size:15px;font-weight:700}
+.drawer-sub{font-size:11px;color:var(--muted);margin-top:2px}
 
-/* ── Section icon colors ── */
-.icon-wifi{background:#dbeafe}.icon-wifi svg{stroke:#1d4ed8;fill:none}
-.icon-dex{background:#fce7f3}.icon-dex svg{fill:#be185d}
-.icon-alert{background:#fef3c7}.icon-alert svg{stroke:#92400e;fill:none}
-.icon-display{background:#f3e8ff}.icon-display svg{stroke:#7c3aed;fill:none}
-.icon-security{background:#fee2e2}.icon-security svg{stroke:#b91c1c;fill:none}
-.icon-backup{background:#dcfce7}.icon-backup svg{stroke:#16a34a;fill:none}
-.icon-diag{background:#e0f2fe}.icon-diag svg{stroke:#0369a1;fill:none}
-.icon-system{background:#f1f5f9}.icon-system svg{stroke:#475569;fill:none}
+/* Section icon colors */
+.icon-wifi{background:rgba(85,160,255,.14)}.icon-wifi svg{stroke:#8bc3ff;fill:none}
+.icon-dex{background:rgba(255,107,180,.14)}.icon-dex svg{fill:#ff8fc6}
+.icon-alert{background:rgba(255,209,102,.14)}.icon-alert svg{stroke:#ffd67f;fill:none}
+.icon-display{background:rgba(182,146,255,.14)}.icon-display svg{stroke:#d8bcff;fill:none}
+.icon-security{background:rgba(255,142,142,.14)}.icon-security svg{stroke:#ffb6b6;fill:none}
+.icon-backup{background:rgba(82,228,164,.14)}.icon-backup svg{stroke:#9ff0cc;fill:none}
+.icon-diag{background:rgba(108,180,255,.14)}.icon-diag svg{stroke:#9ccaff;fill:none}
+.icon-system{background:rgba(255,255,255,.08)}.icon-system svg{stroke:#c2cee0;fill:none}
+.icon-ai{background:rgba(255,122,72,.16)}.icon-ai svg{stroke:#ffc39a;fill:none}
+.icon-pushover{background:rgba(255,234,173,.12)}.icon-pushover svg{stroke:#ffe7a9;fill:none}
 
-[data-theme="dark"]{
-  --bg:#090a0c;--surface:#14161b;--border:rgba(255,255,255,0.09);--border-mid:rgba(255,255,255,0.18);
-  --text:#f4f6fb;--muted:#9aa0ad;--faint:#626776;
-  --accent:#ff6b6a;--accent-bg:#2d1515;
-  --green:#4ade80;--green-bg:#052e16;
-  --amber:#fbbf24;--amber-bg:#1c1105;
-  --red:#f87171;--red-bg:#2d0a0a;
-  --blue:#60a5fa;--blue-bg:#0c1a2e;
+@keyframes fadeSlide{
+  from{opacity:.45;transform:translateY(-2px)}
+  to{opacity:1;transform:translateY(0)}
 }
-[data-theme="dark"] .section{box-shadow:0 10px 26px rgba(0,0,0,.32)}
-[data-theme="dark"] .section-head:hover{background:#1b1e25}
-[data-theme="dark"] .subfield{background:#111319}
-[data-theme="dark"] input,
-[data-theme="dark"] select{background:#21242d;border-color:rgba(255,255,255,0.16);color:#f4f6fb}
-[data-theme="dark"] .radio-opt{background:#21242d;border-color:rgba(255,255,255,0.14)}
-[data-theme="dark"] .radio-opt:has(input:checked){background:var(--accent-bg);border-color:var(--accent);color:var(--accent)}
-[data-theme="dark"] .btn{background:#21242d;border-color:rgba(255,255,255,0.18);color:#f4f6fb}
-[data-theme="dark"] .btn:hover{background:#2b3040}
-[data-theme="dark"] .key-display{background:#21242d;border-color:rgba(255,255,255,0.12);color:#a2a9b8}
-[data-theme="dark"] .header{background:color-mix(in srgb,#11131a 84%,transparent);border-color:rgba(255,255,255,0.1)}
-[data-theme="dark"] .icon-wifi{background:#0c1a2e}
-[data-theme="dark"] .icon-dex{background:#2d0a1e}
-[data-theme="dark"] .icon-alert{background:#1c1105}
-[data-theme="dark"] .icon-display{background:#1a0d2e}
-[data-theme="dark"] .icon-security{background:#2d0a0a}
-[data-theme="dark"] .icon-backup{background:#052e16}
-[data-theme="dark"] .icon-diag{background:#0c1a2e}
-[data-theme="dark"] .icon-system{background:#1a1a1a}
-[data-theme="dark"] .log-row{border-color:rgba(255,255,255,0.06)}
-[data-theme="dark"] #app > div > div{border-color:rgba(255,255,255,0.08)}
-.theme-btn{background:none;border:1px solid var(--border-mid);border-radius:var(--r);padding:5px 10px;cursor:pointer;font-size:13px;color:var(--muted);transition:all .15s;margin-right:4px}
-.theme-btn:hover{background:var(--border);color:var(--text)}
+
+@media(max-width:980px){
+  .hero-wrap{grid-template-columns:1fr}
+}
+@media(max-width:760px){
+  .grid{grid-template-columns:1fr}
+  .header{padding:0 .75rem}
+  .header-inner{min-height:68px;gap:8px}
+  .status-pill{display:none}
+  .page{padding:1rem .75rem 1.8rem}
+  .save-btn{padding:9px 14px}
+  .wide,input[type=text].wide,input[type=password].wide,input[type=url].wide{width:170px}
+  .quick-grid{grid-template-columns:1fr}
+}
 
 </style>
 </head>
@@ -205,6 +347,8 @@ let gDirty = false;
 function markDirty() { gDirty = true; }
 window.addEventListener('beforeunload', e => { if (gDirty) { e.preventDefault(); e.returnValue = ''; } });
 let MAINT = null;
+let gTaskView = localStorage.getItem('task-view') || 'connect';
+let gAdvancedOpen = false;
 
 // ── API ──────────────────────────────────────────────────────────────────────
 async function apiGet(p){
@@ -547,6 +691,18 @@ async function detectTimezoneNow(){
   }
 }
 
+function setTaskView(mode){
+  const allowed = ['connect','readings','schedule','phone','overview'];
+  gTaskView = allowed.includes(mode) ? mode : 'connect';
+  localStorage.setItem('task-view', gTaskView);
+  render();
+}
+
+function toggleAdvancedDrawer(forceOpen){
+  gAdvancedOpen = typeof forceOpen === 'boolean' ? forceOpen : !gAdvancedOpen;
+  render();
+}
+
 // ── Collapsible sections ──────────────────────────────────────────────────────
 function toggleSection(id){
   const body=document.getElementById('body-'+id);
@@ -591,22 +747,22 @@ function collapseAll(){
 }
 
 function section(id,iconClass,iconSvg,title,sub,content,fullWidth=false,lockOpen=false){
-  const open=lockOpen ? true : sectionOpen(id);
-  const headAttrs=lockOpen ? '' : ` id="head-${id}" onclick="toggleSection('${id}')"`;
-  const chev=lockOpen ? '' : `<svg class="chevron${open?' open':''}" id="chev-${id}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>`;
   return `<div class="section${fullWidth?' full':''}">
-    <div class="section-head${open?' open':''}"${headAttrs}>
+    <div class="section-head open">
       <div class="section-icon ${iconClass}">${iconSvg}</div>
       <div style="flex:1"><div class="section-title">${title}</div>${sub?`<div class="section-sub">${sub}</div>`:''}
       </div>
-      ${chev}
     </div>
-    <div class="section-body${open?' open':''}" id="body-${id}">${content}</div>
+    <div class="section-body open" id="body-${id}">${content}</div>
   </div>`;
 }
 
 function field(label,desc,control){
   return `<div class="field"><div class="field-label"><div class="name">${label}</div>${desc?`<div class="desc">${desc}</div>`:''}</div>${control}</div>`;
+}
+
+function helperTip(title,text){
+  return `<div class="helper-tip"><b>${title}:</b> ${text}</div>`;
 }
 
 function subfield(label,control){
@@ -679,6 +835,7 @@ function render(){
   // WiFi section
   const wifiOpen = !c.wifi_pass;
   const wifiContent =
+    helperTip('First-time setup','Save Wi-Fi first. After save, the device can reboot to reconnect if SSID or password changed.')+
     field('Wi-Fi network (SSID)',`Current network: ${c.wifi_ssid||'Not set yet'}`,inp('wifi_ssid','text',c.wifi_ssid,'HomeWiFi'))+
     field('Wi-Fi password','Leave blank to keep the current password. Use Open network only for networks with no password.',inp('wifi_pass','password','','Enter a new Wi-Fi password'))+
     field('Open network','Turn on only for unsecured Wi-Fi networks.',`<label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="wifi_open" onchange="syncWifiOpenUi();markDirty()"${wifiOpen?' checked':''}> <span style="font-size:12px;color:var(--muted)">This network has no password</span></label>`)+
@@ -686,6 +843,7 @@ function render(){
 
   // Data sources section
   const nsContent =
+    helperTip('Common issue','If Dexcom login fails, verify region and use the same username format you use in Dexcom Share (email or full phone). Nightscout is fallback only.')+
     field('Nightscout URL','',inp('nightscout_url','url',c.nightscout_url,'https://yoursite.ns.io'))+
     field('Nightscout token or secret','Used to read data from your Nightscout site.',inp('nightscout_secret','password','','token or secret'))+
     field('Dexcom username','',inp('dexcom_user','text',c.dexcom_user,'email or +1xxxxxxxxxx'))+
@@ -706,6 +864,7 @@ function render(){
 
   // Pushover alerts section
   const pushoverContent =
+    helperTip('Pushover keys','Paste User Key and App Token exactly as shown in Pushover. Leave blank to keep existing stored credentials.')+
     field('Enable phone alerts','Send urgent low/high alerts to your phone through Pushover.',tog('pushover_enabled',c.pushover_enabled))+
     field('Pushover user key',m.pushoverConfigured?'Stored. Enter a new value only if you want to replace it.':'Your personal user key from pushover.net.',inp('pushover_user_key','password','',m.pushoverConfigured?'(stored)':'user key'))+
     field('Pushover app token',m.pushoverConfigured?'Stored. Enter a new value only if you want to replace it.':'Application API token from pushover.net.',inp('pushover_api_token','password','',m.pushoverConfigured?'(stored)':'api token'))+
@@ -755,6 +914,7 @@ function render(){
     field('Timezone','Auto-detects from your IP on first boot. Change manually if needed.',`<div style="display:flex;gap:8px;align-items:center">${sel('timezone',[['US/Central','US / Central'],['US/Eastern','US / Eastern'],['US/Mountain','US / Mountain'],['US/Pacific','US / Pacific']],c.timezone)}<button class="btn" onclick="detectTimezoneNow()" style="flex-shrink:0">Auto-detect</button></div>`)+
     field('Screen brightness','After 5 minutes without touch, brightness drops to 15% until the screen is touched again.',sel('brightness',[[25,'25%'],[50,'50%'],[75,'75%'],[100,'100%']],c.brightness))+
     field('Do Not Disturb schedule','Turn the screen off during overnight quiet hours.',tog('dnd_enabled',c.dnd_enabled))+
+    helperTip('DND format','Use time format like 10:30 PM. If times look wrong after save, verify AM/PM values for each day.')+
     subfield('Sunday',`<div class="time-range"><input type="text" id="dnd_sun_from" value="${to12h(dndTime('sun','from','23:00'))}" style="width:88px"><span>to</span><input type="text" id="dnd_sun_to" value="${to12h(dndTime('sun','to','06:00'))}" style="width:88px"></div>`)+
     subfield('Monday',`<div class="time-range"><input type="text" id="dnd_mon_from" value="${to12h(dndTime('mon','from','23:00'))}" style="width:88px"><span>to</span><input type="text" id="dnd_mon_to" value="${to12h(dndTime('mon','to','06:00'))}" style="width:88px"></div>`)+
     subfield('Tuesday',`<div class="time-range"><input type="text" id="dnd_tue_from" value="${to12h(dndTime('tue','from','23:00'))}" style="width:88px"><span>to</span><input type="text" id="dnd_tue_to" value="${to12h(dndTime('tue','to','06:00'))}" style="width:88px"></div>`)+
@@ -800,7 +960,7 @@ function render(){
     subfield('Lockout duration',sel('lockout_duration_min',[[5,'5 minutes'],[15,'15 minutes'],[60,'1 hour']],c.lockout_duration_min))+
     field('Last known device IP','Masked for privacy',`<span class="key-display">${m.status?.ip||'—'}</span>`)+
     field('Failed auth attempts','Last 24 hours',badge(`${m.failedAuthCount||0} attempts`,m.failedAuthCount>0?'red':'green'))+
-    `<div style="padding:8px 16px;background:#fafafa;border-top:1px solid var(--border)"><div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Recent configuration changes <span style="font-size:10px;font-weight:400">(v${m.config_version||0})</span></div>${(m.changelog||[]).slice(0,5).map(l=>`<div class="log-row"><span>${l.msg}</span><span>${fmtTs(l.ts)}</span></div>`).join('')||'<div style="font-size:12px;color:var(--faint);padding:4px 0">No changes recorded yet</div>'}<div style="text-align:right;margin-top:6px"><button class="btn" onclick="clearLog()">Clear history</button></div></div>`;
+    `<div style="padding:8px 16px;background:var(--surface-2);border-top:1px solid var(--border)"><div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Recent configuration changes <span style="font-size:10px;font-weight:400">(v${m.config_version||0})</span></div>${(m.changelog||[]).slice(0,5).map(l=>`<div class="log-row"><span>${l.msg}</span><span>${fmtTs(l.ts)}</span></div>`).join('')||'<div style="font-size:12px;color:var(--faint);padding:4px 0">No changes recorded yet</div>'}<div style="text-align:right;margin-top:6px"><button class="btn" onclick="clearLog()">Clear history</button></div></div>`;
 
   // Backup section
   const backupContent =
@@ -879,32 +1039,57 @@ function render(){
     `<div class="vrow"><span class="label">Dexcom pass age</span><span>${MAINT?.dexcomPassAgeDays==null?'—':MAINT.dexcomPassAgeDays+'d'}</span></div>`+
     `<div class="vrow"><span class="label">Rotation reminders</span><span>${(m.reminders||[]).length?`${m.reminders.length} pending`:'none'}</span></div>`;
 
+  const connectionLabel = m.status?.connection || 'Unknown';
+  const sourceLabel = c.dexcom_user ? 'Dexcom primary' : (c.nightscout_url ? 'Nightscout only' : 'Source not set');
+  const lastSeenLabel = fmtTs(m.status?.lastSeen);
+
   document.getElementById('app').innerHTML = `
-  <div class="grid full">
-    ${section('digest','icon-ai',aiIcon,'EndoAI','AI-powered glucose insights',digestContent,true,true)}
+  <div class="hero-wrap">
+    <div class="hero">
+      <h2>Configuration dashboard</h2>
+      <p>Everything is grouped by task so setup is faster and mistakes are easier to catch.</p>
+      <div class="hero-actions">
+        <div class="toolbar-chip">Source priority: Dexcom → Nightscout fallback</div>
+        <div class="toolbar-chip">Version v${m.config_version||0}</div>
+      </div>
+      <div class="hero-actions top-actions">
+        <button class="btn primary" onclick="expandAll()">Expand all sections</button>
+        <button class="btn ghost" onclick="collapseAll()">Collapse all sections</button>
+        <div class="segmented" role="tablist" aria-label="View mode">
+          <button class="seg-btn${gViewMode==='basic'?' active':''}" onclick="setViewMode('basic')">Basic</button>
+          <button class="seg-btn${gViewMode==='advanced'?' active':''}" onclick="setViewMode('advanced')">Advanced</button>
+        </div>
+      </div>
+    </div>
+    <div class="quick-grid">
+      <div class="quick-tile"><div class="k">Device status</div><div class="v">${online?'Online':'Offline'}</div></div>
+      <div class="quick-tile"><div class="k">Connection mode</div><div class="v">${connectionLabel}</div></div>
+      <div class="quick-tile"><div class="k">Last seen</div><div class="v">${lastSeenLabel}</div></div>
+      <div class="quick-tile"><div class="k">Data source</div><div class="v">${sourceLabel}</div></div>
+    </div>
   </div>
-  <div class="grid" style="margin-top:1rem">
-    <button class="btn" onclick="expandAll()" style="padding:10px 16px;background:linear-gradient(145deg,#4CAF50,#45a049);color:white;border:none;border-radius:8px;cursor:pointer;font-weight:600;margin-right:8px">Expand all</button>
-    <button class="btn" onclick="collapseAll()" style="padding:10px 16px;background:linear-gradient(145deg,#9E9E9E,#757575);color:white;border:none;border-radius:8px;cursor:pointer;font-weight:600">Collapse all</button>
-  </div>
+  <div class="stack">
+  <div class="grid"><div class="toolbar-chip">Setup sequence: 1) Wi-Fi  2) Data sources  3) Display schedule  4) Glucose targets  5) Phone alerts</div>${gViewMode==='advanced'?'<div class="toolbar-chip">Advanced tuning enabled</div>':'<div class="toolbar-chip">Advanced tools hidden</div>'}</div>
   <div class="grid">
     ${section('wifi','icon-wifi',wifiIcon,'Wi-Fi setup','Connect BG MiniView to your network',wifiContent)}
     ${section('ns','icon-dex',dexIcon,'Data sources','Choose where glucose readings come from',nsContent)}
   </div>
   <div class="grid">
-    ${section('pump','icon-display',pumpIcon,'Pump profile','Optional AI context about insulin delivery setup',pumpContent)}
-  </div>
-  <div class="grid">
-    ${section('alerts','icon-alert',alertIcon,'Glucose targets','Thresholds and on-device visual alerts',alertContent)}
     ${section('display','icon-display',displayIcon,'Display and schedule','Screen, clock, and quiet hours',displayContent)}
+    ${section('alerts','icon-alert',alertIcon,'Glucose targets','Thresholds and on-device visual alerts',alertContent)}
   </div>
   <div class="grid">
     ${section('pushover','icon-pushover',pushoverIcon,'Phone notifications','Urgent alerts sent through Pushover',pushoverContent)}
-    ${section('alerts_cloud','icon-alert',alertIcon,'UI alerts','Worker-side alert thresholds and cooldowns',alertTuningContent)}
+    ${section('digest','icon-ai',aiIcon,'EndoAI','AI-powered glucose insights',digestContent)}
   </div>
   <div class="grid">
+    ${section('pump','icon-display',pumpIcon,'Pump profile','Optional AI context about insulin delivery setup',pumpContent)}
     ${section('system','icon-system',sysIcon,'System status','Live device health and connection details',sysContent)}
+  </div>
+  ${gViewMode==='advanced' ? `
+  <div class="grid">
     ${section('control','icon-system',ctrlIcon,'Device actions','Run sync, reboot, and maintenance commands',controlContent)}
+    ${section('alerts_cloud','icon-alert',alertIcon,'UI alerts','Worker-side alert thresholds and cooldowns',alertTuningContent)}
   </div>
   <div class="grid">
     ${section('diag','icon-diag',diagIcon,'Diagnostics','Quick connectivity and service checks',diagContent)}
@@ -917,6 +1102,8 @@ function render(){
   <div class="grid">
     ${section('maint','icon-system',sysIcon,'Maintenance center','Automation, rotations, and source health',maintContent)}
     ${section('logs','icon-diag',diagIcon,'Log explorer','Search and inspect uploaded SD logs',logExplorerContent)}
+  </div>
+  ` : ''}
   </div>
   </div>`;
 

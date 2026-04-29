@@ -540,6 +540,58 @@ function truncateToSentence(text, maxChars) {
   return `${safe}...`;
 }
 
+const AI_MODEL_ALIASES = {
+  "llama-3.1-8b": "@cf/meta/llama-3.1-8b-instruct",
+  "llama-3.3-70b": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+  "llama-3.2-3b": "@cf/meta/llama-3.2-3b-instruct",
+  "mistral-7b": "@cf/mistral/mistral-7b-instruct-v0.2",
+  "gemma-7b": "@cf/google/gemma-7b-it",
+};
+
+const DEFAULT_AI_MODEL = "@cf/meta/llama-3.1-8b-instruct";
+
+function normalizeAiText(raw, maxChars) {
+  const flattened = String(raw || "")
+    .replace(/\*\*/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return truncateToSentence(flattened, maxChars);
+}
+
+function isAiTextUsable(text, type) {
+  const t = String(text || "").trim();
+  if (!t) return false;
+  if (/^ai\s+error:/i.test(t)) return false;
+  if (/^ai\s+digest\s+unavailable/i.test(t)) return false;
+  if (/^i\s+cannot|^i\s+can\'?t|as\s+an\s+ai\s+language\s+model/i.test(t)) return false;
+  const minLen = type === "hourly" ? 35 : 80;
+  return t.length >= minLen;
+}
+
+function buildDeterministicDigest(type, ctx) {
+  const {
+    tir, low, high, aboveHigh, belowLow, urgLows, urgHighs,
+    overnightAvg, latest, latestTrend, latestAgeMin,
+    avgDelta, variability, latestLocalTime,
+  } = ctx;
+
+  if (type === "hourly") {
+    return [
+      `Current glucose is ${latest ?? "unknown"} mg/dL (${latestTrend}) from ${latestLocalTime}, about ${latestAgeMin ?? "unknown"} minutes ago.`,
+      `Over the past hour, movement averaged ${avgDelta >= 0 ? "+" : ""}${avgDelta} mg/dL per 5 minutes with variability near ${variability} mg/dL.`
+    ].join(" ");
+  }
+
+  const rangeLine = `In the last 24 hours, time in range (${low}-${high} mg/dL) was ${tir}%.`;
+  const eventsLine = `There were ${belowLow} lows, ${aboveHigh} highs, with urgent events at ${urgLows} low and ${urgHighs} high readings.`;
+  const overnightLine = overnightAvg != null
+    ? `Overnight average glucose was ${overnightAvg} mg/dL.`
+    : "Overnight average could not be calculated from available data.";
+  const nowLine = `Current glucose is ${latest ?? "unknown"} mg/dL (${latestTrend}) from ${latestLocalTime}, about ${latestAgeMin ?? "unknown"} minutes ago.`;
+  const trendLine = `Recent movement averaged ${avgDelta >= 0 ? "+" : ""}${avgDelta} mg/dL per 5 minutes with variability near ${variability} mg/dL.`;
+  return [rangeLine, eventsLine, overnightLine, nowLine, trendLine].join(" ");
+}
+
 function getCentralDateParts(now = new Date()) {
   const formatter = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/Chicago",
@@ -672,15 +724,28 @@ async function generateDailyDigest(env, force = false, type = "daily") {
     sensorContextLine = `Dexcom sensor: ${sensorSession.session_age_days.toFixed(1)} days old, ~${daysLeft.toFixed(1)} days remaining.`;
   }
 
-  const aiModel = config.ai_model || "@cf/meta/llama-3.1-8b-instruct";
+  const configuredModel = String(config.ai_model || "").trim();
+  const aiCandidates = Array.from(new Set([
+    configuredModel,
+    AI_MODEL_ALIASES["llama-3.3-70b"],
+    DEFAULT_AI_MODEL,
+    AI_MODEL_ALIASES["llama-3.2-3b"],
+  ].filter(Boolean)));
 
   let digestText = "AI digest unavailable — Workers AI binding not configured.";
+  let aiModelUsed = configuredModel || DEFAULT_AI_MODEL;
 
   if (env.AI) {
+    const fallbackText = buildDeterministicDigest(type, {
+      tir, low, high, aboveHigh, belowLow, urgLows, urgHighs,
+      overnightAvg, latest: latest?.sgv, latestTrend, latestAgeMin,
+      avgDelta, variability, latestLocalTime,
+    });
+
     try {
       const systemPrompt = type === "hourly"
-        ? "You are a concise diabetes health assistant for a Type 2 diabetic using a Dexcom G7 CGM. Write a brief summary of the past hour in 1-2 sentences under 80 words. State the current situation first, then the most relevant reason or pattern behind it. Use only the provided data. Mention insulin context only when it plausibly explains the trend. Avoid generic warnings, avoid repeating threshold numbers, and do not invent causes or treatment advice. Plain text only."
-        : "You are a concise diabetes health assistant for a Type 2 diabetic using a Dexcom G7 CGM. Write a morning summary of the past 24 hours in 3-4 sentences under 180 words. Prioritize: time in range, meaningful highs or lows, overnight pattern, and one specific observation grounded in the data. Use insulin delivery, pod age, or sensor age only when they plausibly affect interpretation. Avoid generic coaching, avoid repeating the same metric twice, and do not invent causes, treatment advice, or events not present in the input. Plain text only.";
+        ? "You are a concise diabetes health assistant for a Type 2 diabetic using a Dexcom G7 CGM. Write exactly 2 plain-text sentences under 80 words. Sentence 1 must state current glucose and trend status. Sentence 2 must summarize the strongest one-hour pattern using only provided numbers. No bullets, no markdown, no disclaimers, no treatment advice."
+        : "You are a concise diabetes health assistant for a Type 2 diabetic using a Dexcom G7 CGM. Write exactly 4 plain-text sentences under 180 words. Sentence 1: time in range and notable highs/lows. Sentence 2: overnight pattern. Sentence 3: current reading and trend. Sentence 4: one concrete observation from short-term movement or variability. Use only provided data. No bullets, no markdown, no disclaimers, no treatment advice.";
 
       const userContent = [
         `Stats: ${statsLine}`,
@@ -691,17 +756,43 @@ async function generateDailyDigest(env, force = false, type = "daily") {
         `Pump profile: ${JSON.stringify(pumpProfile)}.`,
       ].filter(Boolean).join(" ");
 
-      const aiResp = await env.AI.run(aiModel, {
-        max_tokens: type === "hourly" ? 120 : 280,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userContent },
-        ],
-      });
       const maxDigestChars = type === "hourly" ? 900 : 980;
-      digestText = truncateToSentence(aiResp?.response || "", maxDigestChars) || "AI returned empty response.";
+      let bestErr = null;
+      for (const candidateModel of aiCandidates) {
+        try {
+          const aiResp = await env.AI.run(candidateModel, {
+            max_tokens: type === "hourly" ? 120 : 280,
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: userContent },
+            ],
+          });
+          const candidateText = normalizeAiText(aiResp?.response || "", maxDigestChars);
+          if (isAiTextUsable(candidateText, type)) {
+            digestText = candidateText;
+            aiModelUsed = candidateModel;
+            break;
+          }
+        } catch (err) {
+          bestErr = err;
+        }
+      }
+
+      if (!isAiTextUsable(digestText, type)) {
+        digestText = truncateToSentence(fallbackText, type === "hourly" ? 900 : 980);
+        aiModelUsed = "fallback:deterministic";
+        if (bestErr) {
+          await appendChangeLog(env, `AI digest fallback used (${type}) due to model/run error: ${String(bestErr).slice(0, 80)}`);
+        }
+      }
     } catch (e) {
-      digestText = `AI error: ${String(e).slice(0, 120)}`;
+      digestText = truncateToSentence(buildDeterministicDigest(type, {
+        tir, low, high, aboveHigh, belowLow, urgLows, urgHighs,
+        overnightAvg, latest: latest?.sgv, latestTrend, latestAgeMin,
+        avgDelta, variability, latestLocalTime,
+      }), type === "hourly" ? 900 : 980);
+      aiModelUsed = "fallback:deterministic";
+      await appendChangeLog(env, `AI digest hard-fallback used (${type}): ${String(e).slice(0, 80)}`);
     }
   }
 
@@ -711,7 +802,7 @@ async function generateDailyDigest(env, force = false, type = "daily") {
     date: today,
     type,
     stats: { tir: Number(tir), min: minVal, max: maxVal, avg: avgVal, readingCount: values.length },
-    ai_model: aiModel,
+    ai_model: aiModelUsed,
   };
   await env.BGDISPLAY_CONFIG.put(storage.key, JSON.stringify(digest));
   const logMsg = type === "hourly" ? `Hourly AI digest generated (TIR ${tir}%, ${values.length} readings)` : `Daily AI digest generated (TIR ${tir}%, ${values.length} readings)`;
@@ -1514,23 +1605,16 @@ async function handleMCP(request, env, config, auth) {
     }
 
     if (toolName === "set_ai_model") {
-      const MODEL_ALIASES = {
-        "llama-3.1-8b":  "@cf/meta/llama-3.1-8b-instruct",
-        "llama-3.3-70b": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
-        "llama-3.2-3b":  "@cf/meta/llama-3.2-3b-instruct",
-        "mistral-7b":    "@cf/mistral/mistral-7b-instruct-v0.2",
-        "gemma-7b":      "@cf/google/gemma-7b-it",
-      };
       const raw = String(params?.arguments?.model || "").trim();
-      const resolved = MODEL_ALIASES[raw] || (raw.startsWith("@cf/") ? raw : null);
+      const resolved = AI_MODEL_ALIASES[raw] || (raw.startsWith("@cf/") ? raw : null);
       if (!resolved) {
-        return mcpResult(id, { content: [{ type: "text", text: JSON.stringify({ error: `Unknown model "${raw}". Valid aliases: ${Object.keys(MODEL_ALIASES).join(", ")}, or full @cf/ path.` }) }] });
+        return mcpResult(id, { content: [{ type: "text", text: JSON.stringify({ error: `Unknown model "${raw}". Valid aliases: ${Object.keys(AI_MODEL_ALIASES).join(", ")}, or full @cf/ path.` }) }] });
       }
       const existing = normalizeConfig(await env.BGDISPLAY_CONFIG.get("config", { type: "json" }));
       const updated = { ...existing, ai_model: resolved };
       await env.BGDISPLAY_CONFIG.put("config", JSON.stringify(updated));
       await appendChangeLog(env, `AI model set to ${resolved} via MCP`);
-      return mcpResult(id, { content: [{ type: "text", text: JSON.stringify({ ok: true, ai_model: resolved, previous: existing.ai_model || "@cf/meta/llama-3.1-8b-instruct (default)" }, null, 2) }] });
+      return mcpResult(id, { content: [{ type: "text", text: JSON.stringify({ ok: true, ai_model: resolved, previous: existing.ai_model || `${DEFAULT_AI_MODEL} (default)` }, null, 2) }] });
     }
 
     return mcpError(id, -32601, `Tool not found: ${toolName}`);
