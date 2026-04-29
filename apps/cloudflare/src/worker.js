@@ -456,8 +456,6 @@ async function fetchNightscoutHistory(config, count = 24) {
   } catch { return []; }
 }
 
-// Pump integration helpers retired.
-
 // ─── DND Window Check (Worker-side, for cron Pushover guard) ──────────────────
 
 function isInDNDWindow(config) {
@@ -585,9 +583,6 @@ async function generateDailyDigest(env, force = false, type = "daily") {
 
   const nowSec = Math.floor(Date.now() / 1000);
 
-  // Pump integration retired: AI uses profile metadata only.
-  let pumpContextLine = "";
-
   // Build sensor context line for AI prompt
   let sensorContextLine = "";
   if (sensorSession?.session_age_days != null) {
@@ -608,7 +603,6 @@ async function generateDailyDigest(env, force = false, type = "daily") {
       const userContent = [
         `Stats: ${statsLine}`,
         `Most recent values (newest first): ${recentStr} mg/dL.`,
-        pumpContextLine ? pumpContextLine : null,
         sensorContextLine ? sensorContextLine : null,
         `Pump profile: ${JSON.stringify(pumpProfile)}.`,
       ].filter(Boolean).join(" ");
@@ -635,7 +629,6 @@ async function generateDailyDigest(env, force = false, type = "daily") {
     type,
     stats: { tir: Number(tir), min: minVal, max: maxVal, avg: avgVal, readingCount: values.length },
     ai_model: aiModel,
-    pump_data_included: !!pumpContextLine,
   };
   await env.BGDISPLAY_CONFIG.put(key, JSON.stringify(digest));
   const logMsg = type === "hourly" ? `Hourly AI digest generated (TIR ${tir}%, ${values.length} readings)` : `Daily AI digest generated (TIR ${tir}%, ${values.length} readings)`;
@@ -1183,7 +1176,6 @@ async function handleMCP(request, env, config, auth) {
             age_minutes: dailyDigest?.generatedAt ? Math.round((nowMs - dailyDigest.generatedAt) / 60000) : null,
             tir: dailyDigest?.stats?.tir ?? null,
             ai_model: dailyDigest?.ai_model || null,
-            pump_data_included: dailyDigest?.pump_data_included ?? null,
           },
           device: {
             last_seen: deviceStatus?.timestamp ? new Date(deviceStatus.timestamp * 1000).toISOString() : null,
@@ -1721,11 +1713,6 @@ export default {
       await appendChangeLog(env, `Command ${cmd.type} ${ack.ok ? "ACK" : "failed"}`);
       await appendWorkerEvent(env, { type: "command-ack", command: cmd.type, ok: ack.ok, message: ack.message });
       return json({ ok: true });
-    }
-
-    // ── GET /api/omnipod — Device fetches proxied Omnipod status ─────────────
-    if (path === "/api/omnipod" && method === "GET") {
-      return json({ available: false, reason: "omnipod_endpoint_retired", ts: Date.now() }, 410);
     }
 
     // ── GET /api/digest — Device fetches AI daily summary ────────────────────
