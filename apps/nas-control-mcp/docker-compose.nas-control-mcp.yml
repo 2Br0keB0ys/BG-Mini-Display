@@ -1,0 +1,14 @@
+services:
+  nas-control-mcp:
+    build:
+      context: .
+    container_name: nas-control-mcp
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:8788:8788"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${DOCKER_COMPOSE_PROJECT_DIR}:${DOCKER_COMPOSE_PROJECT_DIR}
+      - ${ALLOWED_FILE_ROOT}:${ALLOWED_FILE_ROOT}

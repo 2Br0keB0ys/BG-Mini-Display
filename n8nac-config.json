@@ -1,0 +1,30 @@
+{
+  "version": 2,
+  "activeInstanceId": "instance-3a7be276",
+  "instances": [
+    {
+      "id": "instance-3a7be276",
+      "name": "n8n.2brokeboys.uk · Zane Baize",
+      "host": "https://n8n.2brokeboys.uk",
+      "syncFolder": "workflows",
+      "projectId": "personal",
+      "projectName": "Personal",
+      "instanceIdentifier": "n8n_2brokeboys_uk_zane_b",
+      "workflowDir": "workflows/n8n_2brokeboys_uk_zane_b/personal",
+      "verification": {
+        "status": "verified",
+        "normalizedHost": "https://n8n.2brokeboys.uk",
+        "userId": "3f60cf85-557a-4f78-92b8-9bd0a2778b4e",
+        "userName": "Zane Baize",
+        "userEmail": "zaneokc@icloud.com",
+        "lastCheckedAt": "2026-04-29T19:12:23.972Z"
+      }
+    }
+  ],
+  "host": "https://n8n.2brokeboys.uk",
+  "syncFolder": "workflows",
+  "projectId": "personal",
+  "projectName": "Personal",
+  "instanceIdentifier": "n8n_2brokeboys_uk_zane_b",
+  "workflowDir": "workflows/n8n_2brokeboys_uk_zane_b/personal"
+}
