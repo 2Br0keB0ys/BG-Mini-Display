@@ -9,14 +9,18 @@ Current architecture:
 - Cloudflare Pages hosts the browser-based setup UI
 - WebSocket push is used for near-instant config refresh
 
+Archived/retired optional surfaces now live under `archive/`.
+
 ## Repository Layout
 
 ```text
 bg-miniview/
+├── archive/               # archived NAS MCP, n8n workflow material, legacy workspace files
 ├── apps/
 │   ├── cloudflare/        # Worker + wrangler config
-│   └── pages/             # Single-file UI (index.html)
-├── firmware/bgdisplay/    # PlatformIO firmware for BG MiniView on M5Stack Core2
+│   ├── pages/             # Single-file UI (index.html)
+├── firmware/              # PlatformIO firmware for BG MiniView on M5Stack Core2
+├── research/              # local research notes and references (gitignored)
 ├── CLAUDE.md              # Deep architecture and ops reference
 └── bgdisplay_context.md   # Current project snapshot
 ```
@@ -78,7 +82,7 @@ Optional but recommended: protect the Pages domain with Cloudflare Access.
 
 ## 3) Flash Firmware (PlatformIO)
 
-1. Copy `firmware/bgdisplay/src/secrets.example.h` to `firmware/bgdisplay/src/secrets.h`.
+1. Copy `firmware/src/secrets.example.h` to `firmware/src/secrets.h`.
 2. Set:
     - `BGDISPLAY_DEFAULT_WORKER_URL`
     - `BGDISPLAY_DEFAULT_DEVICE_KEY`
@@ -86,10 +90,11 @@ Optional but recommended: protect the Pages domain with Cloudflare Access.
 3. Build and flash:
 
 ```bash
-cd firmware/bgdisplay
-pio run -d .
-pio run -d . -t upload
+pio run
+pio run -t upload
 ```
+
+Run these commands from the repository root. Root `platformio.ini` points PlatformIO at `firmware/src`.
 
 From plain Windows shell, `pio` may need full path:
 `~/.platformio/penv/Scripts/pio.exe`
@@ -128,7 +133,7 @@ Use the Cloudflare Pages UI for:
         - **RED:** Critical (Res ≤5U, Exp <1h)
     - Color reflects most critical condition (reservoir or expiry)
 - **Status bar** with connection indicators and timestamp
-- **EndoAI Digest Display** (on boot): AI-generated glucose summary shown for 10 seconds, replayed via bottom-left tap
+- **EndoAI digest delivery:** summaries are sent via Pushover notifications (display rendering removed in firmware v4.0.1-S)
 
 ### Settings Menu
 - Dexcom, Nightscout, and pump data source connection status
@@ -157,3 +162,9 @@ Use the Cloudflare Pages UI for:
 - **EndoAI:** Daily summaries generated at 7:00 AM US/Central; hourly summaries every hour 8 AM–11 PM. Both can push to Pushover if credentials configured.
 - **Build optimizations:** Firmware uses Link-Time Optimization (`-flto`), disabled RTTI/exceptions, and `-O2` for fast compilation.
 - See `CLAUDE.md` for endpoint lists, auth model, pump provider details, and full architecture.
+
+## Archived Components
+
+- `archive/apps/nas-control-mcp/` contains the retired NAS MCP control surface.
+- `archive/n8n/cloudflare-n8n/` contains archived import-ready n8n workflow templates.
+- `archive/n8n/workflows/` contains the archived n8n-as-code sync workspace and `archive/n8n/n8nac-config.json`.

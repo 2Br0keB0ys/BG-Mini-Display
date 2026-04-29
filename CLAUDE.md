@@ -21,7 +21,7 @@ pio run                         # compile (from workspace root)
 pio run -t upload               # compile + flash via USB
 pio device monitor              # serial monitor
 ```
-`platformio.ini` at the workspace root sets `src_dir`, `build_dir`, and `libdeps_dir` — all pointing into `firmware/bgdisplay/`. Run PlatformIO from the workspace root; do **not** `cd firmware/bgdisplay` first (the nested `platformio.ini` there is the original and can still be used with `-d firmware/bgdisplay` if needed).
+`platformio.ini` at the workspace root sets `src_dir`, `build_dir`, and `libdeps_dir` — all pointing into `firmware/`. Run PlatformIO from the workspace root.
 
 Flash requires USB-C connection to M5Stack Core2 at 1500000 baud. OTA is implemented via `ArduinoOTA` — hostname `bg-miniview-{last4-chip-id}.local`, password = device key.
 
@@ -41,9 +41,13 @@ node --check src/worker.js      # syntax check (no validate script)
 ### CI
 GitHub Actions (`.github/workflows/ci.yml`) runs PlatformIO firmware build and worker syntax validation on push/PR to main.
 
+### Archived Components
+- NAS MCP automation lives under `archive/apps/nas-control-mcp/`.
+- n8n JSON templates and n8n-as-code sync artifacts live under `archive/n8n/`.
+
 ## Architecture
 
-### Firmware (`firmware/bgdisplay/src/`)
+### Firmware (`firmware/src/`)
 
 Current firmware version: `4.0.1-S` (defined in `config.h`).
 
@@ -249,7 +253,7 @@ Single HTML file — no build step. Dark mode only. `WORKER_URL` is hardcoded at
 
 **Sections:** Display, BG Sources (Nightscout + Dexcom), Alerts/DND, **Pushover alerts** (enable toggle, user key, API token, cooldown — creds sent to worker separately, not stored in config JSON), **EndoAI** (shows today's AI-generated glucose summary text, generation button, model info, schedule details, Pushover push controls with time selector), Security, Advanced. **Top controls:** Global "Expand all" and "Collapse all" buttons for quick section navigation (state persisted in localStorage).
 
-### Scripts (`firmware/bgdisplay/scripts/`)
+### Scripts (`firmware/scripts/`)
 
 | Script | Purpose |
 |--------|---------|

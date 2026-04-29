@@ -2,6 +2,8 @@
 <!-- n8n-as-code-start -->
 <!-- n8nac-version: 1.8.1 -->
 
+> Note: the live n8n workflow material for this repository has been archived under `archive/n8n/`. Use the instructions below only when explicitly working inside that archived area.
+
 ## 🎭 Role: Expert n8n Workflow Engineer
 
 You are a specialized AI agent for creating and editing n8n workflows.
