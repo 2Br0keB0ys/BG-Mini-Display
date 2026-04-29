@@ -4,8 +4,9 @@
 #pragma once
 #include <M5Unified.h>
 #include <HTTPClient.h>
+#include <math.h>
 #include "config.h"
-#include "glooko.h"
+#include "weather.h"
 #include <time.h>
 
 // ─── Colors ───────────────────────────────────────────────────────────────────
@@ -35,6 +36,7 @@ struct DisplayState {
   int           lastRSSI     = -999;
   bool          pulseOn      = false;
   bool          initialized  = false;
+  unsigned long lastAnimTick = 0;
   char          bannerText[40] = "";
   uint16_t      bannerColor = CLR_MUTED;
   unsigned long bannerUntilMs = 0;
@@ -261,6 +263,92 @@ String timeSince(time_t ts) {
   return buf;
 }
 
+static bool weatherIsThunder(int code) {
+  return code == 95 || code == 96 || code == 99;
+}
+
+static bool weatherIsRain(int code) {
+  if (weatherIsThunder(code)) return true;
+  return (code >= 51 && code <= 67) || (code >= 80 && code <= 82);
+}
+
+static bool weatherIsSunny(int code) {
+  return code == 0 || code == 1;
+}
+
+static float tempCToDisplay(const AppConfig& cfg, float c) {
+  if (strcmp(cfg.weatherUnits, "C") == 0 || strcmp(cfg.weatherUnits, "c") == 0) return c;
+  return (c * 9.0f / 5.0f) + 32.0f;
+}
+
+static const char* tempUnitLabel(const AppConfig& cfg) {
+  return (strcmp(cfg.weatherUnits, "C") == 0 || strcmp(cfg.weatherUnits, "c") == 0) ? "C" : "F";
+}
+
+void drawWeatherPanelBackground(int x, int y, int w, int h, const WeatherStatus& wx, bool flash) {
+  uint16_t top = 0x2104;
+  uint16_t bottom = 0x1082;
+  if (weatherIsSunny(wx.weatherCode)) {
+    top = 0x4B9F;
+    bottom = 0x2A7A;
+  } else if (weatherIsThunder(wx.weatherCode)) {
+    top = flash ? 0xA514 : 0x31A6;
+    bottom = 0x18C3;
+  } else if (weatherIsRain(wx.weatherCode)) {
+    top = 0x2A6D;
+    bottom = 0x18A6;
+  }
+
+  for (int row = 0; row < h; row++) {
+    uint16_t c = (row < (h / 2)) ? top : bottom;
+    canvas.drawFastHLine(x, y + row, w, c);
+  }
+
+  canvas.drawRoundRect(x, y, w, h, 8, CLR_SEP);
+}
+
+void drawCloudIcon(int x, int y, uint16_t color) {
+  canvas.fillCircle(x + 8, y + 12, 10, color);
+  canvas.fillCircle(x + 20, y + 10, 12, color);
+  canvas.fillCircle(x + 34, y + 14, 9, color);
+  canvas.fillRoundRect(x + 6, y + 14, 32, 12, 6, color);
+}
+
+void drawWeatherIcon(int x, int y, const WeatherStatus& wx, unsigned long animFrame) {
+  if (weatherIsSunny(wx.weatherCode)) {
+    canvas.fillCircle(x + 20, y + 16, 11, CLR_YELLOW);
+    for (int i = 0; i < 8; i++) {
+      int dx = (i % 2 == 0) ? 14 : 12;
+      int dy = (i % 2 == 0) ? 0 : 9;
+      if (i == 0) canvas.drawLine(x + 20 + dx, y + 16 + dy, x + 20 + dx + 4, y + 16 + dy, CLR_YELLOW);
+      if (i == 1) canvas.drawLine(x + 20 + dy, y + 16 + dx, x + 20 + dy, y + 16 + dx + 4, CLR_YELLOW);
+      if (i == 2) canvas.drawLine(x + 20 - dx, y + 16 + dy, x + 20 - dx - 4, y + 16 + dy, CLR_YELLOW);
+      if (i == 3) canvas.drawLine(x + 20 + dy, y + 16 - dx, x + 20 + dy, y + 16 - dx - 4, CLR_YELLOW);
+      if (i == 4) canvas.drawLine(x + 20 + 10, y + 16 + 10, x + 20 + 14, y + 16 + 14, CLR_YELLOW);
+      if (i == 5) canvas.drawLine(x + 20 - 10, y + 16 + 10, x + 20 - 14, y + 16 + 14, CLR_YELLOW);
+      if (i == 6) canvas.drawLine(x + 20 - 10, y + 16 - 10, x + 20 - 14, y + 16 - 14, CLR_YELLOW);
+      if (i == 7) canvas.drawLine(x + 20 + 10, y + 16 - 10, x + 20 + 14, y + 16 - 14, CLR_YELLOW);
+    }
+    return;
+  }
+
+  drawCloudIcon(x, y, 0xC638);
+
+  if (weatherIsRain(wx.weatherCode)) {
+    int phase = (int)(animFrame % 3);
+    for (int i = 0; i < 5; i++) {
+      int rx = x + 10 + i * 6;
+      int ry = y + 28 + ((i + phase) % 3);
+      canvas.drawLine(rx, ry, rx - 2, ry + 7, 0x9DFF);
+    }
+  }
+
+  if (weatherIsThunder(wx.weatherCode) && (animFrame % 2 == 0)) {
+    canvas.fillTriangle(x + 20, y + 24, x + 15, y + 38, x + 24, y + 38, CLR_YELLOW);
+    canvas.fillTriangle(x + 22, y + 36, x + 18, y + 48, x + 27, y + 48, CLR_YELLOW);
+  }
+}
+
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
 void initDisplay(AppConfig& cfg) {
@@ -313,7 +401,7 @@ void showBootScreen() {
 
 void drawFrame(AppConfig& cfg, BGReading& reading, DisplayState& state) {
   int W = M5.Display.width(), H = M5.Display.height();
-  extern OmnipodStatus gOmnipodStatus;
+  extern WeatherStatus gWeatherStatus;
   const int leftPanelX = 8;
   const int leftPanelW = 132;
   const int rightCenterX = 226;
@@ -362,7 +450,7 @@ void drawFrame(AppConfig& cfg, BGReading& reading, DisplayState& state) {
     canvas.drawString("KEY ERROR", W/2, 14);
   }
 
-  // Split the main area into a left pump panel and right BG panel.
+  // Split the main area into a left weather panel and right BG panel.
   canvas.drawLine(leftPanelX + leftPanelW + 4, 34, leftPanelX + leftPanelW + 4, H - 46, CLR_SEP);
 
   // ── BG Number (right panel) ─────────────────────────────────────────────────
@@ -412,42 +500,40 @@ void drawFrame(AppConfig& cfg, BGReading& reading, DisplayState& state) {
   // Mini trend history for quick context beyond the single trend arrow.
   drawBgSparkline(rightCenterX, centerY + 50, state, color);
 
-  // ── Left panel: Glooko/pump status ─────────────────────────────────────────
+  // ── Left panel: weather status ─────────────────────────────────────────────
+  unsigned long animFrame = millis() / 450UL;
+  bool flash = weatherIsThunder(gWeatherStatus.weatherCode) && ((animFrame % 2UL) == 0UL);
+  drawWeatherPanelBackground(leftPanelX, 36, leftPanelW, H - 84, gWeatherStatus, flash);
+
   canvas.setTextDatum(middle_left);
   canvas.setFont(&fonts::FreeSans9pt7b);
-  canvas.setTextColor(CLR_MUTED);
-  canvas.drawString("GLOOKO", leftPanelX + 2, 44);
-  canvas.drawLine(leftPanelX, 56, leftPanelX + leftPanelW, 56, CLR_DIM);
+  canvas.setTextColor(CLR_TEXT);
+  canvas.drawString("WEATHER", leftPanelX + 6, 46);
 
-  if (gOmnipodStatus.valid) {
+  if (gWeatherStatus.valid) {
+    drawWeatherIcon(leftPanelX + 44, 56, gWeatherStatus, animFrame);
+
     char line[40];
+    float outside = tempCToDisplay(cfg, gWeatherStatus.outsideTempC);
+    snprintf(line, sizeof(line), "Out: %.0f%s", outside, tempUnitLabel(cfg));
+    canvas.drawString(line, leftPanelX + 6, 106);
 
-    // Pod active status
-    canvas.setTextColor(CLR_TEXT);
-    snprintf(line, sizeof(line), "Pod: %s", gOmnipodStatus.podActive ? "ON" : "OFF");
-    canvas.drawString(line, leftPanelX + 2, 78);
-
-    // Site change age
-    {
-      char siteAge[16] = "--";
-      if (gOmnipodStatus.siteChangeTimestamp > 0) {
-        time_t now = time(nullptr);
-        if (now > gOmnipodStatus.siteChangeTimestamp) {
-          long ageSec = (long)(now - gOmnipodStatus.siteChangeTimestamp);
-          if (ageSec >= 86400) snprintf(siteAge, sizeof(siteAge), "%.1fd", ageSec / 86400.0f);
-          else if (ageSec >= 3600) snprintf(siteAge, sizeof(siteAge), "%dh", (int)(ageSec / 3600));
-          else snprintf(siteAge, sizeof(siteAge), "%dm", (int)(ageSec / 60));
-        }
-      }
-      canvas.setTextColor(CLR_TEXT);
-      snprintf(line, sizeof(line), "Site: %s", siteAge);
-      canvas.drawString(line, leftPanelX + 2, 102);
+    if (gWeatherStatus.hasInsideTemp && !isnan(gWeatherStatus.insideTempC)) {
+      float inside = tempCToDisplay(cfg, gWeatherStatus.insideTempC);
+      snprintf(line, sizeof(line), "In:  %.0f%s", inside, tempUnitLabel(cfg));
+    } else {
+      snprintf(line, sizeof(line), "In:  --");
     }
+    canvas.drawString(line, leftPanelX + 6, 126);
 
+    if (strlen(gWeatherStatus.description) > 0) {
+      canvas.setTextColor(CLR_MUTED);
+      canvas.drawString(gWeatherStatus.description, leftPanelX + 6, 146);
+    }
   } else {
     canvas.setTextColor(CLR_DIM);
-    canvas.drawString("No pump data", leftPanelX + 2, 94);
-    canvas.drawString("yet", leftPanelX + 2, 116);
+    canvas.drawString("No weather", leftPanelX + 6, 102);
+    canvas.drawString("data", leftPanelX + 6, 122);
   }
 
   // ── Bottom bar ───────────────────────────────────────────────────────────────
@@ -550,10 +636,11 @@ void updateDisplay(AppConfig& cfg, BGReading& reading, DisplayState& state) {
   bool timeChanged  = (strcmp(timeStr, state.lastTimeStr) != 0);
   bool rssiChanged  = (rssiCoarse != lastRssiCoarse);
   bool pulseRedraw  = (needFlash || needPulse) && state.pulseOn != ((now / 500) % 2 == 0);
+  bool animRedraw = (now - state.lastAnimTick) >= 450UL;
   bool firstDraw    = !state.initialized;
 
   if (!firstDraw && !bgChanged && !trendChanged && !staleChanged &&
-      !keyChanged && !timeChanged && !rssiChanged && !pulseRedraw) {
+      !keyChanged && !timeChanged && !rssiChanged && !pulseRedraw && !animRedraw) {
     return; // Nothing changed — skip entirely, no work done
   }
 
@@ -563,6 +650,7 @@ void updateDisplay(AppConfig& cfg, BGReading& reading, DisplayState& state) {
   state.lastStale    = reading.stale;
   state.lastKeyErr   = state.showKeyError;
   state.lastRSSI     = rssi;
+  state.lastAnimTick = now;
   state.initialized  = true;
   strlcpy(state.lastTimeStr, timeStr, sizeof(state.lastTimeStr));
 
@@ -735,7 +823,7 @@ void showDigestScreen(const char* text, unsigned long durationMs = 10000) {
 
 void showSettingsMenu(AppConfig& cfg, Preferences& prefs) {
   int W = M5.Display.width(), H = M5.Display.height();
-  extern OmnipodStatus gOmnipodStatus;
+  extern WeatherStatus gWeatherStatus;
 
 
   auto checkDexcom = [&](bool& configured) -> bool {
@@ -762,11 +850,11 @@ void showSettingsMenu(AppConfig& cfg, Preferences& prefs) {
     return code == 200;
   };
 
-  auto checkGlooko = [&](bool& configured) -> bool {
-    configured = cfg.glookoEnabled;
+  auto checkWeather = [&](bool& configured) -> bool {
+    configured = cfg.weatherEnabled && (strlen(cfg.weatherCity) > 0 || strlen(cfg.weatherZip) > 0);
     if (!configured || WiFi.status() != WL_CONNECTED) return false;
-    unsigned long freshnessMs = (unsigned long)(cfg.glookoPollMin + 5) * 60000UL;
-    return gOmnipodStatus.valid && gOmnipodStatus.fetchedAtMs > 0 && (millis() - gOmnipodStatus.fetchedAtMs) <= freshnessMs;
+    unsigned long freshnessMs = (unsigned long)(cfg.weatherPollMin + 2) * 60000UL;
+    return gWeatherStatus.valid && gWeatherStatus.fetchedAtMs > 0 && (millis() - gWeatherStatus.fetchedAtMs) <= freshnessMs;
   };
 
   auto drawStatus = [&](const char* name, int y, bool ok, bool configured) {
@@ -785,7 +873,7 @@ void showSettingsMenu(AppConfig& cfg, Preferences& prefs) {
     canvas.drawString(ok ? "Connected" : "Not Connected", W - 12, y);
   };
 
-  auto drawSettingsScreen = [&](bool dexOk, bool dexCfg, bool nsOk, bool nsCfg, bool gkOk, bool gkCfg) {
+  auto drawSettingsScreen = [&](bool dexOk, bool dexCfg, bool nsOk, bool nsCfg, bool wxOk, bool wxCfg) {
     canvas.fillScreen(CLR_BG);
     canvas.setFont(&fonts::FreeSansBold9pt7b);
     canvas.setTextColor(CLR_TEXT);
@@ -814,7 +902,7 @@ void showSettingsMenu(AppConfig& cfg, Preferences& prefs) {
 
     drawStatus("Dexcom Share", 124, dexOk, dexCfg);
     drawStatus("Nightscout", 142, nsOk, nsCfg);
-    drawStatus("Glooko Omnipod", 160, gkOk, gkCfg);
+    drawStatus("Weather", 160, wxOk, wxCfg);
 
     canvas.drawLine(10, 186, W-10, 186, CLR_SEP);
     canvas.setTextColor(CLR_MUTED);
@@ -838,11 +926,11 @@ void showSettingsMenu(AppConfig& cfg, Preferences& prefs) {
       lastRefresh = millis();
       bool dexCfg = false;
       bool nsCfg = false;
-      bool gkCfg = false;
+      bool wxCfg = false;
       bool dexOk = checkDexcom(dexCfg);
       bool nsOk = checkNightscout(nsCfg);
-      bool gkOk = checkGlooko(gkCfg);
-      drawSettingsScreen(dexOk, dexCfg, nsOk, nsCfg, gkOk, gkCfg);
+      bool wxOk = checkWeather(wxCfg);
+      drawSettingsScreen(dexOk, dexCfg, nsOk, nsCfg, wxOk, wxCfg);
     }
 
     if (M5.Touch.getCount() && M5.Touch.getDetail().wasPressed()) {

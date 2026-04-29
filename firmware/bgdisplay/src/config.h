@@ -35,9 +35,13 @@ struct AppConfig {
   char dexcomPass[64]="";
   char dexcomRegion[8]="US";
 
-  // Glooko Omnipod data
-  bool glookoEnabled=false;
-  int  glookoPollMin=30;
+  // Weather panel
+  bool weatherEnabled=true;
+  int  weatherPollMin=15;
+  char weatherCity[64]="";
+  char weatherZip[16]="";
+  char weatherCountry[8]="US";
+  char weatherUnits[8]="F";
 
   // Polling
   int  pollIntervalMin=5;
@@ -75,8 +79,8 @@ inline void sanitizeConfig(AppConfig& c) {
   if (c.pollIntervalMin < 1) c.pollIntervalMin = 1;
   if (c.staleDataWarnMin < 1) c.staleDataWarnMin = 1;
   if (c.configPingMin < 1) c.configPingMin = 1;
-  if (c.glookoPollMin < 30) c.glookoPollMin = 30;
-  if (c.glookoPollMin > 240) c.glookoPollMin = 240;
+  if (c.weatherPollMin < 5) c.weatherPollMin = 5;
+  if (c.weatherPollMin > 120) c.weatherPollMin = 120;
 
   if (c.brightness < 0) c.brightness = 0;
   if (c.brightness > 100) c.brightness = 100;
@@ -98,6 +102,10 @@ inline void saveConfig(Preferences& p, const AppConfig& c) {
   p.putString("dexRegion",  c.dexcomRegion);
   p.putString("timezone",   c.timezone);
   p.putString("bgUnits",    c.bgUnits);
+  p.putString("wxCity",     c.weatherCity);
+  p.putString("wxZip",      c.weatherZip);
+  p.putString("wxCountry",  c.weatherCountry);
+  p.putString("wxUnits",    c.weatherUnits);
   p.putString("bgAlert",    c.bgAlertStyle);
   p.putString("dndFrom",    c.dndFrom);
   p.putString("dndTo",      c.dndTo);
@@ -113,7 +121,7 @@ inline void saveConfig(Preferences& p, const AppConfig& c) {
   p.putInt("pollMin",       c.pollIntervalMin);
   p.putInt("staleMin",      c.staleDataWarnMin);
   p.putInt("pingMin",       c.configPingMin);
-  p.putInt("gkPoll",        c.glookoPollMin);
+  p.putInt("wxPoll",        c.weatherPollMin);
   p.putInt("urgLow",        c.urgentLow);
   p.putInt("low",           c.low);
   p.putInt("high",          c.high);
@@ -122,7 +130,7 @@ inline void saveConfig(Preferences& p, const AppConfig& c) {
   p.putBool("showArrow",    c.showTrendArrow);
   p.putBool("clock24",      c.clock24hr);
   p.putBool("dndEnabled",   c.dndEnabled);
-  p.putBool("gkEn",         c.glookoEnabled);
+  p.putBool("wxEn",         c.weatherEnabled);
   p.putInt("brightness",    c.brightness);
   p.putInt("autoDim",       c.autoDimMin);
   p.putInt("dimTo",         c.dimToPct);
@@ -143,6 +151,10 @@ inline void loadConfig(Preferences& p, AppConfig& c) {
   strlcpy(c.dexcomRegion, p.getString("dexRegion","US").c_str(),8);
   strlcpy(c.timezone,     p.getString("timezone","US/Central").c_str(),32);
   strlcpy(c.bgUnits,      p.getString("bgUnits","mg/dL").c_str(),8);
+  strlcpy(c.weatherCity,  p.getString("wxCity","").c_str(),64);
+  strlcpy(c.weatherZip,   p.getString("wxZip","").c_str(),16);
+  strlcpy(c.weatherCountry,p.getString("wxCountry","US").c_str(),8);
+  strlcpy(c.weatherUnits, p.getString("wxUnits","F").c_str(),8);
   strlcpy(c.bgAlertStyle, p.getString("bgAlert","pulse").c_str(),16);
   strlcpy(c.dndFrom,      p.getString("dndFrom","23:00").c_str(),8);
   strlcpy(c.dndTo,        p.getString("dndTo","06:00").c_str(),8);
@@ -160,7 +172,7 @@ inline void loadConfig(Preferences& p, AppConfig& c) {
   c.pollIntervalMin    = p.getInt("pollMin",5);
   c.staleDataWarnMin   = p.getInt("staleMin",15);
   c.configPingMin      = p.getInt("pingMin",1);
-  c.glookoPollMin      = p.getInt("gkPoll",30);
+  c.weatherPollMin     = p.getInt("wxPoll",15);
   c.urgentLow          = p.getInt("urgLow",55);
   c.low                = p.getInt("low",70);
   c.high               = p.getInt("high",180);
@@ -169,7 +181,7 @@ inline void loadConfig(Preferences& p, AppConfig& c) {
   c.showTrendArrow     = p.getBool("showArrow",true);
   c.clock24hr          = p.getBool("clock24",false);
   c.dndEnabled         = p.getBool("dndEnabled",false);
-  c.glookoEnabled      = p.getBool("gkEn",false);
+  c.weatherEnabled     = p.getBool("wxEn",true);
   c.brightness         = p.getInt("brightness",75);
   c.autoDimMin         = p.getInt("autoDim",10);
   c.dimToPct           = p.getInt("dimTo",10);

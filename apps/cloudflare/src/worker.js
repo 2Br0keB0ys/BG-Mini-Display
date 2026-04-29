@@ -109,6 +109,13 @@ const DEFAULT_CONFIG = {
   nightscout_url: "", nightscout_secret: "",
   // Dexcom (primary)
   dexcom_user: "", dexcom_pass: "", dexcom_region: "US",
+  // Weather
+  weather_enabled: true,
+  weather_city: "",
+  weather_zip: "",
+  weather_country: "US",
+  weather_units: "F",
+  weather_poll_min: 15,
   // Glooko (optional BG source)
   glooko_email: "", glooko_password: "", glooko_env: "default", glooko_server: "",
   // Omnipod source credentials
@@ -187,6 +194,15 @@ function normalizeConfig(cfg) {
   out.dnd_schedule = normalizeDndSchedule(out.dnd_schedule, out.dnd_from, out.dnd_to);
   out.pushover_alert_cooldown_min = Math.max(5, Math.min(60, Number(out.pushover_alert_cooldown_min || 15)));
   out.digest_pushover_hour = Math.max(0, Math.min(23, Number(out.digest_pushover_hour ?? 7)));
+  out.weather_enabled = out.weather_enabled !== false;
+  out.weather_city = String(out.weather_city || "").trim().slice(0, 64);
+  out.weather_zip = String(out.weather_zip || "").trim().slice(0, 16);
+  out.weather_country = String(out.weather_country || "US").trim().toUpperCase().slice(0, 8) || "US";
+  out.weather_units = String(out.weather_units || "F").trim().toUpperCase() === "C" ? "C" : "F";
+  out.weather_poll_min = Math.max(5, Math.min(120, Number(out.weather_poll_min || 15)));
+  // Pump data integrations are retired; keep AI pump profile fields only.
+  out.glooko_enabled = false;
+  out.omnipod_source = "glooko";
   out.glooko_poll_min = Math.max(30, Math.min(240, Number(out.glooko_poll_min || 30)));
   out.glooko_email = String(out.glooko_email || "").trim();
   out.glooko_password = String(out.glooko_password || "");
@@ -384,6 +400,86 @@ function formatAgeDays(epochSec, nowSec) {
   const days = diffSec / 86400;
   if (days < 1) return `${Math.round(diffSec / 3600)}h ago`;
   return `${days.toFixed(1)} days ago`;
+}
+
+function weatherCodeToDescription(code) {
+  const c = Number(code);
+  if (c === 0) return "Sunny";
+  if (c === 1) return "Mostly sunny";
+  if (c === 2) return "Partly cloudy";
+  if (c === 3) return "Cloudy";
+  if (c === 45 || c === 48) return "Fog";
+  if ((c >= 51 && c <= 67) || (c >= 80 && c <= 82)) return "Rain";
+  if ((c >= 71 && c <= 77) || (c >= 85 && c <= 86)) return "Snow";
+  if (c === 95 || c === 96 || c === 99) return "Thunderstorms";
+  return "Current conditions";
+}
+
+async function resolveWeatherLocation(config) {
+  const city = String(config.weather_city || "").trim();
+  const zip = String(config.weather_zip || "").trim();
+  const country = String(config.weather_country || "US").trim().toUpperCase() || "US";
+  const query = city || zip;
+  if (!query) return null;
+
+  const u = new URL("https://geocoding-api.open-meteo.com/v1/search");
+  u.searchParams.set("name", query);
+  u.searchParams.set("count", "1");
+  if (country) u.searchParams.set("country", country);
+
+  const resp = await fetch(u.toString(), { signal: AbortSignal.timeout(8000) });
+  if (!resp.ok) return null;
+  const data = await resp.json();
+  const first = Array.isArray(data?.results) && data.results.length ? data.results[0] : null;
+  if (!first || !Number.isFinite(first.latitude) || !Number.isFinite(first.longitude)) return null;
+
+  return {
+    latitude: Number(first.latitude),
+    longitude: Number(first.longitude),
+    location: [first.name, first.admin1, first.country_code].filter(Boolean).join(", "),
+  };
+}
+
+async function fetchCurrentWeather(config, env) {
+  if (config.weather_enabled === false) return { available: false, reason: "weather_disabled" };
+
+  const cacheKey = `weather:current:${(config.weather_city || "").toLowerCase()}:${(config.weather_zip || "").toLowerCase()}:${(config.weather_country || "US").toLowerCase()}`;
+  const cached = await env.BGDISPLAY_CONFIG.get(cacheKey, { type: "json" });
+  if (cached && cached.fetchedAt && Date.now() - cached.fetchedAt < 10 * 60 * 1000) {
+    return cached;
+  }
+
+  const loc = await resolveWeatherLocation(config);
+  if (!loc) return { available: false, reason: "location_not_found" };
+
+  const weatherUrl = new URL("https://api.open-meteo.com/v1/forecast");
+  weatherUrl.searchParams.set("latitude", String(loc.latitude));
+  weatherUrl.searchParams.set("longitude", String(loc.longitude));
+  weatherUrl.searchParams.set("current", "temperature_2m,weather_code,is_day");
+  weatherUrl.searchParams.set("temperature_unit", "celsius");
+  weatherUrl.searchParams.set("timezone", "auto");
+
+  const resp = await fetch(weatherUrl.toString(), { signal: AbortSignal.timeout(8000) });
+  if (!resp.ok) return { available: false, reason: "weather_upstream_http", http: resp.status };
+  const data = await resp.json();
+  const cur = data?.current;
+  if (!cur || !Number.isFinite(Number(cur.temperature_2m))) {
+    return { available: false, reason: "weather_payload_invalid" };
+  }
+
+  const out = {
+    available: true,
+    outside_temp_c: Number(cur.temperature_2m),
+    inside_temp_c: null,
+    weather_code: Number(cur.weather_code ?? -1),
+    is_day: Number(cur.is_day ?? 1) === 1,
+    description: weatherCodeToDescription(cur.weather_code),
+    location: loc.location,
+    timestamp: Date.now(),
+    fetchedAt: Date.now(),
+  };
+  await env.BGDISPLAY_CONFIG.put(cacheKey, JSON.stringify(out), { expirationTtl: 3600 });
+  return out;
 }
 
 // ─── Dexcom Sensor Session ─────────────────────────────────────────────────────
@@ -1017,19 +1113,6 @@ async function generateDailyDigest(env, force = false, type = "daily") {
     notes: config.insulin_pump_notes || "",
   };
 
-  // Fetch live Glooko pump snapshot from cache (browser-sync, no new browser fetch)
-  let pumpSnapshot = null;
-  if (config.glooko_enabled && config.glooko_email) {
-    try {
-      const cached = await env.BGDISPLAY_CONFIG.get(GLOOKO_PUMP_CACHE_KEY, { type: "json" });
-      const nowSec = Math.floor(Date.now() / 1000);
-      const cacheTs = Number(cached?.snapshot?.timestamp || 0);
-      if (cached?.snapshot && cacheTs > 0 && (nowSec - cacheTs) <= GLOOKO_PUMP_CACHE_MAX_AGE_SEC * 4) {
-        pumpSnapshot = cached.snapshot;
-      }
-    } catch {}
-  }
-
   // Fetch Dexcom sensor session age
   let sensorSession = null;
   if (config.dexcom_user && config.dexcom_pass) {
@@ -1038,15 +1121,8 @@ async function generateDailyDigest(env, force = false, type = "daily") {
 
   const nowSec = Math.floor(Date.now() / 1000);
 
-  // Build pump context line for AI prompt
+  // Pump integration retired: AI uses profile metadata only.
   let pumpContextLine = "";
-  if (pumpSnapshot) {
-    const siteTs = Number(pumpSnapshot.site_change_timestamp || pumpSnapshot.pod_change_timestamp || 0);
-    const podAgeDays = siteTs > 0 ? ((nowSec - siteTs) / 86400).toFixed(1) : null;
-    const parts = [];
-    if (podAgeDays !== null) parts.push(`site/pod change: ${podAgeDays} days ago`);
-    if (parts.length) pumpContextLine = `Live pump data — ${parts.join(", ")}.`;
-  }
 
   // Build sensor context line for AI prompt
   let sensorContextLine = "";
@@ -1574,71 +1650,13 @@ async function handleMCP(request, env, config, auth) {
 
     if (toolName === "get_source_status") {
       const checks = {
-        nightscout: {
-          configured: !!config.nightscout_url,
-          reachable: false,
-          note: "",
-        },
-        dexcom: {
-          configured: !!(config.dexcom_user && config.dexcom_pass),
-          reachable: false,
-          note: "",
-        },
-        glooko: {
-          configured: !!(config.glooko_email && config.glooko_password),
-          reachable: false,
-          note: "",
-        },
-        omnipod: {
-          configured: !!config.glooko_enabled,
-          source: String(config.omnipod_source || "glooko").toLowerCase(),
-          reachable: false,
-          note: "",
+        nightscout: { configured: !!config.nightscout_url },
+        dexcom: { configured: !!(config.dexcom_user && config.dexcom_pass) },
+        pump_integrations: {
+          enabled: false,
+          note: "Retired: live pump integrations are disabled. Pump profile remains available for AI context.",
         },
       };
-
-      if (checks.nightscout.configured) {
-        const latest = await fetchNightscoutLatest(config);
-        checks.nightscout.reachable = !!(latest && latest.sgv);
-        checks.nightscout.note = checks.nightscout.reachable ? "Latest reading available" : "No reading returned";
-      } else {
-        checks.nightscout.note = "Nightscout URL missing";
-      }
-
-      if (checks.dexcom.configured) {
-        const latest = await fetchDexcomShareLatest(config);
-        checks.dexcom.reachable = !!(latest && latest.value);
-        checks.dexcom.note = checks.dexcom.reachable ? "Latest reading available" : "No reading returned";
-      } else {
-        checks.dexcom.note = "Dexcom credentials missing";
-      }
-
-      if (checks.glooko.configured) {
-        const diag = {};
-        const snap = await fetchGlookoPumpSnapshotBrowser(config, env, diag);
-        checks.glooko.reachable = !!snap;
-        checks.glooko.note = checks.glooko.reachable
-          ? "Browser sync pump snapshot available"
-          : `Browser sync unavailable (${diag.reason || "unknown"})`;
-        checks.glooko.reason = diag.reason || null;
-      } else {
-        checks.glooko.note = "Glooko credentials missing";
-      }
-
-      if (checks.omnipod.configured) {
-        const diag = {};
-        const pod = await fetchOmnipodBridge(config, env, diag);
-        checks.omnipod.reachable = !!pod;
-        checks.omnipod.note = checks.omnipod.reachable ? "Omnipod payload available" : `No Omnipod payload returned (${diag.reason || "unknown"})`;
-        checks.omnipod.reason = diag.reason || null;
-        checks.omnipod.hasEndpoint = !!diag.hasEndpoint;
-        checks.omnipod.hasToken = !!diag.hasToken;
-        checks.omnipod.hasSourceCreds = !!diag.hasSourceCreds;
-        checks.omnipod.http = Number.isFinite(diag.http) ? diag.http : null;
-      } else {
-        checks.omnipod.note = "Omnipod source sync disabled";
-      }
-
       return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(checks, null, 2) }] });
     }
 
@@ -1664,21 +1682,13 @@ async function handleMCP(request, env, config, auth) {
         });
       }
 
-      if (source === "glooko") {
-        const diag = {};
-        const latest = await fetchGlookoPumpSnapshotBrowser(config, env, diag);
-        if (!latest) {
-          return mcpResult(id, { content: [{ type: "text", text: `No Glooko browser-sync data available (${diag.reason || "unknown"}).` }] });
-        }
+      if (source === "glooko" || source === "omnipod") {
         return mcpResult(id, {
           content: [{ type: "text", text: JSON.stringify({
-            source: "glooko",
-            insulin_on_board: latest.insulin_on_board,
-            last_bolus_units: latest.last_bolus_units,
-            last_bolus_timestamp: latest.last_bolus_timestamp ? new Date(latest.last_bolus_timestamp * 1000).toISOString() : null,
-            pod_change_timestamp: latest.pod_change_timestamp ? new Date(latest.pod_change_timestamp * 1000).toISOString() : null,
-            timestamp: latest.timestamp ? new Date(latest.timestamp * 1000).toISOString() : null,
-            path: diag.reason || "ok_browser",
+            source,
+            available: false,
+            reason: "pump_integrations_retired",
+            note: "Pump integrations are disabled. Pump profile metadata is still available for AI context.",
           }, null, 2) }],
         });
       }
@@ -1696,67 +1706,15 @@ async function handleMCP(request, env, config, auth) {
         return mcpResult(id, { content: [{ type: "text", text: JSON.stringify({ source: "nightscout", count: payload.length, readings: payload }, null, 2) }] });
       }
 
-      const diag = {};
-      const pod = await fetchOmnipodBridge(config, env, diag);
-      if (!pod) {
-        return mcpResult(id, {
-          content: [{ type: "text", text: JSON.stringify({
-            source: "omnipod",
-            available: false,
-            reason: diag.reason || "unknown",
-            hasEndpoint: !!diag.hasEndpoint,
-            hasToken: !!diag.hasToken,
-            hasSourceCreds: !!diag.hasSourceCreds,
-            http: Number.isFinite(diag.http) ? diag.http : null,
-          }, null, 2) }],
-        });
-      }
-      return mcpResult(id, {
-        content: [{ type: "text", text: JSON.stringify({ source: "omnipod", omnipod: pod }, null, 2) }],
-      });
+      return mcpResult(id, { content: [{ type: "text", text: "Unsupported source." }] });
     }
 
     if (toolName === "glooko_test") {
       const result = {
-        configured: !!(config.glooko_email && config.glooko_password),
-        email_present: !!config.glooko_email,
-        password_present: !!config.glooko_password,
-        email: config.glooko_email ? "••••••••" : "(empty)",
-        env: config.glooko_env || "default",
-        server: config.glooko_server || "(auto)",
-        test_result: null,
-        error: null,
+        enabled: false,
+        reason: "pump_integrations_retired",
+        note: "Glooko connectivity testing is disabled. Pump profile metadata remains for AI context.",
       };
-
-      if (!result.configured) {
-        result.error = "Glooko email and/or password not configured";
-        return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] });
-      }
-
-      try {
-        const diag = {};
-        const snap = await Promise.race([
-          fetchGlookoPumpSnapshotBrowser(config, env, diag),
-          new Promise((_, rej) => setTimeout(() => rej(new Error("timeout after 60s")), 60000)),
-        ]);
-        if (snap) {
-          result.test_result = "success";
-          result.latest_snapshot = {
-            insulin_on_board: snap.insulin_on_board,
-            last_bolus_units: snap.last_bolus_units,
-            last_bolus_timestamp: snap.last_bolus_timestamp ? new Date(snap.last_bolus_timestamp * 1000).toISOString() : null,
-            pod_change_timestamp: snap.pod_change_timestamp ? new Date(snap.pod_change_timestamp * 1000).toISOString() : null,
-            timestamp: snap.timestamp ? new Date(snap.timestamp * 1000).toISOString() : null,
-          };
-          result.path = diag.reason || "ok_browser";
-        } else {
-          result.test_result = "no_data";
-          result.error = diag.reason || "Browser sync returned no snapshot";
-        }
-      } catch (err) {
-        result.test_result = "failed";
-        result.error = String(err?.message || err || "unknown error");
-      }
       return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] });
     }
 
@@ -1789,7 +1747,7 @@ async function handleMCP(request, env, config, auth) {
 
     if (toolName === "get_device_ages") {
       const nowSec = Math.floor(Date.now() / 1000);
-      const result = { dexcom_sensor: null, glooko_site_change: null };
+      const result = { dexcom_sensor: null, pump_site_change: null };
 
       // Dexcom sensor session
       if (config.dexcom_user && config.dexcom_pass) {
@@ -1810,34 +1768,7 @@ async function handleMCP(request, env, config, auth) {
         result.dexcom_sensor = { error: "Dexcom credentials not configured" };
       }
 
-      // Glooko site change from cache
-      const glookoRaw = await env.BGDISPLAY_CONFIG.get(GLOOKO_PUMP_CACHE_KEY, { type: "json" });
-      const siteTs = Number(glookoRaw?.snapshot?.site_change_timestamp || 0);
-      const reservoirTs = Number(glookoRaw?.snapshot?.reservoir_change_timestamp || 0);
-      const podChangeTs = Math.max(siteTs, reservoirTs);
-      if (glookoRaw?.snapshot) {
-        result.glooko_site_change = {
-          site_change: siteTs > 0 ? {
-            timestamp: new Date(siteTs * 1000).toISOString(),
-            age: formatAgeDays(siteTs, nowSec),
-            age_days: parseFloat(((nowSec - siteTs) / 86400).toFixed(2)),
-          } : null,
-          reservoir_change: reservoirTs > 0 ? {
-            timestamp: new Date(reservoirTs * 1000).toISOString(),
-            age: formatAgeDays(reservoirTs, nowSec),
-            age_days: parseFloat(((nowSec - reservoirTs) / 86400).toFixed(2)),
-          } : null,
-          pod_change: podChangeTs > 0 ? {
-            timestamp: new Date(podChangeTs * 1000).toISOString(),
-            age: formatAgeDays(podChangeTs, nowSec),
-            age_days: parseFloat(((nowSec - podChangeTs) / 86400).toFixed(2)),
-          } : null,
-          cache_age_min: glookoRaw.snapshot.timestamp ? Math.round((nowSec - glookoRaw.snapshot.timestamp) / 60) : null,
-          note: siteTs === 0 && reservoirTs === 0 ? "No site/reservoir change events found in Glooko data (pump may not be linked)" : null,
-        };
-      } else {
-        result.glooko_site_change = { error: "No Glooko pump cache. Run glooko_test first to populate it." };
-      }
+      result.pump_site_change = { error: "Retired: live pump age telemetry is disabled." };
 
       return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] });
     }
@@ -1873,66 +1804,6 @@ async function handleMCP(request, env, config, auth) {
     }
 
     if (toolName === "get_maintenance_status") {
-      const nowMs = Date.now();
-      const nowSec = Math.floor(nowMs / 1000);
-      const [glookoRaw, dailyDigest, deviceStatus, lastAlert, lastDigestPush, lastOffline] = await Promise.all([
-        env.BGDISPLAY_CONFIG.get(GLOOKO_PUMP_CACHE_KEY, { type: "json" }),
-      ]);
-      const [sensorCacheRaw] = await Promise.all([
-        env.BGDISPLAY_CONFIG.get(DEXCOM_SENSOR_CACHE_KEY, { type: "json" }),
-      ]);
-      const [glookoRaw2, dailyDigest, deviceStatus, lastAlert, lastDigestPush, lastOffline] = await Promise.all([
-        Promise.resolve(glookoRaw),
-        env.BGDISPLAY_CONFIG.get("daily_digest", { type: "json" }),
-        env.BGDISPLAY_CONFIG.get("device_status", { type: "json" }),
-        env.BGDISPLAY_CONFIG.get("last_pushover_alert"),
-        env.BGDISPLAY_CONFIG.get("last_digest_pushover"),
-        env.BGDISPLAY_CONFIG.get("last_offline_alert"),
-      ]);
-      const glookoCacheTs = Number(glookoRaw?.snapshot?.timestamp || 0);
-      const glookoCacheAgeSec = glookoCacheTs > 0 ? nowSec - glookoCacheTs : null;
-      const status = {
-        bindings: {
-          ai: !!env.AI,
-          browser_run: !!env.MYBROWSER,
-          kv_encrypt: !!env.KV_ENCRYPT_KEY,
-        },
-        glooko_pump_cache: {
-          exists: !!glookoRaw?.snapshot,
-          age_sec: glookoCacheAgeSec,
-          age_minutes: glookoCacheAgeSec !== null ? Math.round(glookoCacheAgeSec / 60) : null,
-          ttl_sec: GLOOKO_PUMP_CACHE_MAX_AGE_SEC,
-          stale: glookoCacheAgeSec !== null ? glookoCacheAgeSec > GLOOKO_PUMP_CACHE_MAX_AGE_SEC : true,
-          iob: glookoRaw?.snapshot?.insulin_on_board ?? null,
-          last_bolus_units: glookoRaw?.snapshot?.last_bolus_units ?? null,
-        },
-        const glookoCacheTs2 = Number(glookoRaw?.snapshot?.timestamp || 0);
-        const siteTs = Number(glookoRaw?.snapshot?.site_change_timestamp || 0);
-        const reservoirTs = Number(glookoRaw?.snapshot?.reservoir_change_timestamp || 0);
-        daily_digest: {
-          exists: !!dailyDigest,
-          date: dailyDigest?.date || null,
-          generated_at: dailyDigest?.generatedAt ? new Date(dailyDigest.generatedAt).toISOString() : null,
-          age_minutes: dailyDigest?.generatedAt ? Math.round((nowMs - dailyDigest.generatedAt) / 60000) : null,
-          tir: dailyDigest?.stats?.tir ?? null,
-        },
-        device: {
-          last_seen: deviceStatus?.timestamp ? new Date(deviceStatus.timestamp * 1000).toISOString() : null,
-          online: deviceStatus?.online ?? null,
-          fw_version: deviceStatus?.fw_version || null,
-        },
-        alerts: {
-          last_bg_alert: lastAlert ? new Date(Number(lastAlert)).toISOString() : null,
-          last_bg_alert_age_min: lastAlert ? Math.round((nowMs - Number(lastAlert)) / 60000) : null,
-          last_digest_pushover: lastDigestPush || null,
-          last_offline_alert: lastOffline ? new Date(Number(lastOffline)).toISOString() : null,
-        },
-        ai_model: config.ai_model || "@cf/meta/llama-3.1-8b-instruct",
-      };
-      return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(status, null, 2) }] });
-    }
-      if (toolName === "get_maintenance_status") {
-      if (toolName === "get_maintenance_status") {
         const nowMs = Date.now();
         const nowSec = Math.floor(nowMs / 1000);
         const [glookoRaw, sensorCacheRaw, dailyDigest, deviceStatus, lastAlert, lastDigestPush, lastOffline] = await Promise.all([
@@ -1991,7 +1862,7 @@ async function handleMCP(request, env, config, auth) {
           ai_model: config.ai_model || "@cf/meta/llama-3.1-8b-instruct",
         };
         return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(status, null, 2) }] });
-      }
+    }
 
     if (toolName === "run_maintenance") {
       const nowMs = Date.now();
@@ -2566,6 +2437,11 @@ export default {
 
     // ── GET /api/omnipod — Device fetches proxied Omnipod status ─────────────
     if (path === "/api/omnipod" && method === "GET") {
+      return json({ available: false, reason: "omnipod_endpoint_retired", ts: Date.now() }, 410);
+    }
+
+    // ── GET /api/weather — Device fetches current weather conditions ────────
+    if (path === "/api/weather" && method === "GET") {
       const deviceKey = request.headers.get("X-Device-Key");
       if (!deviceKey) return json({ error: "Missing key" }, 401);
       const keyHash = await sha256(deviceKey);
@@ -2573,20 +2449,17 @@ export default {
       const sig = await verifyDeviceSignature(request, env, keyHash, "");
       if (!sig.ok) return json({ error: sig.error }, 401);
 
-      const diag = {};
-      const pod = await fetchOmnipodBridge(config, env, diag);
-      if (!pod) {
+      const weather = await fetchCurrentWeather(config, env);
+      if (!weather?.available) {
         return json({
           available: false,
-          reason: diag.reason || "unknown",
-          source: diag.source || String(config.omnipod_source || "glooko").toLowerCase(),
-          hasEndpoint: !!diag.hasEndpoint,
-          hasToken: !!diag.hasToken,
-          http: Number.isFinite(diag.http) ? diag.http : undefined,
+          reason: weather?.reason || "weather_unavailable",
+          location: [config.weather_city, config.weather_zip].filter(Boolean).join(" "),
           ts: Date.now(),
         });
       }
-      return json({ available: true, omnipod: pod, ts: Date.now() });
+
+      return json({ ...weather, ts: Date.now() });
     }
 
     // ── GET /api/digest — Device fetches AI daily summary ────────────────────

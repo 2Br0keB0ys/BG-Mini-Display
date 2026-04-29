@@ -5,6 +5,7 @@
 #include <ArduinoJson.h>
 #include <Preferences.h>
 #include <time.h>
+#include <math.h>
 #include <esp_system.h>
 #include "mbedtls/md.h"
 
@@ -13,7 +14,7 @@
 #include "display.h"
 #include "nightscout.h"
 #include "dexcom.h"
-#include "glooko.h"
+#include "weather.h"
 #include "wifi_setup.h"
 #include "sd_logger.h"
 #include "ota.h"
@@ -45,7 +46,7 @@ unsigned long lastConfigPing  = 0;
 unsigned long lastStatusPush  = 0;
 unsigned long lastCommandPoll = 0;
 unsigned long lastLogUpload   = 0;
-unsigned long lastGlookoPoll  = 0;
+unsigned long lastWeatherPoll = 0;
 unsigned long lastTimeDraw    = 0;
 unsigned long bootTime        = millis();
 unsigned long lastNoSourceWarn = 0;
@@ -67,7 +68,7 @@ char gDigestText[1024] = "";  // Worker caps daily digest at ~980 chars; safe wi
 bool gFactoryResetArmed = false;
 unsigned long gFactoryResetArmMs = 0;
 bool gLogUploadActive = false;   // set true during uploadSdLogs, prevents concurrent auto-reboot
-OmnipodStatus gOmnipodStatus;
+WeatherStatus gWeatherStatus;
 
 String normalizeWorkerBase(const char* raw) {
   String base = raw ? String(raw) : String("");
@@ -85,6 +86,18 @@ String normalizeWorkerBase(const char* raw) {
 String getDefaultWorkerBase() {
   return normalizeWorkerBase(BGDISPLAY_DEFAULT_WORKER_URL);
 }
+
+#if defined(ARDUINO_ARCH_ESP32)
+static void updateLocalInsideTemperature(WeatherStatus& wx) {
+  float c = temperatureRead();
+  if (!isnan(c) && c > -40.0f && c < 125.0f) {
+    wx.hasInsideTemp = true;
+    wx.insideTempC = c;
+  }
+}
+#else
+static void updateLocalInsideTemperature(WeatherStatus&) {}
+#endif
 
 // Forward declarations
 void fetchDigest(AppConfig&);
@@ -363,8 +376,8 @@ void setup() {
     if (!ok && strlen(appConfig.nightscoutUrl) > 0) {
       fetchNightscout(appConfig, lastReading);
     }
-    if (omnipodConfigured(appConfig)) {
-      fetchGlookoOmnipod(appConfig, gOmnipodStatus);
+    if (weatherConfigured(appConfig)) {
+      fetchWeatherStatus(appConfig, gWeatherStatus);
     }
     const char* src = "BG";
     if (lastReading.source == SOURCE_NIGHTSCOUT) src = "NS";
@@ -534,21 +547,12 @@ void loop() {
     }
   }
 
-  // Pump data poll — every 30 minutes minimum
-  unsigned long gkPollMs = (unsigned long)appConfig.glookoPollMin * 60000UL;
-  if (WiFi.status()==WL_CONNECTED && omnipodConfigured(appConfig) && now - lastGlookoPoll > gkPollMs) {
-    lastGlookoPoll = now;
-    sdLogfEx("POD", "POD_SYNC", "poll_tick intervalMs:%lu", gkPollMs);
-    if (!fetchGlookoOmnipod(appConfig, gOmnipodStatus)) {
-      sdLogEx("ERR", "POD_SYNC", "poll_failed");
-    } else {
-      sdLogfEx(
-        "POD",
-        "POD_SYNC",
-        "poll_ok siteChangeTs:%lu podChangeTs:%lu",
-        (unsigned long)gOmnipodStatus.siteChangeTimestamp,
-        (unsigned long)gOmnipodStatus.podChangeTimestamp
-      );
+  // Weather poll cadence
+  unsigned long wxPollMs = (unsigned long)appConfig.weatherPollMin * 60000UL;
+  if (WiFi.status()==WL_CONNECTED && weatherConfigured(appConfig) && now - lastWeatherPoll > wxPollMs) {
+    lastWeatherPoll = now;
+    if (!fetchWeatherStatus(appConfig, gWeatherStatus)) {
+      sdLogEx("ERR", "WX", "poll_failed");
     }
   }
 
@@ -577,6 +581,8 @@ void loop() {
   }
 
   otaTick(appConfig);
+
+  updateLocalInsideTemperature(gWeatherStatus);
 
   updateDisplay(appConfig, lastReading, dispState);
   delay(50);
@@ -785,8 +791,12 @@ void pullCloudflareConfig(AppConfig& cfg, Preferences& p) {
     if (c.containsKey("poll_interval_min"))   cfg.pollIntervalMin   = c["poll_interval_min"];
     if (c.containsKey("stale_data_warn_min")) cfg.staleDataWarnMin  = c["stale_data_warn_min"];
     if (c.containsKey("config_ping_min"))     cfg.configPingMin     = c["config_ping_min"];
-    if (c.containsKey("glooko_enabled"))      cfg.glookoEnabled     = c["glooko_enabled"];
-    if (c.containsKey("glooko_poll_min"))     cfg.glookoPollMin     = c["glooko_poll_min"];
+    if (c.containsKey("weather_enabled"))     cfg.weatherEnabled    = c["weather_enabled"];
+    if (c.containsKey("weather_poll_min"))    cfg.weatherPollMin    = c["weather_poll_min"];
+    if (c.containsKey("weather_city"))        strlcpy(cfg.weatherCity, c["weather_city"], sizeof(cfg.weatherCity));
+    if (c.containsKey("weather_zip"))         strlcpy(cfg.weatherZip, c["weather_zip"], sizeof(cfg.weatherZip));
+    if (c.containsKey("weather_country"))     strlcpy(cfg.weatherCountry, c["weather_country"], sizeof(cfg.weatherCountry));
+    if (c.containsKey("weather_units"))       strlcpy(cfg.weatherUnits, c["weather_units"], sizeof(cfg.weatherUnits));
     if (c.containsKey("urgent_low"))          cfg.urgentLow         = c["urgent_low"];
     if (c.containsKey("low"))                 cfg.low               = c["low"];
     if (c.containsKey("high"))                cfg.high              = c["high"];
@@ -969,13 +979,11 @@ bool pushStatus(AppConfig& cfg) {
     doc["dexOk"]          = sourceHealth.dexOk;
     doc["dexFail"]        = sourceHealth.dexFail;
     doc["bgPollFailStreak"] = sourceHealth.consecutiveBgFailures;
-  doc["omnipodConfigured"] = omnipodConfigured(cfg);
-  doc["omnipodValid"]      = gOmnipodStatus.valid;
-  doc["omnipodActive"]     = gOmnipodStatus.podActive;
-  doc["omnipodMinsToExp"]  = gOmnipodStatus.minutesToExpiry;
-  doc["omnipodSiteChangeTs"] = (long)gOmnipodStatus.siteChangeTimestamp;
-  doc["omnipodPodChangeTs"] = (long)gOmnipodStatus.podChangeTimestamp;
-  doc["omnipodDataTs"]     = (long)gOmnipodStatus.dataTimestamp;
+  doc["weatherConfigured"] = weatherConfigured(cfg);
+  doc["weatherValid"]      = gWeatherStatus.valid;
+  doc["weatherCode"]       = gWeatherStatus.weatherCode;
+  doc["weatherOutsideTempC"] = gWeatherStatus.outsideTempC;
+  doc["weatherDataTs"]     = (long)gWeatherStatus.dataTimestamp;
   String body; serializeJson(doc, body);
     addSignedHeaders(http, "POST", path, body, cfg);
   int code = http.POST(body);
