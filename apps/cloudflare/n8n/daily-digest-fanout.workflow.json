@@ -1,0 +1,251 @@
+{
+  "name": "BG MiniView - Daily Digest Fan-out",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "5 8 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-daily",
+      "name": "Daily 08:05",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        220,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "workerUrl",
+              "value": "={{$env.BG_MCP_BASE_URL || 'https://bgdisplay-worker.zanebaize.workers.dev'}}"
+            },
+            {
+              "name": "mcpKey",
+              "value": "={{$env.BG_MCP_KEY || ''}}"
+            },
+            {
+              "name": "pushoverUser",
+              "value": "={{$env.PUSHOVER_USER_KEY || ''}}"
+            },
+            {
+              "name": "pushoverToken",
+              "value": "={{$env.PUSHOVER_API_TOKEN || ''}}"
+            },
+            {
+              "name": "archiveWebhook",
+              "value": "={{$env.BG_DIGEST_ARCHIVE_WEBHOOK || ''}}"
+            }
+          ]
+        }
+      },
+      "id": "set-config",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        460,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$json.workerUrl + '/mcp?key=' + encodeURIComponent($json.mcpKey)}}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"jsonrpc\":\"2.0\",\"id\":\"digest-now\",\"method\":\"tools/call\",\"params\":{\"name\":\"get_daily_digest\",\"arguments\":{}}}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 20000
+        }
+      },
+      "id": "http-get-digest",
+      "name": "MCP get_daily_digest",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        700,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg = $item(0).$node['Config'].json;\nconst text = $json?.result?.content?.[0]?.text || '';\nconst cleaned = String(text).trim();\nconst noDigest = cleaned.toLowerCase().includes('no digest generated yet');\nlet message = cleaned;\n\nif (noDigest || !cleaned) {\n  message = 'No daily digest was available at send time.';\n}\n\nconst header = 'BG MiniView - Daily Summary';\nconst ts = new Date().toISOString();\nconst finalMessage = `${message}\n\nSent by n8n at ${ts}`;\n\nreturn [{\n  hasDigest: !noDigest && !!cleaned,\n  title: header,\n  message: finalMessage,\n  archiveWebhook: cfg.archiveWebhook\n}];"
+      },
+      "id": "code-format",
+      "name": "Format Digest",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        930,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.pushover.net/1/messages.json",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "token",
+              "value": "={{$item(0).$node['Config'].json.pushoverToken}}"
+            },
+            {
+              "name": "user",
+              "value": "={{$item(0).$node['Config'].json.pushoverUser}}"
+            },
+            {
+              "name": "title",
+              "value": "={{$json.title}}"
+            },
+            {
+              "name": "message",
+              "value": "={{$json.message}}"
+            },
+            {
+              "name": "priority",
+              "value": "0"
+            }
+          ]
+        }
+      },
+      "id": "http-pushover",
+      "name": "Send Daily Pushover",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1170,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.archiveWebhook}}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "id": "if-archive",
+      "name": "Archive Webhook Configured?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1160,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$json.archiveWebhook}}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"title\": $json.title, \"message\": $json.message, \"hasDigest\": $json.hasDigest, \"sentAt\": $now}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "http-archive",
+      "name": "Archive to NAS Webhook",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1410,
+        360
+      ]
+    }
+  ],
+  "connections": {
+    "Daily 08:05": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "MCP get_daily_digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MCP get_daily_digest": {
+      "main": [
+        [
+          {
+            "node": "Format Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Digest": {
+      "main": [
+        [
+          {
+            "node": "Send Daily Pushover",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Archive Webhook Configured?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Archive Webhook Configured?": {
+      "main": [
+        [
+          {
+            "node": "Archive to NAS Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

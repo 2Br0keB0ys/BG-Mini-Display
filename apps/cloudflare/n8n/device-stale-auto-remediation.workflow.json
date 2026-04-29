@@ -1,0 +1,321 @@
+{
+  "name": "BG MiniView - Device Stale Auto-remediation",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 10
+            }
+          ]
+        }
+      },
+      "id": "schedule-10m",
+      "name": "Every 10 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        180,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "workerUrl",
+              "value": "={{$env.BG_MCP_BASE_URL || 'https://bgdisplay-worker.zanebaize.workers.dev'}}"
+            },
+            {
+              "name": "mcpKey",
+              "value": "={{$env.BG_MCP_KEY || ''}}"
+            },
+            {
+              "name": "pushoverUser",
+              "value": "={{$env.PUSHOVER_USER_KEY || ''}}"
+            },
+            {
+              "name": "pushoverToken",
+              "value": "={{$env.PUSHOVER_API_TOKEN || ''}}"
+            }
+          ],
+          "number": [
+            {
+              "name": "bgStaleMin",
+              "value": 15
+            },
+            {
+              "name": "consecutiveForSync",
+              "value": 1
+            },
+            {
+              "name": "consecutiveForWarn",
+              "value": 3
+            },
+            {
+              "name": "consecutiveForCritical",
+              "value": 6
+            }
+          ]
+        }
+      },
+      "id": "set-config",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        420,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$json.workerUrl + '/mcp?key=' + encodeURIComponent($json.mcpKey)}}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"jsonrpc\":\"2.0\",\"id\":\"bg-stale\",\"method\":\"tools/call\",\"params\":{\"name\":\"get_current_bg\",\"arguments\":{}}}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 15000
+        }
+      },
+      "id": "http-get-bg",
+      "name": "MCP get_current_bg",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        650,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$item(0).$node['Config'].json.workerUrl + '/mcp?key=' + encodeURIComponent($item(0).$node['Config'].json.mcpKey)}}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"jsonrpc\":\"2.0\",\"id\":\"dev-status\",\"method\":\"tools/call\",\"params\":{\"name\":\"get_device_status\",\"arguments\":{}}}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 15000
+        }
+      },
+      "id": "http-get-status",
+      "name": "MCP get_device_status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        650,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg = $item(0).$node['Config'].json;\nconst bgRoot = $item(0).$node['MCP get_current_bg'].json || {};\nconst statusRoot = $item(0).$node['MCP get_device_status'].json || {};\n\nconst bgText = bgRoot?.result?.content?.[0]?.text || '';\nconst statusText = statusRoot?.result?.content?.[0]?.text || '';\n\nlet bg = null;\ntry { bg = JSON.parse(bgText); } catch (e) {}\n\nconst staleMin = Number(bg?.stale_min ?? 9999);\nconst offline = String(statusText).toUpperCase().includes('STATUS: OFFLINE');\nconst stale = offline || staleMin >= Number(cfg.bgStaleMin);\n\nconst staticData = getWorkflowStaticData('global');\nif (typeof staticData.consecutiveStale !== 'number') staticData.consecutiveStale = 0;\nif (stale) staticData.consecutiveStale += 1;\nelse staticData.consecutiveStale = 0;\n\nconst n = staticData.consecutiveStale;\nlet action = 'none';\nif (stale && n >= cfg.consecutiveForCritical) action = 'critical';\nelse if (stale && n >= cfg.consecutiveForWarn) action = 'warn';\nelse if (stale && n >= cfg.consecutiveForSync) action = 'force_sync';\n\nreturn [{\n  stale,\n  staleMin,\n  offline,\n  consecutiveStale: n,\n  action,\n  note: `stale=${stale} staleMin=${staleMin} offline=${offline} consecutive=${n}`\n}];"
+      },
+      "id": "code-evaluate",
+      "name": "Evaluate Staleness",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        930,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.action}}",
+              "operation": "equal",
+              "value2": "force_sync"
+            },
+            {
+              "value1": "={{$json.action}}",
+              "operation": "equal",
+              "value2": "warn"
+            },
+            {
+              "value1": "={{$json.action}}",
+              "operation": "equal",
+              "value2": "critical"
+            }
+          ]
+        }
+      },
+      "id": "if-action",
+      "name": "Any Action Needed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1160,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$item(0).$node['Config'].json.workerUrl + '/mcp?key=' + encodeURIComponent($item(0).$node['Config'].json.mcpKey)}}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"jsonrpc\":\"2.0\",\"id\":\"force-sync\",\"method\":\"tools/call\",\"params\":{\"name\":\"force_sync\",\"arguments\":{}}}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "http-force-sync",
+      "name": "MCP force_sync",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1390,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.pushover.net/1/messages.json",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "token",
+              "value": "={{$item(0).$node['Config'].json.pushoverToken}}"
+            },
+            {
+              "name": "user",
+              "value": "={{$item(0).$node['Config'].json.pushoverUser}}"
+            },
+            {
+              "name": "title",
+              "value": "={{$json.action === 'critical' ? 'BG MiniView - CRITICAL STALE' : 'BG MiniView - Stale Warning'}}"
+            },
+            {
+              "name": "message",
+              "value": "={{'Auto-remediation status: ' + $json.note + '. Action=' + $json.action}}"
+            },
+            {
+              "name": "priority",
+              "value": "={{$json.action === 'critical' ? 1 : 0}}"
+            }
+          ]
+        }
+      },
+      "id": "http-pushover",
+      "name": "Send Stale Notification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1390,
+        340
+      ]
+    }
+  ],
+  "connections": {
+    "Every 10 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "MCP get_current_bg",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "MCP get_device_status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MCP get_device_status": {
+      "main": [
+        [
+          {
+            "node": "Evaluate Staleness",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MCP get_current_bg": {
+      "main": [
+        [
+          {
+            "node": "MCP get_device_status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluate Staleness": {
+      "main": [
+        [
+          {
+            "node": "Any Action Needed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Action Needed?": {
+      "main": [
+        [
+          {
+            "node": "MCP force_sync",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Stale Notification",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}
