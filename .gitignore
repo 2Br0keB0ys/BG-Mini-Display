@@ -5,9 +5,9 @@ Thumbs.db
 **/.wrangler/
 
 # Firmware build artifacts
-firmware/bgdisplay/.pio/
+firmware/.pio/
 .pio/
-firmware/bgdisplay/src/*.ino.cpp
+firmware/src/*.ino.cpp
 
 # Local editor/workspace state
 **/.vscode/
@@ -21,6 +21,12 @@ apps/cloudflare/bgdisplay-device-key.txt
 
 # Cloudflare local secrets
 apps/cloudflare/.dev.vars
+
+# Local Claude/Copilot permission overrides
+**/.claude/settings.local.json
+
+# Local archives and exports
+*.7z
 
 # Research data
 research/

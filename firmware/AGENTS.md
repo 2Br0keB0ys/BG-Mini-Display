@@ -1,6 +1,6 @@
 # Firmware Agent Notes
 
-Use these rules when modifying files under `firmware/bgdisplay`.
+Use these rules when modifying files under `firmware`.
 
 ## Scope
 
@@ -23,7 +23,7 @@ Use these rules when modifying files under `firmware/bgdisplay`.
 ## Build and Validation
 
 - Validate compile with PlatformIO after firmware edits when possible:
-	- `pio run -d firmware/bgdisplay`
+	- `pio run`
 - If build cannot be run, state that clearly in the final update.
 
 ## Build Optimizations

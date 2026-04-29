@@ -47,10 +47,15 @@ Nightscout (fallback) --->                            \              \
 
 ## Important Paths
 
-- Firmware: `firmware/bgdisplay/src/`
+- Firmware: `firmware/src/`
 - Worker: `apps/cloudflare/src/worker.js`
 - Worker config: `apps/cloudflare/wrangler.toml`
 - UI: `apps/pages/index.html`
+
+## Archived Paths
+
+- NAS MCP: `archive/apps/nas-control-mcp/`
+- n8n artifacts: `archive/n8n/`
 
 ## Notes
 

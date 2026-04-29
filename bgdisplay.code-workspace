@@ -6,7 +6,7 @@
     },
     {
       "name": "bgdisplay-firmware",
-      "path": "firmware/bgdisplay"
+      "path": "firmware"
     }
   ],
   "settings": {
