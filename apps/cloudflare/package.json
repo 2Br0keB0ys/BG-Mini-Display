@@ -11,7 +11,6 @@
     "test:mcp:bg": "powershell -ExecutionPolicy Bypass -File ./scripts/test_mcp.ps1 -ShowBg"
   },
   "devDependencies": {
-    "@cloudflare/puppeteer": "1.1.0",
     "wrangler": "4.85.0"
   }
 }

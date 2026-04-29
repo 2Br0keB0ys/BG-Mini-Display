@@ -1,10 +1,6 @@
 // BG MiniView Cloudflare Worker v3.0
 // Features: WebSocket relay (DO), Workers AI digest, MCP server, Pushover alerts
 
-import { fetchTandemPumpSnapshot } from "./providers/tandem.js";
-import { fetchMedtronicPumpSnapshot } from "./providers/medtronic.js";
-import { fetchTidepoolPumpSnapshot } from "./providers/tidepool.js";
-import puppeteer from "@cloudflare/puppeteer";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -116,21 +112,6 @@ const DEFAULT_CONFIG = {
   weather_country: "US",
   weather_units: "F",
   weather_poll_min: 15,
-  // Glooko (optional BG source)
-  glooko_email: "", glooko_password: "", glooko_env: "default", glooko_server: "",
-  // Omnipod source credentials
-  tandem_username: "", tandem_password: "",
-  medtronic_username: "", medtronic_password: "",
-  tidepool_username: "", tidepool_password: "",
-  // Omnipod bridge (optional)
-  glooko_enabled: false,
-  glooko_omnipod_url: "",
-  glooko_token: "",
-  glooko_poll_min: 30,
-  // Preferred Omnipod source
-  omnipod_source: "glooko",
-  omnipod_connect_url: "",
-  omnipod_connect_token: "",
   // Polling
   poll_interval_min: 5, stale_data_warn_min: 15, config_ping_min: 1,
   // BG thresholds
@@ -200,31 +181,6 @@ function normalizeConfig(cfg) {
   out.weather_country = String(out.weather_country || "US").trim().toUpperCase().slice(0, 8) || "US";
   out.weather_units = String(out.weather_units || "F").trim().toUpperCase() === "C" ? "C" : "F";
   out.weather_poll_min = Math.max(5, Math.min(120, Number(out.weather_poll_min || 15)));
-  // Pump data integrations are retired; keep AI pump profile fields only.
-  out.glooko_enabled = false;
-  out.omnipod_source = "glooko";
-  out.glooko_poll_min = Math.max(30, Math.min(240, Number(out.glooko_poll_min || 30)));
-  out.glooko_email = String(out.glooko_email || "").trim();
-  out.glooko_password = String(out.glooko_password || "");
-  out.glooko_env = String(out.glooko_env || "default").toLowerCase();
-  out.glooko_server = String(out.glooko_server || "").trim().toLowerCase();
-  out.tandem_username = String(out.tandem_username || "").trim();
-  out.tandem_password = String(out.tandem_password || "");
-  out.medtronic_username = String(out.medtronic_username || "").trim();
-  out.medtronic_password = String(out.medtronic_password || "");
-  out.tidepool_username = String(out.tidepool_username || "").trim();
-  out.tidepool_password = String(out.tidepool_password || "");
-
-  // Omnipod source normalization + legacy migration
-  const src = String(out.omnipod_source || "").trim().toLowerCase();
-  if (src === "nightscout_connect" || src === "glooko_direct") {
-    out.omnipod_source = "glooko";
-  } else {
-    out.omnipod_source = ["tandem", "glooko", "medtronic", "tidepool"].includes(src) ? src : "glooko";
-  }
-  if (!out.omnipod_connect_url && out.glooko_omnipod_url) out.omnipod_connect_url = out.glooko_omnipod_url;
-  if (!out.omnipod_connect_token && out.glooko_token) out.omnipod_connect_token = out.glooko_token;
-
   const pumpType = String(out.insulin_pump_type || "none").trim().toLowerCase();
   out.insulin_pump_type = ["none", "pump", "patch-pump"].includes(pumpType) ? pumpType : "none";
   out.insulin_pump_brand = String(out.insulin_pump_brand || "").trim().slice(0, 40);
@@ -593,406 +549,7 @@ async function fetchNightscoutHistory(config, count = 24) {
   } catch { return []; }
 }
 
-const GLOOKO_PUMP_CACHE_KEY = "glooko:pump_snapshot";
-const GLOOKO_PUMP_CACHE_MAX_AGE_SEC = 45 * 60;
-
-function deriveApiBaseFromPageUrl(pageUrl) {
-  return String(pageUrl || "https://my.glooko.com")
-    .replace(/:\/\/us\.my\./i, "://us.api.")
-    .replace(/:\/\/eu\.my\./i, "://eu.api.")
-    .replace(/:\/\/my\./i, "://api.")
-    .replace(/\/users\/sign_in.*/i, "");
-}
-
-function parseEpochSeconds(raw) {
-  const n = Number(raw);
-  if (!Number.isFinite(n) || n <= 0) return 0;
-  if (n > 1000000000000) return Math.floor(n / 1000);
-  return Math.floor(n);
-}
-
-function latestSeriesItem(items) {
-  let latest = null;
-  let latestTs = 0;
-  for (const item of Array.isArray(items) ? items : []) {
-    const ts = parseEpochSeconds(item?.timestamp ?? item?.x ?? item?.date ?? item?.ts);
-    if (ts > latestTs) {
-      latestTs = ts;
-      latest = item;
-    }
-  }
-  return { item: latest, ts: latestTs };
-}
-
-function buildPumpSnapshotFromGraph(payload, nowSec, source = "glooko") {
-  const series = payload?.series || payload || {};
-  const boluses = Array.isArray(series.deliveredBolus) ? series.deliveredBolus : [];
-  const siteChanges = Array.isArray(series.setSiteChange) ? series.setSiteChange : [];
-  const reservoirChanges = Array.isArray(series.reservoirChange) ? series.reservoirChange : [];
-
-  const latestBolus = latestSeriesItem(boluses);
-  const latestSite = latestSeriesItem(siteChanges);
-  const latestReservoir = latestSeriesItem(reservoirChanges);
-
-  const podChangeTs = Math.max(latestSite.ts || 0, latestReservoir.ts || 0);
-  const hasAnyPumpSeries = !!(latestBolus.ts || latestSite.ts || latestReservoir.ts);
-
-  return {
-    source,
-    pod_active: hasAnyPumpSeries,
-    minutes_to_expiry: -1,
-    pod_change_timestamp: podChangeTs || 0,
-    site_change_timestamp: latestSite.ts || 0,
-    reservoir_change_timestamp: latestReservoir.ts || 0,
-    timestamp: nowSec,
-  };
-}
-
-async function fetchGlookoPumpSnapshotBrowser(config, env, diag = null) {
-  if (!config.glooko_email || !config.glooko_password) {
-    if (diag) diag.reason = "missing_glooko_credentials";
-    return null;
-  }
-  if (!env?.MYBROWSER) {
-    if (diag) diag.reason = "browser_binding_missing";
-    return null;
-  }
-
-  const nowSec = Math.floor(Date.now() / 1000);
-  const cached = await env.BGDISPLAY_CONFIG.get(GLOOKO_PUMP_CACHE_KEY, { type: "json" });
-  const cachedTs = Number(cached?.snapshot?.timestamp || 0);
-  if (cached?.snapshot && cachedTs > 0 && (nowSec - cachedTs) <= GLOOKO_PUMP_CACHE_MAX_AGE_SEC) {
-    if (diag) {
-      diag.reason = "ok_cache";
-      diag.cacheAgeSec = nowSec - cachedTs;
-    }
-    return cached.snapshot;
-  }
-
-  let browser = null;
-  try {
-    browser = await puppeteer.launch(env.MYBROWSER);
-    const page = await browser.newPage();
-    await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36");
-
-    // Step 1: load sign-in page — cap at 20s so we get a real error if it hangs
-    await page.goto("https://us.my.glooko.com/users/sign_in?id=login_form&locale=en-US", {
-      waitUntil: "domcontentloaded",
-      timeout: 20000,
-    }).catch(e => { throw new Error(`browser_goto_timeout:${String(e.message).slice(0, 80)}`); });
-
-    // Step 2: wait for login form fields
-    await page.waitForSelector("#user_email", { timeout: 10000 })
-      .catch(() => { throw new Error(`browser_selector_missing:user_email at ${page.url()}`); });
-    await page.waitForSelector("#user_password", { timeout: 5000 })
-      .catch(() => { throw new Error(`browser_selector_missing:user_password at ${page.url()}`); });
-
-    await page.type("#user_email", config.glooko_email, { delay: 15 });
-    await page.type("#user_password", config.glooko_password, { delay: 15 });
-
-    const submitSelector = "#sign-in-button, button[type='submit']";
-    const hasSubmit = await page.$(submitSelector);
-    if (!hasSubmit) {
-      throw new Error("browser_login_submit_missing");
-    }
-    await Promise.all([
-      page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 20000 }).catch(() => null),
-      page.click(submitSelector),
-    ]);
-
-    // Some login pages keep URL stable; force-submit the form once if still on sign-in.
-    if (/\/users\/sign_in/i.test(page.url())) {
-      await Promise.all([
-        page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 20000 }).catch(() => null),
-        page.evaluate(() => {
-          const form = document.querySelector("form#new_user, form[action*='sign_in']");
-          if (form) form.submit();
-        }),
-      ]);
-    }
-
-    const currentUrl = page.url();
-    if (/\/users\/sign_in/i.test(currentUrl)) {
-      const loginErr = await page.evaluate(() => {
-        const text = (document.body?.innerText || "").replace(/\s+/g, " ").trim();
-        const m = text.match(/invalid email or password|incorrect email or password|authentication failed|account locked|too many attempts/i);
-        return m ? m[0] : null;
-      });
-      if (loginErr) {
-        throw new Error(`browser_login_rejected:${loginErr}`);
-      }
-      throw new Error(`browser_login_still_on_signin:${currentUrl}`);
-    }
-
-    const authCtx = await page.evaluate(() => {
-      const html = document.documentElement?.outerHTML || "";
-      const patientFromWindow = globalThis?.window?.patient || globalThis?.window?.user?.userLogin?.glookoCode || null;
-      const patientFromHtml = (html.match(/window\.patient\s*=\s*["']([^"']+)["']/i) || [])[1] || null;
-      const apiFromHtml =
-        (html.match(/apiUrl\s*[:=]\s*["']([^"']+)["']/i) || [])[1] ||
-        (html.match(/apiUrl\\?"\s*:\s*\\?"([^\\\"]+)\\?"/i) || [])[1] ||
-        null;
-      return {
-        patient: patientFromWindow || patientFromHtml,
-        apiUrl: apiFromHtml,
-        pageUrl: location.href,
-      };
-    });
-
-    if (!authCtx?.patient) {
-      throw new Error(`browser_missing_patient:${authCtx?.pageUrl || currentUrl}`);
-    }
-
-    const apiBase = String(authCtx.apiUrl || deriveApiBaseFromPageUrl(authCtx.pageUrl || currentUrl)).replace(/\/$/, "");
-    const startIso = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
-    const endIso = new Date().toISOString();
-
-    const graph = await page.evaluate(async ({ apiBase, patient, startIso, endIso }) => {
-      const query = [
-        `patient=${encodeURIComponent(patient)}`,
-        `startDate=${encodeURIComponent(startIso)}`,
-        `endDate=${encodeURIComponent(endIso)}`,
-        "locale=en-GB",
-        "series[]=deliveredBolus",
-        "series[]=setSiteChange",
-        "series[]=reservoirChange",
-      ].join("&");
-      const url = `${apiBase}/api/v3/graph/data?${query}`;
-      const resp = await fetch(url, {
-        method: "GET",
-        credentials: "include",
-        headers: {
-          Accept: "application/json",
-          "X-Requested-With": "XMLHttpRequest",
-        },
-      });
-      const text = await resp.text();
-      let data = null;
-      try { data = JSON.parse(text); } catch {}
-      return {
-        ok: resp.ok,
-        status: resp.status,
-        data,
-        preview: text.slice(0, 180),
-      };
-    }, {
-      apiBase,
-      patient: authCtx.patient,
-      startIso,
-      endIso,
-    });
-
-    if (!graph?.ok || !graph?.data) {
-      throw new Error(`browser_graph_failed:${graph?.status || 0}:${graph?.preview || "empty"}`);
-    }
-
-    const snapshot = buildPumpSnapshotFromGraph(graph.data, nowSec, "glooko");
-    await env.BGDISPLAY_CONFIG.put(
-      GLOOKO_PUMP_CACHE_KEY,
-      JSON.stringify({ snapshot, updatedAt: Date.now() }),
-      { expirationTtl: 2 * 24 * 60 * 60 },
-    );
-
-    if (diag) diag.reason = "ok_browser";
-    return snapshot;
-  } catch (err) {
-    const msg = String(err?.message || err || "unknown_error").slice(0, 220);
-    if (diag) diag.reason = `browser_fetch_failed:${msg}`;
-    if (cached?.snapshot) {
-      if (diag) {
-        diag.reason = `${diag.reason}|cache_fallback`;
-        diag.cacheAgeSec = cachedTs > 0 ? nowSec - cachedTs : null;
-      }
-      return cached.snapshot;
-    }
-    return null;
-  } finally {
-    if (browser) {
-      try { await browser.close(); } catch {}
-    }
-  }
-}
-
-async function fetchOmnipodBridge(config, env, diag = null) {
-  if (!config.glooko_enabled) {
-    if (diag) {
-      diag.reason = "sync_disabled";
-      diag.source = String(config.omnipod_source || "glooko").toLowerCase();
-    }
-    return null;
-  }
-  try {
-    const source = String(config.omnipod_source || "glooko").toLowerCase();
-    // Legacy bridge settings remain supported for backwards compatibility while source-credential fetchers are added.
-    const endpoint = config.omnipod_connect_url || config.glooko_omnipod_url || "";
-    const token = config.omnipod_connect_token || config.glooko_token || "";
-    const hasSourceCreds =
-      (source === "glooko" && !!(config.glooko_email && config.glooko_password)) ||
-      (source === "tandem" && !!(config.tandem_username && config.tandem_password)) ||
-      (source === "medtronic" && !!(config.medtronic_username && config.medtronic_password)) ||
-      (source === "tidepool" && !!(config.tidepool_username && config.tidepool_password));
-    if (diag) {
-      diag.source = source;
-      diag.hasEndpoint = !!endpoint;
-      diag.hasToken = !!token;
-      diag.hasSourceCreds = hasSourceCreds;
-    }
-    if (!endpoint) {
-      if (source === "glooko" && hasSourceCreds) {
-        const browserData = await fetchGlookoPumpSnapshotBrowser(config, env, diag);
-        if (browserData) {
-          if (diag && (diag.reason === "ok_browser" || diag.reason === "ok_cache")) {
-            diag.reason = `ok_${diag.reason}_glooko`;
-          }
-          return { ...browserData, source };
-        }
-        return null;
-      }
-
-      if (source === "tandem" && hasSourceCreds) {
-        try {
-          const direct = await fetchTandemPumpSnapshot({
-            email: config.tandem_username,
-            password: config.tandem_password,
-          }, {
-            signal: AbortSignal.timeout(9000),
-          });
-
-          if (diag) diag.reason = "ok_direct_tandem";
-          return {
-            source,
-            pod_active: true,
-            minutes_to_expiry: Number.isFinite(Number(direct.minutes_to_expiry)) ? Number(direct.minutes_to_expiry) : -1,
-            pod_change_timestamp: Number.isFinite(Number(direct.pod_change_timestamp)) ? Math.floor(Number(direct.pod_change_timestamp)) : 0,
-            site_change_timestamp: Number.isFinite(Number(direct.site_change_timestamp)) ? Math.floor(Number(direct.site_change_timestamp)) : 0,
-            reservoir_change_timestamp: Number.isFinite(Number(direct.reservoir_change_timestamp)) ? Math.floor(Number(direct.reservoir_change_timestamp)) : 0,
-            timestamp: Number.isFinite(Number(direct.timestamp)) ? Math.floor(Number(direct.timestamp)) : Math.floor(Date.now() / 1000),
-          };
-        } catch (err) {
-          const msg = String(err?.message || err || "unknown_error").slice(0, 220);
-          if (diag) diag.reason = `direct_source_fetch_failed:${msg}`;
-          return null;
-        }
-      }
-
-      if (source === "medtronic" && hasSourceCreds) {
-        try {
-          const direct = await fetchMedtronicPumpSnapshot({
-            username: config.medtronic_username,
-            password: config.medtronic_password,
-          }, {
-            signal: AbortSignal.timeout(9000),
-          });
-
-          if (diag) diag.reason = "ok_direct_medtronic";
-          return {
-            source,
-            pod_active: true,
-            minutes_to_expiry: Number.isFinite(Number(direct.minutes_to_expiry)) ? Number(direct.minutes_to_expiry) : -1,
-            pod_change_timestamp: Number.isFinite(Number(direct.pod_change_timestamp)) ? Math.floor(Number(direct.pod_change_timestamp)) : 0,
-            site_change_timestamp: Number.isFinite(Number(direct.site_change_timestamp)) ? Math.floor(Number(direct.site_change_timestamp)) : 0,
-            reservoir_change_timestamp: Number.isFinite(Number(direct.reservoir_change_timestamp)) ? Math.floor(Number(direct.reservoir_change_timestamp)) : 0,
-            timestamp: Number.isFinite(Number(direct.timestamp)) ? Math.floor(Number(direct.timestamp)) : Math.floor(Date.now() / 1000),
-          };
-        } catch (err) {
-          const msg = String(err?.message || err || "unknown_error").slice(0, 220);
-          if (diag) diag.reason = `direct_source_fetch_failed:${msg}`;
-          return null;
-        }
-      }
-
-      if (source === "tidepool" && hasSourceCreds) {
-        try {
-          const direct = await fetchTidepoolPumpSnapshot({
-            email: config.tidepool_username,
-            password: config.tidepool_password,
-          }, {
-            signal: AbortSignal.timeout(9000),
-          });
-
-          if (diag) diag.reason = "ok_direct_tidepool";
-          return {
-            source,
-            pod_active: true,
-            minutes_to_expiry: Number.isFinite(Number(direct.minutes_to_expiry)) ? Number(direct.minutes_to_expiry) : -1,
-            pod_change_timestamp: Number.isFinite(Number(direct.pod_change_timestamp)) ? Math.floor(Number(direct.pod_change_timestamp)) : 0,
-            site_change_timestamp: Number.isFinite(Number(direct.site_change_timestamp)) ? Math.floor(Number(direct.site_change_timestamp)) : 0,
-            reservoir_change_timestamp: Number.isFinite(Number(direct.reservoir_change_timestamp)) ? Math.floor(Number(direct.reservoir_change_timestamp)) : 0,
-            timestamp: Number.isFinite(Number(direct.timestamp)) ? Math.floor(Number(direct.timestamp)) : Math.floor(Date.now() / 1000),
-          };
-        } catch {
-          if (diag) diag.reason = "direct_source_fetch_failed";
-          return null;
-        }
-      }
-
-      if (diag) {
-        diag.reason = hasSourceCreds
-          ? "source_credentials_present_but_direct_sync_not_fully_implemented"
-          : "missing_endpoint";
-      }
-      return null;
-    }
-
-    const headers = { "Accept": "application/json" };
-    if (token) {
-      // Support common bridge auth styles.
-      headers["Authorization"] = `Bearer ${token}`;
-      headers["api-secret"] = token;
-      headers["X-API-SECRET"] = token;
-    }
-    const resp = await fetch(endpoint, {
-      headers,
-      signal: AbortSignal.timeout(9000),
-    });
-    if (!resp.ok) {
-      if (diag) {
-        diag.reason = "upstream_http_error";
-        diag.http = resp.status;
-      }
-      return null;
-    }
-
-    let jsonBody = null;
-    try {
-      jsonBody = await resp.json();
-    } catch {
-      if (diag) diag.reason = "upstream_invalid_json";
-      return null;
-    }
-    const pod = (jsonBody && jsonBody.omnipod && typeof jsonBody.omnipod === "object") ? jsonBody.omnipod : jsonBody;
-    if (!pod || typeof pod !== "object") {
-      if (diag) diag.reason = "payload_not_object";
-      return null;
-    }
-
-    const active = (pod.pod_active ?? pod.active ?? false) === true;
-    const minsToExpiry = Number(pod.minutes_to_expiry ?? pod.pod_expires_in_min ?? -1);
-    const rawPodChangeTs = Number(pod.pod_change_timestamp ?? pod.podChangeTimestamp ?? pod.last_pod_change_ts ?? 0);
-    const rawSiteChangeTs = Number(pod.site_change_timestamp ?? 0);
-    const rawReservoirChangeTs = Number(pod.reservoir_change_timestamp ?? 0);
-    const rawTs = Number(pod.timestamp ?? pod.ts ?? jsonBody.timestamp ?? 0);
-    const podChangeTsSec = rawPodChangeTs > 1000000000000 ? Math.floor(rawPodChangeTs / 1000) : rawPodChangeTs;
-    const siteChangeTsSec = rawSiteChangeTs > 1000000000000 ? Math.floor(rawSiteChangeTs / 1000) : rawSiteChangeTs;
-    const reservoirChangeTsSec = rawReservoirChangeTs > 1000000000000 ? Math.floor(rawReservoirChangeTs / 1000) : rawReservoirChangeTs;
-    const tsSec = rawTs > 1000000000000 ? Math.floor(rawTs / 1000) : rawTs;
-
-    const out = {
-      source,
-      pod_active: active,
-      minutes_to_expiry: Number.isFinite(minsToExpiry) ? Math.floor(minsToExpiry) : -1,
-      pod_change_timestamp: Number.isFinite(podChangeTsSec) ? Math.floor(podChangeTsSec) : 0,
-      site_change_timestamp: Number.isFinite(siteChangeTsSec) ? Math.floor(siteChangeTsSec) : 0,
-      reservoir_change_timestamp: Number.isFinite(reservoirChangeTsSec) ? Math.floor(reservoirChangeTsSec) : 0,
-      timestamp: Number.isFinite(tsSec) ? tsSec : 0,
-    };
-    if (diag) diag.reason = "ok";
-    return out;
-  } catch {
-    if (diag) diag.reason = "fetch_exception";
-    return null;
-  }
-}
+// Pump integration helpers retired.
 
 // ─── DND Window Check (Worker-side, for cron Pushover guard) ──────────────────
 
@@ -1391,28 +948,6 @@ const MCP_TOOLS = [
     },
   },
   {
-    name: "get_source_status",
-    description: "Return per-source configuration and availability checks for Dexcom, Glooko, Nightscout, and Omnipod source sync.",
-    inputSchema: { type: "object", properties: {}, required: [] },
-  },
-  {
-    name: "get_source_data",
-    description: "Fetch source-specific payloads. source must be one of: dexcom, glooko, nightscout, omnipod. Optional count applies to nightscout history (1-288).",
-    inputSchema: {
-      type: "object",
-      properties: {
-        source: { type: "string", description: "dexcom | glooko | nightscout | omnipod" },
-        count: { type: "number", description: "Nightscout only: number of readings (default 24, max 288)" },
-      },
-      required: ["source"],
-    },
-  },
-  {
-    name: "glooko_test",
-    description: "Test Glooko browser-based sync and credentials. Returns diagnostic info about Browser Run login/session and pump snapshot fetch path.",
-    inputSchema: { type: "object", properties: {}, required: [] },
-  },
-  {
     name: "detect_timezone",
     description: "Detect user's timezone from their geo IP location. Returns detected IANA timezone and mapped zone (US/Central, US/Eastern, etc). Can be used to auto-set timezone on first boot.",
     inputSchema: { type: "object", properties: {}, required: [] },
@@ -1429,28 +964,28 @@ const MCP_TOOLS = [
   },
   {
     name: "get_device_ages",
-    description: "Return current ages and remaining life for the Dexcom G7 sensor session and Glooko pod/site change. Dexcom sensor age is inferred from reading gaps (assumes 10-day G7). Site change age comes from Glooko browser-sync cache.",
+    description: "Return current age and remaining life for the Dexcom G7 sensor session.",
     inputSchema: { type: "object", properties: {}, required: [] },
   },
   {
     name: "clear_cache",
-    description: "Clear one or more cached data entries from KV storage. Use target='glooko_pump' to force a fresh browser sync on next call, 'digests' to clear all AI digest cache (daily + all hourly), 'alerts' to reset Pushover alert history/cooldowns, or 'all' for everything.",
+    description: "Clear one or more cached data entries from KV storage. Use target='digests' to clear all AI digest cache (daily + all hourly), 'alerts' to reset Pushover alert history/cooldowns, or 'all' for everything.",
     inputSchema: {
       type: "object",
       properties: {
-        target: { type: "string", description: "glooko_pump | digests | alerts | all" },
+        target: { type: "string", description: "digests | alerts | all" },
       },
       required: ["target"],
     },
   },
   {
     name: "get_maintenance_status",
-    description: "Return a full health snapshot: cache ages, last digest dates, binding availability (AI, Browser Run), alert cooldown state, and KV key inventory. Use this before running maintenance.",
+    description: "Return a full health snapshot: digest freshness, Dexcom sensor cache, binding availability, and alert cooldown state.",
     inputSchema: { type: "object", properties: {}, required: [] },
   },
   {
     name: "run_maintenance",
-    description: "Run a full maintenance sweep: clear all stale caches (older than their TTL), force-regenerate the daily AI digest with latest pump data, and return a before/after status report.",
+    description: "Run a maintenance sweep: force-regenerate the daily AI digest and clear hourly digest cache.",
     inputSchema: { type: "object", properties: {}, required: [] },
   },
   {
@@ -1470,10 +1005,6 @@ function redactConfig(config) {
   const redacted = { ...config };
   for (const k of [
     "wifi_pass", "nightscout_secret", "dexcom_pass", "dexcom_user",
-    "glooko_password", "glooko_email", "glooko_token", "omnipod_connect_token",
-    "tandem_username", "tandem_password",
-    "medtronic_username", "medtronic_password",
-    "tidepool_username", "tidepool_password",
   ]) {
     if (redacted[k]) redacted[k] = "••••••••";
   }
@@ -1587,18 +1118,6 @@ async function handleMCP(request, env, config, auth) {
       if (typeof args.fields.dexcom_pass === "string" && args.fields.dexcom_pass !== config.dexcom_pass) {
         secretMeta.dexcomPassUpdatedAt = nowTs;
       }
-      if (typeof args.fields.glooko_password === "string" && args.fields.glooko_password !== config.glooko_password) {
-        secretMeta.glookoPasswordUpdatedAt = nowTs;
-      }
-      if (typeof args.fields.tandem_password === "string" && args.fields.tandem_password !== config.tandem_password) {
-        secretMeta.tandemPasswordUpdatedAt = nowTs;
-      }
-      if (typeof args.fields.medtronic_password === "string" && args.fields.medtronic_password !== config.medtronic_password) {
-        secretMeta.medtronicPasswordUpdatedAt = nowTs;
-      }
-      if (typeof args.fields.tidepool_password === "string" && args.fields.tidepool_password !== config.tidepool_password) {
-        secretMeta.tidepoolPasswordUpdatedAt = nowTs;
-      }
       await env.BGDISPLAY_CONFIG.put("secret_meta", JSON.stringify(secretMeta));
 
       const newVersion = await incrementConfigVersion(env);
@@ -1648,76 +1167,6 @@ async function handleMCP(request, env, config, auth) {
       return mcpResult(id, { content: [{ type: "text", text: lines.join("\n") }] });
     }
 
-    if (toolName === "get_source_status") {
-      const checks = {
-        nightscout: { configured: !!config.nightscout_url },
-        dexcom: { configured: !!(config.dexcom_user && config.dexcom_pass) },
-        pump_integrations: {
-          enabled: false,
-          note: "Retired: live pump integrations are disabled. Pump profile remains available for AI context.",
-        },
-      };
-      return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(checks, null, 2) }] });
-    }
-
-    if (toolName === "get_source_data") {
-      const source = String(args.source || "").trim().toLowerCase();
-
-      if (!["dexcom", "glooko", "nightscout", "omnipod"].includes(source)) {
-        return mcpError(id, -32602, "source must be one of: dexcom, glooko, nightscout, omnipod");
-      }
-
-      if (source === "dexcom") {
-        const latest = await fetchDexcomShareLatest(config);
-        if (!latest) return mcpResult(id, { content: [{ type: "text", text: "No Dexcom data available." }] });
-        const trend = normalizeTrend(latest.trend, latest.direction);
-        return mcpResult(id, {
-          content: [{ type: "text", text: JSON.stringify({
-            source: "dexcom",
-            value: latest.value,
-            trend_numeric: trend.numeric,
-            trend_name: trend.name,
-            timestamp: latest.timestamp ? new Date(latest.timestamp).toISOString() : null,
-          }, null, 2) }],
-        });
-      }
-
-      if (source === "glooko" || source === "omnipod") {
-        return mcpResult(id, {
-          content: [{ type: "text", text: JSON.stringify({
-            source,
-            available: false,
-            reason: "pump_integrations_retired",
-            note: "Pump integrations are disabled. Pump profile metadata is still available for AI context.",
-          }, null, 2) }],
-        });
-      }
-
-      if (source === "nightscout") {
-        const count = Math.min(288, Math.max(1, Number(args.count || 24)));
-        const readings = await fetchNightscoutHistory(config, count);
-        if (!readings.length) return mcpResult(id, { content: [{ type: "text", text: "No Nightscout data available." }] });
-        const payload = readings.map(r => ({
-          timestamp: r.date ? new Date(r.date).toISOString() : null,
-          value: r.sgv ?? null,
-          trend_numeric: r.trend ?? null,
-          trend_name: r.direction || null,
-        }));
-        return mcpResult(id, { content: [{ type: "text", text: JSON.stringify({ source: "nightscout", count: payload.length, readings: payload }, null, 2) }] });
-      }
-
-      return mcpResult(id, { content: [{ type: "text", text: "Unsupported source." }] });
-    }
-
-    if (toolName === "glooko_test") {
-      const result = {
-        enabled: false,
-        reason: "pump_integrations_retired",
-        note: "Glooko connectivity testing is disabled. Pump profile metadata remains for AI context.",
-      };
-      return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] });
-    }
-
     if (toolName === "detect_timezone") {
       const cfTimeZone = request.cf?.timezone || "America/Chicago";
       const detected = detectTimezoneFromIANA(cfTimeZone);
@@ -1747,7 +1196,7 @@ async function handleMCP(request, env, config, auth) {
 
     if (toolName === "get_device_ages") {
       const nowSec = Math.floor(Date.now() / 1000);
-      const result = { dexcom_sensor: null, pump_site_change: null };
+      const result = { dexcom_sensor: null };
 
       // Dexcom sensor session
       if (config.dexcom_user && config.dexcom_pass) {
@@ -1768,22 +1217,16 @@ async function handleMCP(request, env, config, auth) {
         result.dexcom_sensor = { error: "Dexcom credentials not configured" };
       }
 
-      result.pump_site_change = { error: "Retired: live pump age telemetry is disabled." };
-
       return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] });
     }
 
     if (toolName === "clear_cache") {
       const target = String(params?.arguments?.target || "").toLowerCase();
-      const validTargets = ["glooko_pump", "digests", "alerts", "all"];
+      const validTargets = ["digests", "alerts", "all"];
       if (!validTargets.includes(target)) {
         return mcpResult(id, { content: [{ type: "text", text: JSON.stringify({ error: `Invalid target. Use: ${validTargets.join(" | ")}` }) }] });
       }
       const cleared = [];
-      if (target === "glooko_pump" || target === "all") {
-        await env.BGDISPLAY_CONFIG.delete(GLOOKO_PUMP_CACHE_KEY);
-        cleared.push("glooko:pump_snapshot");
-      }
       if (target === "digests" || target === "all") {
         await env.BGDISPLAY_CONFIG.delete("daily_digest");
         cleared.push("daily_digest");
@@ -1806,8 +1249,7 @@ async function handleMCP(request, env, config, auth) {
     if (toolName === "get_maintenance_status") {
         const nowMs = Date.now();
         const nowSec = Math.floor(nowMs / 1000);
-        const [glookoRaw, sensorCacheRaw, dailyDigest, deviceStatus, lastAlert, lastDigestPush, lastOffline] = await Promise.all([
-          env.BGDISPLAY_CONFIG.get(GLOOKO_PUMP_CACHE_KEY, { type: "json" }),
+        const [sensorCacheRaw, dailyDigest, deviceStatus, lastAlert, lastDigestPush, lastOffline] = await Promise.all([
           env.BGDISPLAY_CONFIG.get(DEXCOM_SENSOR_CACHE_KEY, { type: "json" }),
           env.BGDISPLAY_CONFIG.get("daily_digest", { type: "json" }),
           env.BGDISPLAY_CONFIG.get("device_status", { type: "json" }),
@@ -1815,22 +1257,10 @@ async function handleMCP(request, env, config, auth) {
           env.BGDISPLAY_CONFIG.get("last_digest_pushover"),
           env.BGDISPLAY_CONFIG.get("last_offline_alert"),
         ]);
-        const glookoCacheTs = Number(glookoRaw?.snapshot?.timestamp || 0);
-        const glookoCacheAgeSec = glookoCacheTs > 0 ? nowSec - glookoCacheTs : null;
-        const siteTs = Number(glookoRaw?.snapshot?.site_change_timestamp || 0);
-        const reservoirTs = Number(glookoRaw?.snapshot?.reservoir_change_timestamp || 0);
         const status = {
           bindings: {
             ai: !!env.AI,
-            browser_run: !!env.MYBROWSER,
             kv_encrypt: !!env.KV_ENCRYPT_KEY,
-          },
-          glooko_pump_cache: {
-            exists: !!glookoRaw?.snapshot,
-            age_minutes: glookoCacheAgeSec !== null ? Math.round(glookoCacheAgeSec / 60) : null,
-            stale: glookoCacheAgeSec !== null ? glookoCacheAgeSec > GLOOKO_PUMP_CACHE_MAX_AGE_SEC : true,
-            site_change: siteTs > 0 ? { timestamp: new Date(siteTs * 1000).toISOString(), age: formatAgeDays(siteTs, nowSec) } : null,
-            reservoir_change: reservoirTs > 0 ? { timestamp: new Date(reservoirTs * 1000).toISOString(), age: formatAgeDays(reservoirTs, nowSec) } : null,
           },
           dexcom_sensor_cache: {
             exists: !!sensorCacheRaw?.session_start_ts,
@@ -1865,32 +1295,16 @@ async function handleMCP(request, env, config, auth) {
     }
 
     if (toolName === "run_maintenance") {
-      const nowMs = Date.now();
-      const nowSec = Math.floor(nowMs / 1000);
       const report = { steps: [], errors: [] };
 
-      // 1. Check + clear stale Glooko pump cache
-      try {
-        const glookoRaw = await env.BGDISPLAY_CONFIG.get(GLOOKO_PUMP_CACHE_KEY, { type: "json" });
-        const glookoCacheTs = Number(glookoRaw?.snapshot?.timestamp || 0);
-        if (glookoRaw?.snapshot && (nowSec - glookoCacheTs) > GLOOKO_PUMP_CACHE_MAX_AGE_SEC) {
-          await env.BGDISPLAY_CONFIG.delete(GLOOKO_PUMP_CACHE_KEY);
-          report.steps.push(`glooko_pump_cache: cleared (was ${Math.round((nowSec - glookoCacheTs) / 60)}m old, TTL ${GLOOKO_PUMP_CACHE_MAX_AGE_SEC / 60}m)`);
-        } else if (!glookoRaw?.snapshot) {
-          report.steps.push("glooko_pump_cache: already empty");
-        } else {
-          report.steps.push(`glooko_pump_cache: fresh (${Math.round((nowSec - glookoCacheTs) / 60)}m old), kept`);
-        }
-      } catch (e) { report.errors.push(`glooko_cache: ${e.message}`); }
-
-      // 2. Force-regenerate daily digest
+      // 1. Force-regenerate daily digest
       try {
         await generateDailyDigest(env, true);
         const digest = await env.BGDISPLAY_CONFIG.get("daily_digest", { type: "json" });
         report.steps.push(`daily_digest: regenerated — TIR ${digest?.stats?.tir ?? "?"}%, "${(digest?.text || "").slice(0, 80)}..."`);
       } catch (e) { report.errors.push(`daily_digest: ${e.message}`); }
 
-      // 3. Clear hourly digests (fresh set next cron cycle)
+      // 2. Clear hourly digests (fresh set next cron cycle)
       try {
         for (let h = 0; h < 24; h++) await env.BGDISPLAY_CONFIG.delete(`hourly_digest_${h}`);
         report.steps.push("hourly_digests: cleared (24 slots reset, will regenerate on next cron)");
@@ -2159,13 +1573,12 @@ async function updateDeviceStatus(env, ip, body, config) {
     nsOk: body.nsOk ?? 0, nsFail: body.nsFail ?? 0,
     dexOk: body.dexOk ?? 0, dexFail: body.dexFail ?? 0,
     bgPollFailStreak: body.bgPollFailStreak ?? 0,
-    omnipodConfigured: !!body.omnipodConfigured,
-    omnipodValid: !!body.omnipodValid,
-    omnipodActive: !!body.omnipodActive,
-    omnipodIob: body.omnipodIob ?? null,
-    omnipodReservoir: body.omnipodReservoir ?? null,
-    omnipodMinsToExp: body.omnipodMinsToExp ?? null,
-    omnipodDataTs: body.omnipodDataTs ?? null,
+    weatherConfigured: !!body.weatherConfigured,
+    weatherAvailable: !!body.weatherAvailable,
+    weatherCode: body.weatherCode || "",
+    weatherTempOutF: body.weatherTempOutF ?? null,
+    weatherTempInF: body.weatherTempInF ?? null,
+    weatherDataTs: body.weatherDataTs ?? null,
   };
   await env.BGDISPLAY_CONFIG.put("device_status", JSON.stringify(status));
 
@@ -2272,19 +1685,6 @@ export default {
         await promoteKey(env, auth); await clearFailedAuth(env, ip);
         const version = await getConfigVersion(env);
         const deviceConfig = { ...config };
-        delete deviceConfig.glooko_token;
-        delete deviceConfig.glooko_email;
-        delete deviceConfig.glooko_password;
-        delete deviceConfig.glooko_server;
-        delete deviceConfig.tandem_username;
-        delete deviceConfig.tandem_password;
-        delete deviceConfig.medtronic_username;
-        delete deviceConfig.medtronic_password;
-        delete deviceConfig.tidepool_username;
-        delete deviceConfig.tidepool_password;
-        delete deviceConfig.glooko_omnipod_url;
-        delete deviceConfig.omnipod_connect_token;
-        delete deviceConfig.omnipod_connect_url;
         return json({ config: deviceConfig, config_version: version, ts: Date.now(), keyConfirmed: true });
       }
       if (!isDeviceKeyValid(auth, keyHash)) {
@@ -2308,19 +1708,6 @@ export default {
         await env.BGDISPLAY_CONFIG.put("config", JSON.stringify(config));
         await appendChangeLog(env, `Timezone auto-detected: ${deviceConfig.timezone} (from geo IP)`);
       }
-      delete deviceConfig.glooko_token;
-      delete deviceConfig.glooko_email;
-      delete deviceConfig.glooko_password;
-      delete deviceConfig.glooko_server;
-      delete deviceConfig.tandem_username;
-      delete deviceConfig.tandem_password;
-      delete deviceConfig.medtronic_username;
-      delete deviceConfig.medtronic_password;
-      delete deviceConfig.tidepool_username;
-      delete deviceConfig.tidepool_password;
-      delete deviceConfig.glooko_omnipod_url;
-      delete deviceConfig.omnipod_connect_token;
-      delete deviceConfig.omnipod_connect_url;
       const resp = { config: deviceConfig, config_version: version, ts: Date.now() };
       if (pendingKey) { resp.newKey = pendingKey; resp.rotateNow = true; }
       return json(resp);
@@ -2557,18 +1944,6 @@ export default {
       if (secretMeta.dexcomPassUpdatedAt && now - secretMeta.dexcomPassUpdatedAt > 30 * 86400000) {
         reminders.push({ key: "dexcom_pass", msg: "Dexcom password older than 30 days" });
       }
-      if (secretMeta.glookoPasswordUpdatedAt && now - secretMeta.glookoPasswordUpdatedAt > 30 * 86400000) {
-        reminders.push({ key: "glooko_password", msg: "Glooko password older than 30 days" });
-      }
-      if (secretMeta.tandemPasswordUpdatedAt && now - secretMeta.tandemPasswordUpdatedAt > 30 * 86400000) {
-        reminders.push({ key: "tandem_password", msg: "Tandem password older than 30 days" });
-      }
-      if (secretMeta.medtronicPasswordUpdatedAt && now - secretMeta.medtronicPasswordUpdatedAt > 30 * 86400000) {
-        reminders.push({ key: "medtronic_password", msg: "Medtronic password older than 30 days" });
-      }
-      if (secretMeta.tidepoolPasswordUpdatedAt && now - secretMeta.tidepoolPasswordUpdatedAt > 30 * 86400000) {
-        reminders.push({ key: "tidepool_password", msg: "Tidepool password older than 30 days" });
-      }
 
       const configUpdatedAt = Number(await env.BGDISPLAY_CONFIG.get("config_updated_at") || 0) || null;
 
@@ -2638,18 +2013,6 @@ export default {
       }
       if (typeof body.dexcom_pass === "string" && body.dexcom_pass !== config.dexcom_pass) {
         secretMeta.dexcomPassUpdatedAt = Date.now();
-      }
-      if (typeof body.glooko_password === "string" && body.glooko_password !== config.glooko_password) {
-        secretMeta.glookoPasswordUpdatedAt = Date.now();
-      }
-      if (typeof body.tandem_password === "string" && body.tandem_password !== config.tandem_password) {
-        secretMeta.tandemPasswordUpdatedAt = Date.now();
-      }
-      if (typeof body.medtronic_password === "string" && body.medtronic_password !== config.medtronic_password) {
-        secretMeta.medtronicPasswordUpdatedAt = Date.now();
-      }
-      if (typeof body.tidepool_password === "string" && body.tidepool_password !== config.tidepool_password) {
-        secretMeta.tidepoolPasswordUpdatedAt = Date.now();
       }
 
       const nowTs = Date.now();
