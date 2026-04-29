@@ -109,3 +109,29 @@ curl -sS -X POST "$MCP_URL" \
 3. Add request logging sink (e.g., Loki/SIEM) for tool call audits.
 4. Keep `ALLOWED_FILE_ROOT` narrow.
 5. Keep `docker_compose_n8n` action allowlist as-is unless explicitly needed.
+
+## One-shot workflow bootstrap
+
+Use this script to import and activate all BG workflows through MCP:
+
+- Script: `scripts/import_activate_bg_workflows.sh`
+
+Example:
+
+```bash
+export MCP_URL="https://mcp.2brokeboys.uk/mcp"
+export MCP_BEARER="your_nas_mcp_api_key"
+export CF_ID="your_cf_access_client_id"
+export CF_SECRET="your_cf_access_client_secret"
+export WF_DIR="/volume1/Docker/bgdisplay/apps/cloudflare/n8n"
+
+bash scripts/import_activate_bg_workflows.sh
+```
+
+Dry-run import only (no activation):
+
+```bash
+ACTIVATE=false bash scripts/import_activate_bg_workflows.sh
+```
+
+Prerequisite: `jq` must be installed on NAS.
