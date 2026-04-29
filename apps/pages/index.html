@@ -722,10 +722,10 @@ function render(){
   const digestContent =
     (digestText
       ? field('Today\'s summary',`Generated ${digestDate}`,`<div style="font-size:12px;line-height:1.6;color:var(--text);max-width:340px;white-space:pre-wrap">${digestText.replace(/</g,'&lt;')}</div>`)
-      : field('Today\'s summary','AI summary based on the last 24 hours of glucose data.','<span style="font-size:12px;color:var(--muted)">No summary yet. It runs daily at 7:45 AM US/Central, and hourly 8 AM–11 PM.</span>'))+
+      : field('Today\'s summary','AI summary based on the last 24 hours of glucose data.','<span style="font-size:12px;color:var(--muted)">No summary yet. It runs daily at 7:00 AM US/Central, and hourly 8 AM–11 PM.</span>'))+
     field('Generate on demand','Force-regenerate the summary from the last 24h of readings right now.',`<button id="digest-gen-btn" class="btn" onclick="generateDigestNow()">Generate now</button>`)+
     field('AI model','',`<span style="font-size:12px;color:var(--muted)">@cf/meta/llama-3.1-8b-instruct</span>`)+
-    field('Run schedule','',`<span style="font-size:12px;color:var(--muted)">Daily at 7:45 AM, hourly 8 AM–11 PM US/Central (cron).</span>`)+
+    field('Run schedule','',`<span style="font-size:12px;color:var(--muted)">Daily at 7:00 AM, hourly 8 AM–11 PM US/Central (cron).</span>`)+
     field('Push digest to Pushover','Send the summary to your phone via Pushover at a set time.',tog('digest_pushover_enabled',c.digest_pushover_enabled))+
     field('Digest push time','Hour to send the digest (requires Pushover credentials configured above).',`<select id="digest_pushover_hour">${digestHourOptions}</select>`);
 
