@@ -336,7 +336,6 @@ function radio(name){ const el=document.querySelector(`input[name="${name}"]:che
 function collectConfig(){
   const c={};
   const fields=['wifi_ssid','wifi_pass','nightscout_url','nightscout_secret','dexcom_user','dexcom_pass','dexcom_region',
-    'weather_enabled','weather_city','weather_zip','weather_country','weather_units','weather_poll_min',
     'poll_interval_min','stale_data_warn_min','config_ping_min',
     'bg_units','urgent_low','low','high','urgent_high',
     'insulin_pump_type','insulin_pump_brand','insulin_pump_model','insulin_pump_loop_mode','insulin_pump_notes',
@@ -390,8 +389,6 @@ function validateConfig(c) {
     errors.push('Nightscout URL must start with http:// or https://');
   if (c.poll_interval_min !== undefined && (n('poll_interval_min') < 1 || n('poll_interval_min') > 240))
     errors.push('Reading refresh interval must be between 1 and 240 minutes.');
-  if (c.weather_poll_min !== undefined && (n('weather_poll_min') < 5 || n('weather_poll_min') > 120))
-    errors.push('Weather refresh interval must be between 5 and 120 minutes.');
   return errors;
 }
 
@@ -564,7 +561,7 @@ function toggleSection(id){
 function sectionOpen(id){ return localStorage.getItem('section-'+id)==='1'; }
 
 function expandAll(){
-  const sectionIds=['digest','wifi','ns','weather','pump','alerts','display','pushover','alerts_cloud','system','control','diag','insights','security','backup','maint','logs'];
+  const sectionIds=['digest','wifi','ns','pump','alerts','display','pushover','alerts_cloud','system','control','diag','insights','security','backup','maint','logs'];
   sectionIds.forEach(id=>{
     const body=document.getElementById('body-'+id);
     const head=document.getElementById('head-'+id);
@@ -579,7 +576,7 @@ function expandAll(){
 }
 
 function collapseAll(){
-  const sectionIds=['digest','wifi','ns','weather','pump','alerts','display','pushover','alerts_cloud','system','control','diag','insights','security','backup','maint','logs'];
+  const sectionIds=['digest','wifi','ns','pump','alerts','display','pushover','alerts_cloud','system','control','diag','insights','security','backup','maint','logs'];
   sectionIds.forEach(id=>{
     const body=document.getElementById('body-'+id);
     const head=document.getElementById('head-'+id);
@@ -678,7 +675,6 @@ function render(){
   const pushoverIcon=`<svg viewBox="0 0 24 24" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>`;
   const aiIcon=`<svg viewBox="0 0 24 24" stroke-width="2"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"/></svg>`;
   const pumpIcon=`<svg viewBox="0 0 24 24" stroke-width="2"><rect x="5" y="3" width="14" height="18" rx="2"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="9" y1="12" x2="15" y2="12"/><circle cx="12" cy="17" r="1" fill="currentColor"/></svg>`;
-  const weatherIcon=`<svg viewBox="0 0 24 24" stroke-width="2"><circle cx="7" cy="7" r="3"/><path d="M20 15a4 4 0 0 0-4-4 5 5 0 0 0-9.7 1.5A3.5 3.5 0 0 0 7 19h12a3 3 0 0 0 1-5.8"/><line x1="10" y1="20" x2="9" y2="22"/><line x1="14" y1="20" x2="13" y2="22"/><line x1="18" y1="20" x2="17" y2="22"/></svg>`;
 
   // WiFi section
   const wifiOpen = !c.wifi_pass;
@@ -698,14 +694,6 @@ function render(){
     field('Reading refresh interval','How often the device checks for new readings.',sel('poll_interval_min',[[1,'1 minute'],[5,'5 minutes'],[10,'10 minutes']],c.poll_interval_min))+
     field('Stale reading warning','Show stale status after no new reading for this long.',sel('stale_data_warn_min',[[5,'5 minutes'],[10,'10 minutes'],[15,'15 minutes'],[20,'20 minutes']],c.stale_data_warn_min))+
     field('Config sync check','How often the device checks for updated settings.',sel('config_ping_min',[[1,'1 minute'],[2,'2 minutes'],[5,'5 minutes']],c.config_ping_min||1));
-
-  const weatherContent =
-    field('Enable weather panel','Show live weather in the left panel on the device.',tog('weather_enabled',c.weather_enabled!==false))+
-    field('City','Optional city name for weather lookup (for example Dallas).',inp('weather_city','text',c.weather_city||'','City'))+
-    field('ZIP / Postal code','Optional ZIP/postal code. If both city and ZIP are set, city is used first.',inp('weather_zip','text',c.weather_zip||'','ZIP or postal code'))+
-    field('Country code','Two-letter country code for weather lookup.',inp('weather_country','text',c.weather_country||'US','US'))+
-    field('Temperature units','Display units for weather temperatures.',sel('weather_units',[['F','Fahrenheit'],['C','Celsius']],c.weather_units||'F'))+
-    field('Refresh interval','How often weather is refreshed from the worker.',sel('weather_poll_min',[[5,'5 minutes'],[10,'10 minutes'],[15,'15 minutes'],[30,'30 minutes'],[60,'60 minutes']],c.weather_poll_min||15));
 
   // BG Alerts section
   const alertContent =
@@ -903,7 +891,6 @@ function render(){
     ${section('ns','icon-dex',dexIcon,'Data sources','Choose where glucose readings come from',nsContent)}
   </div>
   <div class="grid">
-    ${section('weather','icon-display',weatherIcon,'Weather panel','Live weather location and refresh settings',weatherContent)}
     ${section('pump','icon-display',pumpIcon,'Pump profile','Optional AI context about insulin delivery setup',pumpContent)}
   </div>
   <div class="grid">
