@@ -182,19 +182,38 @@ function normalizeConfig(cfg) {
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
-    status, headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+    status,
+    headers: {
+      ...CORS_HEADERS,
+      "Content-Type": "application/json",
+      "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+      "Pragma": "no-cache",
+      "Expires": "0",
+    },
   });
 }
 
 function mcpResult(id, result) {
   return new Response(JSON.stringify({ jsonrpc: "2.0", id, result }), {
-    headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+    headers: {
+      ...CORS_HEADERS,
+      "Content-Type": "application/json",
+      "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+      "Pragma": "no-cache",
+      "Expires": "0",
+    },
   });
 }
 
 function mcpError(id, code, message) {
   return new Response(JSON.stringify({ jsonrpc: "2.0", id, error: { code, message } }), {
-    headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+    headers: {
+      ...CORS_HEADERS,
+      "Content-Type": "application/json",
+      "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+      "Pragma": "no-cache",
+      "Expires": "0",
+    },
   });
 }
 
@@ -727,7 +746,7 @@ async function sendDigestPushover(env) {
     if (lastDailySent !== today) {
       const digest = await env.BGDISPLAY_CONFIG.get("daily_digest", { type: "json" });
       if (digest && digest.date === today) {
-        const title = "BG MiniView — Daily Summary";
+        const title = "BG MiniView - Daily Summary";
         const message = truncateToSentence(digest.text, 1024);
         // priority 0 = normal; daily summaries are informational, not urgent
         const ok = await sendPushoverNotification(creds.user_key, creds.api_token, message, title, 0);
@@ -749,7 +768,7 @@ async function sendDigestPushover(env) {
       if (lastHourlySent !== today) {
         const digest = await env.BGDISPLAY_CONFIG.get(hourlyKey, { type: "json" });
         if (digest && digest.date === today) {
-          const title = "BG MiniView — Hourly Update";
+          const title = "BG MiniView - Hourly Update";
           const message = truncateToSentence(digest.text, 1024);
           // priority 0 = normal (respects device quiet hours); digests are informational
           const ok = await sendPushoverNotification(creds.user_key, creds.api_token, message, title, 0);
@@ -783,6 +802,131 @@ async function sendPushoverNotification(userKey, apiToken, message, title, prior
   return resp.ok;
 }
 
+async function loadPushoverCreds(env) {
+  try {
+    const enc = await env.BGDISPLAY_CONFIG.get("pushover_creds");
+    if (enc && env.KV_ENCRYPT_KEY) {
+      const raw = await kvDecrypt(enc, env.KV_ENCRYPT_KEY);
+      if (raw) return JSON.parse(raw);
+    }
+  } catch {}
+  return null;
+}
+
+async function getPushoverStatus(env, config) {
+  const [creds, lastAlert, lastDigestPush, lastOffline] = await Promise.all([
+    loadPushoverCreds(env),
+    env.BGDISPLAY_CONFIG.get("last_pushover_alert"),
+    env.BGDISPLAY_CONFIG.get("last_digest_pushover"),
+    env.BGDISPLAY_CONFIG.get("last_offline_alert"),
+  ]);
+  const nowMs = Date.now();
+  const centralNow = getCentralDateParts();
+  return {
+    configured: !!(creds?.user_key && creds?.api_token),
+    alerts_enabled: !!config.pushover_enabled,
+    digest_enabled: !!config.digest_pushover_enabled,
+    digest_hour_central: Number(config.digest_pushover_hour ?? 7),
+    current_central_date: centralNow.date,
+    current_central_hour: centralNow.hour,
+    cooldown_min: Number(config.pushover_alert_cooldown_min || 15),
+    dnd_active: isInDNDWindow(config),
+    kv_encrypt_configured: !!env.KV_ENCRYPT_KEY,
+    last_bg_alert: lastAlert ? new Date(Number(lastAlert)).toISOString() : null,
+    last_bg_alert_age_min: lastAlert ? Math.round((nowMs - Number(lastAlert)) / 60000) : null,
+    last_digest_pushover: lastDigestPush || null,
+    last_offline_alert: lastOffline ? new Date(Number(lastOffline)).toISOString() : null,
+  };
+}
+
+async function buildHealthSummary(env, config, auth) {
+  const nowMs = Date.now();
+  const [deviceStatus, dailyDigest, pushoverStatus] = await Promise.all([
+    env.BGDISPLAY_CONFIG.get("device_status", { type: "json" }),
+    env.BGDISPLAY_CONFIG.get("daily_digest", { type: "json" }),
+    getPushoverStatus(env, config),
+  ]);
+  const offlineMin = Number(config.alert_offline_min || 15);
+  const lastSeenMs = Number(deviceStatus?.lastSeen || 0);
+  const deviceOnline = !!lastSeenMs && (nowMs - lastSeenMs) < offlineMin * 60000;
+  const digestAgeMin = dailyDigest?.generatedAt ? Math.round((nowMs - dailyDigest.generatedAt) / 60000) : null;
+  const nextDigestWindow = `Daily 7:00 AM US/Central; hourly 8:00 AM-11:00 PM US/Central`;
+
+  return [
+    `Worker health summary`,
+    `Device: ${deviceOnline ? "online" : "offline"}${lastSeenMs ? `, last seen ${new Date(lastSeenMs).toISOString()}` : ""}`,
+    `Digest: ${dailyDigest ? `present for ${dailyDigest.date}, age ${digestAgeMin} min, model ${(dailyDigest.ai_model || config.ai_model || "@cf/meta/llama-3.1-8b-instruct")}` : "missing"}`,
+    `Schedule: ${nextDigestWindow}`,
+    `Pushover: ${pushoverStatus.configured ? "configured" : "not configured"}, alerts ${pushoverStatus.alerts_enabled ? "on" : "off"}, digest push ${pushoverStatus.digest_enabled ? `on at ${pushoverStatus.digest_hour_central}:00 Central` : "off"}`,
+    `Auth: device key ${auth?.keyHash ? `active (*${auth.keyHash.slice(-4)})` : "missing"}, recovery ${auth?.recoveryKeyHash ? `enabled (*${auth.recoveryKeyHash.slice(-4)})` : "disabled"}`,
+    `Bindings: AI ${env.AI ? "ok" : "missing"}, KV encrypt ${env.KV_ENCRYPT_KEY ? "ok" : "missing"}`,
+  ].join("\n");
+}
+
+async function getKeyAuthStatus(auth, keyCandidate = "") {
+  const provided = String(keyCandidate || "").trim();
+  let providedState = "not_provided";
+  if (provided) {
+    const hash = await sha256(provided);
+    if (auth?.keyHash && hash === auth.keyHash) providedState = "active";
+    else if (auth?.pendingKeyHash && hash === auth.pendingKeyHash) providedState = "pending";
+    else if (auth?.recoveryKeyHash && hash === auth.recoveryKeyHash) providedState = "recovery";
+    else providedState = "invalid";
+  }
+
+  return {
+    provided_key_state: providedState,
+    pending_rotation: !!auth?.pendingKeyHash,
+    active_key_tail: auth?.keyHash ? auth.keyHash.slice(-4) : null,
+    pending_key_tail: auth?.pendingKeyHash ? auth.pendingKeyHash.slice(-4) : null,
+    recovery_key_tail: auth?.recoveryKeyHash ? auth.recoveryKeyHash.slice(-4) : null,
+    recovery_enabled: !!auth?.recoveryKeyHash,
+    last_rotated: auth?.lastRotated ? new Date(auth.lastRotated).toISOString() : null,
+  };
+}
+
+async function buildFullReadinessReport(env, config, auth) {
+  const nowMs = Date.now();
+  const centralNow = getCentralDateParts();
+  const [deviceStatus, dailyDigest, pushoverStatus, keyAuth] = await Promise.all([
+    env.BGDISPLAY_CONFIG.get("device_status", { type: "json" }),
+    env.BGDISPLAY_CONFIG.get("daily_digest", { type: "json" }),
+    getPushoverStatus(env, config),
+    getKeyAuthStatus(auth),
+  ]);
+  const offlineMin = Number(config.alert_offline_min || 15);
+  const deviceSeen = Number(deviceStatus?.lastSeen || 0);
+  const deviceOnline = !!deviceSeen && (nowMs - deviceSeen) < offlineMin * 60000;
+  const digestFresh = !!dailyDigest && dailyDigest.date === centralNow.date;
+  const digestPushReady = !config.digest_pushover_enabled || (pushoverStatus.configured && Number(config.digest_pushover_hour) === 7);
+  const bgAlertsReady = !config.pushover_enabled || pushoverStatus.configured;
+  const checks = {
+    ai_binding: !!env.AI,
+    kv_encrypt_key: !!env.KV_ENCRYPT_KEY,
+    auth_key_present: !!auth?.keyHash,
+    device_recently_seen: deviceOnline,
+    digest_present_today: digestFresh,
+    digest_push_ready: digestPushReady,
+    bg_alerts_ready: bgAlertsReady,
+  };
+  const ready = Object.values(checks).every(Boolean);
+  return {
+    ready,
+    checks,
+    context: {
+      central_date: centralNow.date,
+      central_hour: centralNow.hour,
+      digest_date: dailyDigest?.date || null,
+      digest_generated_at: dailyDigest?.generatedAt ? new Date(dailyDigest.generatedAt).toISOString() : null,
+      digest_pushover_hour: Number(config.digest_pushover_hour ?? 7),
+      device_last_seen: deviceSeen ? new Date(deviceSeen).toISOString() : null,
+      key_auth: keyAuth,
+      pushover: pushoverStatus,
+    },
+    summary: await buildHealthSummary(env, config, auth),
+  };
+}
+
 // ─── Feature 4c: Device Offline Alert ────────────────────────────────────────
 
 async function runDeviceOfflineCheck(env) {
@@ -813,7 +957,7 @@ async function runDeviceOfflineCheck(env) {
 
   const silentMinutes = Math.round(silentMs / 60000);
   const message = `BG MiniView has not checked in for ${silentMinutes} minutes. Device may be offline or unreachable.`;
-  const ok = await sendPushoverNotification(creds.user_key, creds.api_token, message, "BG MiniView — Device Offline", 1);
+  const ok = await sendPushoverNotification(creds.user_key, creds.api_token, message, "BG MiniView - Device Offline", 1);
   if (ok) {
     await env.BGDISPLAY_CONFIG.put("last_offline_alert", String(Date.now()));
     await appendChangeLog(env, `Device offline alert sent (silent ${silentMinutes}m)`);
@@ -856,7 +1000,7 @@ async function runPushoverAlertCheck(env) {
 
   const trend = entry.direction ? directionToTrend(entry.direction) : (entry.trend || 5);
   const fullMsg = `${alertMsg} • ${trendArrowText(trend)}`;
-  const title = isLow ? "BG MiniView — Low Alert" : "BG MiniView — High Alert";
+  const title = isLow ? "BG MiniView - Low Alert" : "BG MiniView - High Alert";
 
   // priority 1 = high (bypasses quiet hours on device) for urgent BG alerts
   const ok = await sendPushoverNotification(creds.user_key, creds.api_token, fullMsg, title, 1);
@@ -928,6 +1072,23 @@ const MCP_TOOLS = [
     inputSchema: { type: "object", properties: {}, required: [] },
   },
   {
+    name: "get_pushover_status",
+    description: "Return Pushover configuration and recent delivery state for BG alerts, digest pushes, and offline alerts.",
+    inputSchema: { type: "object", properties: {}, required: [] },
+  },
+  {
+    name: "send_test_pushover",
+    description: "Send a controlled Pushover test message using the stored credentials. Use category='general' or 'digest'.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        category: { type: "string", description: "general | digest" },
+        message: { type: "string", description: "Optional custom message body" },
+      },
+      required: [],
+    },
+  },
+  {
     name: "generate_digest",
     description: "Force-generate today's AI blood glucose summary immediately, bypassing the once-per-day guard",
     inputSchema: { type: "object", properties: {}, required: [] },
@@ -951,6 +1112,27 @@ const MCP_TOOLS = [
   {
     name: "get_maintenance_status",
     description: "Return a full health snapshot: digest freshness, Dexcom sensor cache, binding availability, and alert cooldown state.",
+    inputSchema: { type: "object", properties: {}, required: [] },
+  },
+  {
+    name: "get_health_summary",
+    description: "Return a concise plain-text summary of worker health, digest state, Pushover readiness, and auth status.",
+    inputSchema: { type: "object", properties: {}, required: [] },
+  },
+  {
+    name: "get_key_auth_status",
+    description: "Return key auth status. Optionally pass a key string to check whether it matches active, pending, or recovery key state.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        key: { type: "string", description: "Optional key candidate to classify (active | pending | recovery | invalid)" },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "get_full_readiness",
+    description: "Return a single readiness report that combines auth, digest freshness, Pushover readiness, device recency, and binding health.",
     inputSchema: { type: "object", properties: {}, required: [] },
   },
   {
@@ -1152,9 +1334,42 @@ async function handleMCP(request, env, config, auth) {
 
     if (toolName === "get_daily_digest") {
       const digest = await env.BGDISPLAY_CONFIG.get("daily_digest", { type: "json" });
-      if (!digest) return mcpResult(id, { content: [{ type: "text", text: "No digest generated yet. Runs daily at 6 AM CST." }] });
+      if (!digest) return mcpResult(id, { content: [{ type: "text", text: "No digest generated yet. Runs daily at 7:00 AM US/Central." }] });
       const txt = `Date: ${digest.date}\nGenerated: ${new Date(digest.generatedAt).toISOString()}\n\n${digest.text}`;
       return mcpResult(id, { content: [{ type: "text", text: txt }] });
+    }
+
+    if (toolName === "get_pushover_status") {
+      const status = await getPushoverStatus(env, config);
+      return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(status, null, 2) }] });
+    }
+
+    if (toolName === "send_test_pushover") {
+      const category = String(args.category || "general").toLowerCase();
+      if (!["general", "digest"].includes(category)) {
+        return mcpError(id, -32602, "category must be 'general' or 'digest'");
+      }
+      const creds = await loadPushoverCreds(env);
+      if (!creds?.user_key || !creds?.api_token) {
+        return mcpResult(id, { content: [{ type: "text", text: JSON.stringify({ ok: false, error: "Pushover credentials not configured." }, null, 2) }] });
+      }
+      const title = category === "digest" ? "BG MiniView - Digest Test" : "BG MiniView - Test Alert";
+      const defaultMessage = category === "digest"
+        ? `Digest test from MCP at ${new Date().toISOString()}. This verifies stored credentials and delivery for scheduled summaries.`
+        : `Test alert from MCP at ${new Date().toISOString()}. This verifies stored credentials and delivery for BG alerts.`;
+      const message = truncateToSentence(String(args.message || defaultMessage), 1024);
+      const ok = await sendPushoverNotification(creds.user_key, creds.api_token, message, title, 0);
+      const result = {
+        ok,
+        category,
+        title,
+        message,
+        sent_at: new Date().toISOString(),
+      };
+      if (ok) {
+        await appendChangeLog(env, `MCP test Pushover sent (${category})`);
+      }
+      return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] });
     }
 
     if (toolName === "generate_digest") {
@@ -1261,6 +1476,21 @@ async function handleMCP(request, env, config, auth) {
           ai_model: config.ai_model || "@cf/meta/llama-3.1-8b-instruct",
         };
         return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(status, null, 2) }] });
+    }
+
+    if (toolName === "get_health_summary") {
+      const summary = await buildHealthSummary(env, config, auth);
+      return mcpResult(id, { content: [{ type: "text", text: summary }] });
+    }
+
+    if (toolName === "get_key_auth_status") {
+      const result = await getKeyAuthStatus(auth, args.key || "");
+      return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] });
+    }
+
+    if (toolName === "get_full_readiness") {
+      const result = await buildFullReadinessReport(env, config, auth);
+      return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] });
     }
 
     if (toolName === "run_maintenance") {

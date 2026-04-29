@@ -8,7 +8,11 @@
     "deploy:pages": "cd ../pages && wrangler pages deploy . --project-name bgdisplay-ui --branch production --commit-dirty=true",
     "deploy:all": "npm run deploy:worker && npm run deploy:pages",
     "test:mcp": "powershell -ExecutionPolicy Bypass -File ./scripts/test_mcp.ps1",
-    "test:mcp:bg": "powershell -ExecutionPolicy Bypass -File ./scripts/test_mcp.ps1 -ShowBg"
+    "test:mcp:bg": "powershell -ExecutionPolicy Bypass -File ./scripts/test_mcp.ps1 -ShowBg",
+    "test:mcp:admin": "powershell -ExecutionPolicy Bypass -File ./scripts/test_mcp.ps1 -UseAdminSession",
+    "test:mcp:health": "powershell -ExecutionPolicy Bypass -File ./scripts/test_mcp.ps1 -UseAdminSession -RunHealth",
+    "test:mcp:pushover": "powershell -ExecutionPolicy Bypass -File ./scripts/test_mcp.ps1 -RunPushover",
+    "test:mcp:pushover:live": "powershell -ExecutionPolicy Bypass -File ./scripts/test_mcp.ps1 -RunPushover -SendLivePushover"
   },
   "devDependencies": {
     "wrangler": "4.85.0"
