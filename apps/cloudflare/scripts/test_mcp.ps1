@@ -1,8 +1,12 @@
 param(
-  [string]$McpUrl = "https://bgdisplay-worker.zanebaize.workers.dev/mcp",
-  [string]$McpKey = "bg_ro_s4zdwk11o2e20398uojwfrlzgphlyc2e",
+  [string]$McpUrl = $(if ($env:BGDISPLAY_MCP_URL) { $env:BGDISPLAY_MCP_URL } else { "https://bgdisplay-worker.zanebaize.workers.dev/mcp" }),
+  [string]$McpKey = $env:BGDISPLAY_MCP_KEY,
   [switch]$ShowBg
 )
+
+if ([string]::IsNullOrWhiteSpace($McpKey)) {
+  throw "Missing MCP key. Pass -McpKey or set BGDISPLAY_MCP_KEY in your environment."
+}
 
 $endpoint = "${McpUrl}?key=$McpKey"
 Write-Host "MCP endpoint: $McpUrl"
