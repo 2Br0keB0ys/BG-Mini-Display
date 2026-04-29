@@ -521,22 +521,66 @@ function truncateToSentence(text, maxChars) {
   return `${safe}...`;
 }
 
+function getCentralDateParts(now = new Date()) {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Chicago",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    hour12: false,
+  });
+  const parts = Object.fromEntries(
+    formatter.formatToParts(now)
+      .filter(part => part.type !== "literal")
+      .map(part => [part.type, part.value])
+  );
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    hour: Number(parts.hour),
+  };
+}
+
+function buildDigestStorageMeta(type, now = new Date()) {
+  const central = getCentralDateParts(now);
+  return {
+    date: central.date,
+    hour: central.hour,
+    key: type === "hourly" ? `hourly_digest_${central.hour}` : "daily_digest",
+  };
+}
+
+function formatTimestampLocal(ts) {
+  if (!Number.isFinite(ts)) return "unknown";
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Chicago",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(new Date(ts));
+}
+
 // ─── Feature 2: Daily & Hourly AI Digest ──────────────────────────────────────
 
 async function generateDailyDigest(env, force = false, type = "daily") {
-  const today = new Date().toISOString().slice(0, 10);
-  const hourKey = type === "hourly" ? `hourly_digest_${new Date().getHours()}` : "daily_digest";
+  const storage = buildDigestStorageMeta(type);
+  const today = storage.date;
+  if (!force) {
+    if (type === "daily" && storage.hour !== 7) return;
+    if (type === "hourly" && (storage.hour < 8 || storage.hour > 23)) return;
+  }
   
   // Guard: only run once per calendar day/hour (bypassed when force=true)
-  const stored = await env.BGDISPLAY_CONFIG.get(hourKey, { type: "json" });
+  const stored = await env.BGDISPLAY_CONFIG.get(storage.key, { type: "json" });
   if (!force && stored?.date === today) return;
 
   const config = normalizeConfig(await env.BGDISPLAY_CONFIG.get("config", { type: "json" }));
 
   if (!config.nightscout_url) {
     const text = type === "hourly" ? "No Nightscout URL configured." : "No Nightscout URL configured.";
-    const key = type === "hourly" ? `hourly_digest_${new Date().getHours()}` : "daily_digest";
-    await env.BGDISPLAY_CONFIG.put(key, JSON.stringify({
+    await env.BGDISPLAY_CONFIG.put(storage.key, JSON.stringify({
       text, generatedAt: Date.now(), date: today, type,
     }));
     return;
@@ -546,14 +590,14 @@ async function generateDailyDigest(env, force = false, type = "daily") {
   const readingCount = type === "hourly" ? 12 : 288;
   const readings = await fetchNightscoutHistory(config, readingCount);
   if (!readings.length) {
-    const key = type === "hourly" ? `hourly_digest_${new Date().getHours()}` : "daily_digest";
-    await env.BGDISPLAY_CONFIG.put(key, JSON.stringify({
+    await env.BGDISPLAY_CONFIG.put(storage.key, JSON.stringify({
       text: "No readings available for digest.", generatedAt: Date.now(), date: today, type,
     }));
     return;
   }
 
   const values = readings.map(r => r.sgv).filter(v => v > 0);
+  const latest = readings[0] || null;
   const low = config.low || 70, high = config.high || 180;
   const urgLow = config.urgent_low || 55, urgHigh = config.urgent_high || 250;
   const tir = (values.filter(v => v >= low && v <= high).length / values.length * 100).toFixed(0);
@@ -563,8 +607,27 @@ async function generateDailyDigest(env, force = false, type = "daily") {
   const urgHighs = values.filter(v => v > urgHigh).length;
   const minVal = Math.min(...values), maxVal = Math.max(...values);
   const avgVal = Math.round(values.reduce((a, b) => a + b, 0) / values.length);
+  const latestTrend = latest?.direction || latest?.trend || "unknown";
+  const latestAgeMin = latest?.date ? Math.max(0, Math.round((Date.now() - latest.date) / 60000)) : null;
+  const latestLocalTime = latest?.date ? formatTimestampLocal(latest.date) : "unknown";
+  const deltaParts = [];
+  for (let i = 0; i < Math.min(values.length - 1, 6); i += 1) {
+    deltaParts.push(values[i] - values[i + 1]);
+  }
+  const avgDelta = deltaParts.length ? Math.round(deltaParts.reduce((sum, value) => sum + value, 0) / deltaParts.length) : 0;
+  const variability = values.length > 1
+    ? Math.round(Math.sqrt(values.reduce((sum, value) => sum + Math.pow(value - avgVal, 2), 0) / values.length))
+    : 0;
+  const overnightValues = type === "daily"
+    ? readings.filter(r => {
+        const hr = getCentralDateParts(new Date(r.date)).hour;
+        return hr >= 0 && hr < 6;
+      }).map(r => r.sgv).filter(v => v > 0)
+    : [];
+  const overnightAvg = overnightValues.length
+    ? Math.round(overnightValues.reduce((sum, value) => sum + value, 0) / overnightValues.length)
+    : null;
 
-  const timeFrame = type === "hourly" ? "past hour" : "past 24 hours";
   const statsLine = `${values.length} readings over ${type === "hourly" ? "1h" : "24h"}. TIR (${low}–${high} mg/dL): ${tir}%. Below ${low}: ${belowLow}x. Above ${high}: ${aboveHigh}x. Urgent lows (<${urgLow}): ${urgLows}x. Urgent highs (>${urgHigh}): ${urgHighs}x. Min/Max/Avg: ${minVal}/${maxVal}/${avgVal} mg/dL.`;
   const recentStr = values.slice(0, 12).join(", ");
   const pumpProfile = {
@@ -597,11 +660,13 @@ async function generateDailyDigest(env, force = false, type = "daily") {
   if (env.AI) {
     try {
       const systemPrompt = type === "hourly"
-        ? "You are a concise diabetes health assistant for a Type 2 diabetic using a Dexcom G7 CGM. Write a brief summary of the past hour in 1-2 sentences (under 80 words). Cover: current status (in range or trend), any notable excursions. If live insulin data is provided, briefly note if active insulin may explain any trends. Plain text only."
-        : "You are a concise diabetes health assistant for a Type 2 diabetic using a Dexcom G7 CGM. Write a morning summary of the past 24 hours in 3-4 sentences (under 180 words). Cover: time in range, notable lows or highs, overnight pattern, and one brief actionable observation. If site change age is provided, mention it if the pod is older than 2 days as a possible factor in absorption variability. If sensor age is provided and within 1 day of expiry, note it. Adapt guidance to insulin delivery context (pump/no pump and loop mode when provided). If no pump is used, do not mention pump actions. No greeting or closing. Plain text only.";
+        ? "You are a concise diabetes health assistant for a Type 2 diabetic using a Dexcom G7 CGM. Write a brief summary of the past hour in 1-2 sentences under 80 words. State the current situation first, then the most relevant reason or pattern behind it. Use only the provided data. Mention insulin context only when it plausibly explains the trend. Avoid generic warnings, avoid repeating threshold numbers, and do not invent causes or treatment advice. Plain text only."
+        : "You are a concise diabetes health assistant for a Type 2 diabetic using a Dexcom G7 CGM. Write a morning summary of the past 24 hours in 3-4 sentences under 180 words. Prioritize: time in range, meaningful highs or lows, overnight pattern, and one specific observation grounded in the data. Use insulin delivery, pod age, or sensor age only when they plausibly affect interpretation. Avoid generic coaching, avoid repeating the same metric twice, and do not invent causes, treatment advice, or events not present in the input. Plain text only.";
 
       const userContent = [
         `Stats: ${statsLine}`,
+        `Current reading: ${latest?.sgv ?? "unknown"} mg/dL at ${latestLocalTime}, trend ${latestTrend}, approximately ${latestAgeMin ?? "unknown"} minutes old.`,
+        `Short-term movement: average change ${avgDelta >= 0 ? "+" : ""}${avgDelta} mg/dL per 5-minute step over the latest samples. Variability estimate: ${variability} mg/dL.${overnightAvg != null ? ` Overnight average: ${overnightAvg} mg/dL.` : ""}`,
         `Most recent values (newest first): ${recentStr} mg/dL.`,
         sensorContextLine ? sensorContextLine : null,
         `Pump profile: ${JSON.stringify(pumpProfile)}.`,
@@ -621,7 +686,6 @@ async function generateDailyDigest(env, force = false, type = "daily") {
     }
   }
 
-  const key = type === "hourly" ? `hourly_digest_${new Date().getHours()}` : "daily_digest";
   const digest = {
     text: digestText,
     generatedAt: Date.now(),
@@ -630,7 +694,7 @@ async function generateDailyDigest(env, force = false, type = "daily") {
     stats: { tir: Number(tir), min: minVal, max: maxVal, avg: avgVal, readingCount: values.length },
     ai_model: aiModel,
   };
-  await env.BGDISPLAY_CONFIG.put(key, JSON.stringify(digest));
+  await env.BGDISPLAY_CONFIG.put(storage.key, JSON.stringify(digest));
   const logMsg = type === "hourly" ? `Hourly AI digest generated (TIR ${tir}%, ${values.length} readings)` : `Daily AI digest generated (TIR ${tir}%, ${values.length} readings)`;
   await appendChangeLog(env, logMsg);
 }
@@ -652,11 +716,11 @@ async function sendDigestPushover(env) {
   } catch {}
   if (!creds?.user_key || !creds?.api_token) return;
 
-  const today = new Date().toISOString().slice(0, 10);
+  const centralNow = getCentralDateParts();
+  const today = centralNow.date;
   
   // Check for daily digest send (at configured hour)
-  const nowCentral = new Date().toLocaleString("en-US", { timeZone: "America/Chicago", hour: "numeric", hour12: false });
-  const currentHour = Number(nowCentral) % 24;
+  const currentHour = centralNow.hour;
   
   if (currentHour === config.digest_pushover_hour) {
     const lastDailySent = await env.BGDISPLAY_CONFIG.get("last_digest_pushover");
@@ -703,11 +767,17 @@ async function sendDigestPushover(env) {
 
 // priority: -1=quiet, 0=normal, 1=high (bypasses quiet hours), 2=emergency
 async function sendPushoverNotification(userKey, apiToken, message, title, priority = 0) {
-  const body = JSON.stringify({ token: apiToken, user: userKey, message, title, priority });
+  const body = new URLSearchParams({
+    token: apiToken,
+    user: userKey,
+    message,
+    title,
+    priority: String(priority),
+  });
   const resp = await fetch("https://api.pushover.net/1/messages.json", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body,
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: body.toString(),
     signal: AbortSignal.timeout(8000),
   });
   return resp.ok;
@@ -2038,13 +2108,12 @@ export default {
 
   // ─── Scheduled handler (cron triggers) ──────────────────────────────────────
   async scheduled(event, env, ctx) {
-    // "45 12,13 * * *" = daily digest at 7:45 AM CST/CDT (guarded internally to run once/day)
-    // "0 14-23 * * *"  = hourly summaries (2 PM-11 PM UTC ≈ 8 AM-5 PM local)
-    // "0 0-5 * * *"    = hourly summaries (midnight-5 AM UTC ≈ 6 PM-11 PM local previous day)
+    // "0 12,13 * * *" = daily digest at 7:00 AM CST/CDT (guarded internally to run once/day)
+    // Hourly windows intentionally over-cover UTC and rely on Central-time guards in generateDailyDigest.
     // "*/5 * * * *"    = Pushover BG alert check and digest pushes
-    if (event.cron === "45 12,13 * * *" || event.cron === "45 12 * * *" || event.cron === "45 13 * * *") {
+    if (event.cron === "0 12,13 * * *") {
       ctx.waitUntil(generateDailyDigest(env, false, "daily"));
-    } else if (event.cron === "0 14-23 * * *" || event.cron === "0 0-5 * * *" || /^0 (1[4-9]|2[0-3]|[0-5]) \* \* \*$/.test(event.cron)) {
+    } else if (["0 12-23 * * *", "0 0-5 * * *"].includes(event.cron)) {
       ctx.waitUntil(generateDailyDigest(env, false, "hourly"));
     } else if (event.cron === "*/5 * * * *") {
       ctx.waitUntil(runPushoverAlertCheck(env));
