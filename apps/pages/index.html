@@ -162,6 +162,7 @@ body{
 .quick-tile .k{font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.08em;font-weight:700}
 .quick-tile .v{font-size:13px;font-weight:700;margin-top:5px}
 .stack{display:flex;flex-direction:column;gap:1rem}
+.flow-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:1rem;align-items:start}
 
 /* Section */
 .section{
@@ -193,22 +194,23 @@ body{
 .section-body.open{display:block}
 
 /* Field */
-.field{padding:12px 16px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border)}
-.field:last-child{border-bottom:none}
-.field-label{flex:1;min-width:0}
-.field-label .name{font-size:13px;font-weight:700}
+.field{padding:12px;border:1px solid var(--border);border-radius:13px;background:rgba(255,255,255,.02);margin:0 0 10px 0;display:flex;flex-direction:column;gap:9px}
+.field:last-child{margin-bottom:0}
+.field-label{min-width:0}
+.field-label .name{font-size:13px;font-weight:800}
 .field-label .desc{font-size:11px;color:var(--muted);margin-top:2px;line-height:1.35}
-.subfield{padding:9px 16px 9px 26px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border);background:rgba(255,255,255,.02)}
-.subfield:last-child{border-bottom:none}
-.subfield .field-label .name{font-size:12px;font-weight:600;color:var(--muted)}
+.field-control{display:flex;justify-content:flex-end;align-items:center;gap:8px;flex-wrap:wrap}
+.subfield{padding:9px 12px;margin:0 0 8px 0;display:flex;align-items:center;gap:12px;border:1px dashed var(--border);border-radius:12px;background:rgba(255,255,255,.015)}
+.subfield:last-child{margin-bottom:0}
+.subfield .field-label .name{font-size:12px;font-weight:700;color:var(--muted)}
 
 /* Inputs */
 input[type=text],input[type=password],input[type=url],input[type=number],select{
   font-size:13px;
-  padding:8px 11px;
-  border-radius:10px;
+  padding:9px 12px;
+  border-radius:11px;
   border:1px solid var(--border-mid);
-  background:var(--surface-2);
+  background:linear-gradient(180deg,rgba(27,40,61,.95),rgba(22,34,53,.95));
   color:var(--text);
   outline:none;
   transition:border .14s,box-shadow .14s,transform .14s;
@@ -282,6 +284,10 @@ input[type=text].wide,input[type=password].wide,input[type=url].wide{width:220px
 .task-nav{display:flex;gap:8px;flex-wrap:wrap}
 .task-btn{padding:7px 11px;border-radius:10px;border:1px solid var(--border);background:rgba(255,255,255,.03);color:var(--muted);font-size:12px;font-weight:700;cursor:pointer;transition:all .14s}
 .task-btn.active{background:var(--surface-2);color:var(--text);border-color:var(--border-mid)}
+.choice-group{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}
+.choice-pill{padding:7px 10px;border:1px solid var(--border-mid);border-radius:999px;background:rgba(255,255,255,.03);color:var(--muted);font-size:12px;font-weight:700;cursor:pointer;transition:all .14s}
+.choice-pill:hover{background:rgba(255,255,255,.07);color:var(--text)}
+.choice-pill.active{background:linear-gradient(140deg,var(--accent),var(--accent-2));color:#2a1a11;border-color:rgba(255,255,255,.2)}
 .advanced-overlay{position:fixed;inset:0;background:rgba(3,6,12,.58);z-index:220;opacity:0;pointer-events:none;transition:opacity .2s}
 .advanced-overlay.show{opacity:1;pointer-events:auto}
 .advanced-drawer{position:fixed;top:0;right:0;width:min(760px,96vw);height:100vh;background:linear-gradient(180deg,#0d1524,#0b111c);border-left:1px solid var(--border);z-index:221;transform:translateX(101%);transition:transform .25s ease;overflow:auto;padding:1rem .9rem 1.4rem;box-shadow:-24px 0 42px rgba(0,0,0,.36)}
@@ -289,6 +295,7 @@ input[type=text].wide,input[type=password].wide,input[type=url].wide{width:220px
 .drawer-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem;padding:0 .2rem}
 .drawer-title{font-family:'Space Grotesk','Manrope',sans-serif;font-size:15px;font-weight:700}
 .drawer-sub{font-size:11px;color:var(--muted);margin-top:2px}
+.drawer-chip-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:.75rem;padding:0 .2rem}
 
 /* Section icon colors */
 .icon-wifi{background:rgba(85,160,255,.14)}.icon-wifi svg{stroke:#8bc3ff;fill:none}
@@ -312,6 +319,7 @@ input[type=text].wide,input[type=password].wide,input[type=url].wide{width:220px
 }
 @media(max-width:760px){
   .grid{grid-template-columns:1fr}
+  .flow-grid{grid-template-columns:1fr}
   .header{padding:0 .75rem}
   .header-inner{min-height:68px;gap:8px}
   .status-pill{display:none}
@@ -474,8 +482,51 @@ function syncPumpProfileUi(){
 }
 
 // ── Collect Config ────────────────────────────────────────────────────────────
-function get(id){ const el=document.getElementById(id); if(!el) return undefined; if(el.type==='checkbox') return el.checked; if(el.type==='number') return parseFloat(el.value); return el.value; }
+function get(id){
+  const el=document.getElementById(id);
+  if(!el) return undefined;
+  if(el.type==='checkbox') return el.checked;
+  if(el.type==='number') return parseFloat(el.value);
+  if(el.type==='hidden' && (el.value==='true' || el.value==='false')) return el.value==='true';
+  return el.value;
+}
 function radio(name){ const el=document.querySelector(`input[name="${name}"]:checked`); return el?el.value:undefined; }
+
+function setChoice(id,val,btn){
+  const el=document.getElementById(id);
+  if(!el) return;
+  el.value=String(val);
+  markDirty();
+  const group = btn && btn.closest ? btn.closest('.choice-group') : null;
+  if(group){
+    group.querySelectorAll('.choice-pill').forEach(x=>x.classList.remove('active'));
+    btn.classList.add('active');
+  }
+}
+
+function segChoice(id,options,val){
+  const current = String(val ?? '');
+  return `<input type="hidden" id="${id}" value="${current}"><div class="choice-group">${options.map(([v,l])=>{
+    const sv=String(v);
+    return `<button type="button" class="choice-pill${sv===current?' active':''}" onclick="setChoice('${id}','${sv}',this)">${l}</button>`;
+  }).join('')}</div>`;
+}
+
+function applyThresholdPreset(preset){
+  const presets={
+    standard:{urgent_low:55,low:70,high:180,urgent_high:250},
+    tighter:{urgent_low:60,low:75,high:160,urgent_high:220},
+    wider:{urgent_low:55,low:70,high:200,urgent_high:260}
+  };
+  const p=presets[preset];
+  if(!p) return;
+  ['urgent_low','low','high','urgent_high'].forEach(k=>{
+    const el=document.getElementById(k);
+    if(el) el.value=p[k];
+  });
+  markDirty();
+  toast('Threshold preset applied');
+}
 
 function collectConfig(){
   const c={};
@@ -700,8 +751,13 @@ function setTaskView(mode){
 
 function toggleAdvancedDrawer(forceOpen){
   gAdvancedOpen = typeof forceOpen === 'boolean' ? forceOpen : !gAdvancedOpen;
+  document.body.style.overflow = gAdvancedOpen ? 'hidden' : '';
   render();
 }
+
+window.addEventListener('keydown', e=>{
+  if(e.key==='Escape' && gAdvancedOpen) toggleAdvancedDrawer(false);
+});
 
 // ── Collapsible sections ──────────────────────────────────────────────────────
 function toggleSection(id){
@@ -758,7 +814,7 @@ function section(id,iconClass,iconSvg,title,sub,content,fullWidth=false,lockOpen
 }
 
 function field(label,desc,control){
-  return `<div class="field"><div class="field-label"><div class="name">${label}</div>${desc?`<div class="desc">${desc}</div>`:''}</div>${control}</div>`;
+  return `<div class="field"><div class="field-label"><div class="name">${label}</div>${desc?`<div class="desc">${desc}</div>`:''}</div><div class="field-control">${control}</div></div>`;
 }
 
 function helperTip(title,text){
@@ -766,7 +822,7 @@ function helperTip(title,text){
 }
 
 function subfield(label,control){
-  return `<div class="subfield"><div class="field-label"><div class="name">${label}</div></div>${control}</div>`;
+  return `<div class="subfield"><div class="field-label"><div class="name">${label}</div></div><div class="field-control">${control}</div></div>`;
 }
 
 function sel(id,options,val){
@@ -848,14 +904,15 @@ function render(){
     field('Nightscout token or secret','Used to read data from your Nightscout site.',inp('nightscout_secret','password','','token or secret'))+
     field('Dexcom username','',inp('dexcom_user','text',c.dexcom_user,'email or +1xxxxxxxxxx'))+
     field('Dexcom password','Leave blank to keep the current password.',inp('dexcom_pass','password','','••••••••'))+
-    field('Dexcom region','Set this to match your Dexcom account region.',sel('dexcom_region',[['US','US'],['Non-US','Non-US']],c.dexcom_region))+
-    field('Reading refresh interval','How often the device checks for new readings.',sel('poll_interval_min',[[1,'1 minute'],[5,'5 minutes'],[10,'10 minutes']],c.poll_interval_min))+
-    field('Stale reading warning','Show stale status after no new reading for this long.',sel('stale_data_warn_min',[[5,'5 minutes'],[10,'10 minutes'],[15,'15 minutes'],[20,'20 minutes']],c.stale_data_warn_min))+
-    field('Config sync check','How often the device checks for updated settings.',sel('config_ping_min',[[1,'1 minute'],[2,'2 minutes'],[5,'5 minutes']],c.config_ping_min||1));
+    field('Dexcom region','Set this to match your Dexcom account region.',segChoice('dexcom_region',[['US','US'],['Non-US','Non-US']],c.dexcom_region||'US'))+
+    field('Reading refresh interval','How often the device checks for new readings.',segChoice('poll_interval_min',[[1,'1 min'],[5,'5 min'],[10,'10 min']],c.poll_interval_min||5))+
+    field('Stale reading warning','Show stale status after no new reading for this long.',segChoice('stale_data_warn_min',[[5,'5 min'],[10,'10 min'],[15,'15 min'],[20,'20 min']],c.stale_data_warn_min||10))+
+    field('Config sync check','How often the device checks for updated settings.',segChoice('config_ping_min',[[1,'1 min'],[2,'2 min'],[5,'5 min']],c.config_ping_min||1));
 
   // BG Alerts section
   const alertContent =
-    field('Glucose units','Choose the units used in this dashboard and on device alerts.',sel('bg_units',[['mg/dL','mg/dL'],['mmol/L','mmol/L']],c.bg_units))+
+    field('Glucose units','Choose the units used in this dashboard and on device alerts.',segChoice('bg_units',[['mg/dL','mg/dL'],['mmol/L','mmol/L']],c.bg_units||'mg/dL'))+
+    field('Target presets','Apply a quick target profile, then fine-tune below if needed.',`<div class="choice-group"><button type="button" class="choice-pill" onclick="applyThresholdPreset('standard')">Standard</button><button type="button" class="choice-pill" onclick="applyThresholdPreset('tighter')">Tighter</button><button type="button" class="choice-pill" onclick="applyThresholdPreset('wider')">Wider</button></div>`)+
     field('Urgent low threshold','Critical low value. Highest-priority visual alert.',`<div class="thr-row">${inp('urgent_low','number',c.urgent_low||55,'','')}<span>${c.bg_units||'mg/dL'}</span></div>`)+
     field('Low threshold','Low glucose warning threshold.',`<div class="thr-row">${inp('low','number',c.low||70,'','')}<span>${c.bg_units||'mg/dL'}</span></div>`)+
     field('High threshold','High glucose warning threshold.',`<div class="thr-row">${inp('high','number',c.high||180,'','')}<span>${c.bg_units||'mg/dL'}</span></div>`)+
@@ -910,9 +967,9 @@ function render(){
   const displayContent =
     field('Trend arrow','Show glucose direction next to the reading.',tog('show_trend_arrow',c.show_trend_arrow!==false))+
     field('Reading age','Show "X min ago" under the glucose value.',tog('show_last_reading_time',c.show_last_reading_time!==false))+
-    field('24-hour clock','Use 24-hour time on the device screen.',tog('clock_24hr',c.clock_24hr))+
+    field('Clock format','Choose how time appears on the device screen.',segChoice('clock_24hr',[[false,'12-hour'],[true,'24-hour']],String(!!c.clock_24hr)))+
     field('Timezone','Auto-detects from your IP on first boot. Change manually if needed.',`<div style="display:flex;gap:8px;align-items:center">${sel('timezone',[['US/Central','US / Central'],['US/Eastern','US / Eastern'],['US/Mountain','US / Mountain'],['US/Pacific','US / Pacific']],c.timezone)}<button class="btn" onclick="detectTimezoneNow()" style="flex-shrink:0">Auto-detect</button></div>`)+
-    field('Screen brightness','After 5 minutes without touch, brightness drops to 15% until the screen is touched again.',sel('brightness',[[25,'25%'],[50,'50%'],[75,'75%'],[100,'100%']],c.brightness))+
+    field('Screen brightness','After 5 minutes without touch, brightness drops to 15% until the screen is touched again.',segChoice('brightness',[[25,'25%'],[50,'50%'],[75,'75%'],[100,'100%']],c.brightness||100))+
     field('Do Not Disturb schedule','Turn the screen off during overnight quiet hours.',tog('dnd_enabled',c.dnd_enabled))+
     helperTip('DND format','Use time format like 10:30 PM. If times look wrong after save, verify AM/PM values for each day.')+
     subfield('Sunday',`<div class="time-range"><input type="text" id="dnd_sun_from" value="${to12h(dndTime('sun','from','23:00'))}" style="width:88px"><span>to</span><input type="text" id="dnd_sun_to" value="${to12h(dndTime('sun','to','06:00'))}" style="width:88px"></div>`)+
@@ -1055,35 +1112,34 @@ function render(){
   let primaryCards = '';
   if(gTaskView==='connect'){
     primaryCards = `
-      <div class="grid">
+      <div class="flow-grid">
         ${section('wifi','icon-wifi',wifiIcon,'Connect to Wi-Fi','Set your home network for BG MiniView',wifiContent)}
         ${section('ns','icon-dex',dexIcon,'Glucose source accounts','Dexcom first, Nightscout as backup',nsContent)}
       </div>`;
   } else if(gTaskView==='readings'){
     primaryCards = `
-      <div class="grid">
+      <div class="flow-grid">
         ${section('alerts','icon-alert',alertIcon,'Glucose safety targets','Choose the ranges used for alerts',alertContent)}
         ${section('pump','icon-display',pumpIcon,'Insulin profile','Optional context for smarter summaries',pumpContent)}
       </div>`;
   } else if(gTaskView==='schedule'){
     primaryCards = `
-      <div class="grid">
+      <div class="flow-grid">
         ${section('display','icon-display',displayIcon,'Screen and quiet hours','Clock style, brightness, and DND schedule',displayContent)}
-        ${section('digest','icon-ai',aiIcon,'Daily AI summary','Review and schedule your summary delivery',digestContent)}
+        ${section('system','icon-system',sysIcon,'System at a glance','Connection and device health details',sysContent)}
       </div>`;
   } else if(gTaskView==='phone'){
     primaryCards = `
-      <div class="grid">
+      <div class="flow-grid">
         ${section('pushover','icon-pushover',pushoverIcon,'Phone notifications','Urgent alerts and digest push settings',pushoverContent)}
-        ${section('digest','icon-ai',aiIcon,'Digest delivery','Daily summary generation and push timing',digestContent)}
+        ${section('alerts','icon-alert',alertIcon,'Alert targets','Thresholds that drive urgent notifications',alertContent)}
       </div>`;
   } else {
     primaryCards = `
-      <div class="grid">
+      <div class="flow-grid">
         ${section('system','icon-system',sysIcon,'Device health','Current status and connection health',sysContent)}
         ${section('display','icon-display',displayIcon,'Daily display settings','Clock, trend arrow, and quiet hours',displayContent)}
-      </div>
-      <div class="grid">
+        ${section('digest','icon-ai',aiIcon,'Daily AI summary','Review and schedule your summary delivery',digestContent)}
         ${section('alerts','icon-alert',alertIcon,'Glucose guardrails','Thresholds and visual alert style',alertContent)}
         ${section('pushover','icon-pushover',pushoverIcon,'Phone alerts','Configure urgent notifications',pushoverContent)}
       </div>`;
@@ -1099,19 +1155,19 @@ function render(){
         </div>
         <button class="btn" onclick="toggleAdvancedDrawer(false)">Close</button>
       </div>
-      <div class="grid">
+      <div class="drawer-chip-row">
+        <div class="toolbar-chip">Operations</div>
+        <div class="toolbar-chip">Diagnostics</div>
+        <div class="toolbar-chip">Security</div>
+        <div class="toolbar-chip">Logs and backups</div>
+      </div>
+      <div class="flow-grid">
         ${section('control','icon-system',ctrlIcon,'Device actions','Run sync, reboot, and maintenance commands',controlContent)}
         ${section('alerts_cloud','icon-alert',alertIcon,'Worker alert tuning','Server-side alert thresholds and cooldowns',alertTuningContent)}
-      </div>
-      <div class="grid">
         ${section('diag','icon-diag',diagIcon,'Diagnostics','Connectivity and service checks',diagContent)}
         ${section('insights','icon-diag',diagIcon,'Cloud insights','Telemetry trends and worker-side metrics',cloudInsightsContent)}
-      </div>
-      <div class="grid">
         ${section('security','icon-security',secIcon,'Security','Access control, keys, and protection policies',secContent)}
         ${section('backup','icon-backup',backupIcon,'Backup and restore','Export, import, and automatic snapshots',backupContent)}
-      </div>
-      <div class="grid">
         ${section('maint','icon-system',sysIcon,'Maintenance center','Automation, rotations, and source health',maintContent)}
         ${section('logs','icon-diag',diagIcon,'Log explorer','Search and inspect uploaded SD logs',logExplorerContent)}
       </div>
