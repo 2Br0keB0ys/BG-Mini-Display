@@ -105,13 +105,6 @@ const DEFAULT_CONFIG = {
   nightscout_url: "", nightscout_secret: "",
   // Dexcom (primary)
   dexcom_user: "", dexcom_pass: "", dexcom_region: "US",
-  // Weather
-  weather_enabled: true,
-  weather_city: "",
-  weather_zip: "",
-  weather_country: "US",
-  weather_units: "F",
-  weather_poll_min: 15,
   // Polling
   poll_interval_min: 5, stale_data_warn_min: 15, config_ping_min: 1,
   // BG thresholds
@@ -175,12 +168,6 @@ function normalizeConfig(cfg) {
   out.dnd_schedule = normalizeDndSchedule(out.dnd_schedule, out.dnd_from, out.dnd_to);
   out.pushover_alert_cooldown_min = Math.max(5, Math.min(60, Number(out.pushover_alert_cooldown_min || 15)));
   out.digest_pushover_hour = Math.max(0, Math.min(23, Number(out.digest_pushover_hour ?? 7)));
-  out.weather_enabled = out.weather_enabled !== false;
-  out.weather_city = String(out.weather_city || "").trim().slice(0, 64);
-  out.weather_zip = String(out.weather_zip || "").trim().slice(0, 16);
-  out.weather_country = String(out.weather_country || "US").trim().toUpperCase().slice(0, 8) || "US";
-  out.weather_units = String(out.weather_units || "F").trim().toUpperCase() === "C" ? "C" : "F";
-  out.weather_poll_min = Math.max(5, Math.min(120, Number(out.weather_poll_min || 15)));
   const pumpType = String(out.insulin_pump_type || "none").trim().toLowerCase();
   out.insulin_pump_type = ["none", "pump", "patch-pump"].includes(pumpType) ? pumpType : "none";
   out.insulin_pump_brand = String(out.insulin_pump_brand || "").trim().slice(0, 40);
@@ -356,86 +343,6 @@ function formatAgeDays(epochSec, nowSec) {
   const days = diffSec / 86400;
   if (days < 1) return `${Math.round(diffSec / 3600)}h ago`;
   return `${days.toFixed(1)} days ago`;
-}
-
-function weatherCodeToDescription(code) {
-  const c = Number(code);
-  if (c === 0) return "Sunny";
-  if (c === 1) return "Mostly sunny";
-  if (c === 2) return "Partly cloudy";
-  if (c === 3) return "Cloudy";
-  if (c === 45 || c === 48) return "Fog";
-  if ((c >= 51 && c <= 67) || (c >= 80 && c <= 82)) return "Rain";
-  if ((c >= 71 && c <= 77) || (c >= 85 && c <= 86)) return "Snow";
-  if (c === 95 || c === 96 || c === 99) return "Thunderstorms";
-  return "Current conditions";
-}
-
-async function resolveWeatherLocation(config) {
-  const city = String(config.weather_city || "").trim();
-  const zip = String(config.weather_zip || "").trim();
-  const country = String(config.weather_country || "US").trim().toUpperCase() || "US";
-  const query = city || zip;
-  if (!query) return null;
-
-  const u = new URL("https://geocoding-api.open-meteo.com/v1/search");
-  u.searchParams.set("name", query);
-  u.searchParams.set("count", "1");
-  if (country) u.searchParams.set("country", country);
-
-  const resp = await fetch(u.toString(), { signal: AbortSignal.timeout(8000) });
-  if (!resp.ok) return null;
-  const data = await resp.json();
-  const first = Array.isArray(data?.results) && data.results.length ? data.results[0] : null;
-  if (!first || !Number.isFinite(first.latitude) || !Number.isFinite(first.longitude)) return null;
-
-  return {
-    latitude: Number(first.latitude),
-    longitude: Number(first.longitude),
-    location: [first.name, first.admin1, first.country_code].filter(Boolean).join(", "),
-  };
-}
-
-async function fetchCurrentWeather(config, env) {
-  if (config.weather_enabled === false) return { available: false, reason: "weather_disabled" };
-
-  const cacheKey = `weather:current:${(config.weather_city || "").toLowerCase()}:${(config.weather_zip || "").toLowerCase()}:${(config.weather_country || "US").toLowerCase()}`;
-  const cached = await env.BGDISPLAY_CONFIG.get(cacheKey, { type: "json" });
-  if (cached && cached.fetchedAt && Date.now() - cached.fetchedAt < 10 * 60 * 1000) {
-    return cached;
-  }
-
-  const loc = await resolveWeatherLocation(config);
-  if (!loc) return { available: false, reason: "location_not_found" };
-
-  const weatherUrl = new URL("https://api.open-meteo.com/v1/forecast");
-  weatherUrl.searchParams.set("latitude", String(loc.latitude));
-  weatherUrl.searchParams.set("longitude", String(loc.longitude));
-  weatherUrl.searchParams.set("current", "temperature_2m,weather_code,is_day");
-  weatherUrl.searchParams.set("temperature_unit", "celsius");
-  weatherUrl.searchParams.set("timezone", "auto");
-
-  const resp = await fetch(weatherUrl.toString(), { signal: AbortSignal.timeout(8000) });
-  if (!resp.ok) return { available: false, reason: "weather_upstream_http", http: resp.status };
-  const data = await resp.json();
-  const cur = data?.current;
-  if (!cur || !Number.isFinite(Number(cur.temperature_2m))) {
-    return { available: false, reason: "weather_payload_invalid" };
-  }
-
-  const out = {
-    available: true,
-    outside_temp_c: Number(cur.temperature_2m),
-    inside_temp_c: null,
-    weather_code: Number(cur.weather_code ?? -1),
-    is_day: Number(cur.is_day ?? 1) === 1,
-    description: weatherCodeToDescription(cur.weather_code),
-    location: loc.location,
-    timestamp: Date.now(),
-    fetchedAt: Date.now(),
-  };
-  await env.BGDISPLAY_CONFIG.put(cacheKey, JSON.stringify(out), { expirationTtl: 3600 });
-  return out;
 }
 
 // ─── Dexcom Sensor Session ─────────────────────────────────────────────────────
@@ -1573,12 +1480,6 @@ async function updateDeviceStatus(env, ip, body, config) {
     nsOk: body.nsOk ?? 0, nsFail: body.nsFail ?? 0,
     dexOk: body.dexOk ?? 0, dexFail: body.dexFail ?? 0,
     bgPollFailStreak: body.bgPollFailStreak ?? 0,
-    weatherConfigured: !!body.weatherConfigured,
-    weatherAvailable: !!body.weatherAvailable,
-    weatherCode: body.weatherCode || "",
-    weatherTempOutF: body.weatherTempOutF ?? null,
-    weatherTempInF: body.weatherTempInF ?? null,
-    weatherDataTs: body.weatherDataTs ?? null,
   };
   await env.BGDISPLAY_CONFIG.put("device_status", JSON.stringify(status));
 
@@ -1825,28 +1726,6 @@ export default {
     // ── GET /api/omnipod — Device fetches proxied Omnipod status ─────────────
     if (path === "/api/omnipod" && method === "GET") {
       return json({ available: false, reason: "omnipod_endpoint_retired", ts: Date.now() }, 410);
-    }
-
-    // ── GET /api/weather — Device fetches current weather conditions ────────
-    if (path === "/api/weather" && method === "GET") {
-      const deviceKey = request.headers.get("X-Device-Key");
-      if (!deviceKey) return json({ error: "Missing key" }, 401);
-      const keyHash = await sha256(deviceKey);
-      if (!isDeviceKeyValid(auth, keyHash)) return json({ error: "Invalid key" }, 401);
-      const sig = await verifyDeviceSignature(request, env, keyHash, "");
-      if (!sig.ok) return json({ error: sig.error }, 401);
-
-      const weather = await fetchCurrentWeather(config, env);
-      if (!weather?.available) {
-        return json({
-          available: false,
-          reason: weather?.reason || "weather_unavailable",
-          location: [config.weather_city, config.weather_zip].filter(Boolean).join(" "),
-          ts: Date.now(),
-        });
-      }
-
-      return json({ ...weather, ts: Date.now() });
     }
 
     // ── GET /api/digest — Device fetches AI daily summary ────────────────────
