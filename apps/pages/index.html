@@ -1043,22 +1043,92 @@ function render(){
   const sourceLabel = c.dexcom_user ? 'Dexcom primary' : (c.nightscout_url ? 'Nightscout only' : 'Source not set');
   const lastSeenLabel = fmtTs(m.status?.lastSeen);
 
+  const taskNav = `
+    <div class="task-nav" role="tablist" aria-label="Task views">
+      <button class="task-btn${gTaskView==='connect'?' active':''}" onclick="setTaskView('connect')">Connect device</button>
+      <button class="task-btn${gTaskView==='readings'?' active':''}" onclick="setTaskView('readings')">Reading setup</button>
+      <button class="task-btn${gTaskView==='schedule'?' active':''}" onclick="setTaskView('schedule')">Quiet hours</button>
+      <button class="task-btn${gTaskView==='phone'?' active':''}" onclick="setTaskView('phone')">Phone alerts</button>
+      <button class="task-btn${gTaskView==='overview'?' active':''}" onclick="setTaskView('overview')">Overview</button>
+    </div>`;
+
+  let primaryCards = '';
+  if(gTaskView==='connect'){
+    primaryCards = `
+      <div class="grid">
+        ${section('wifi','icon-wifi',wifiIcon,'Connect to Wi-Fi','Set your home network for BG MiniView',wifiContent)}
+        ${section('ns','icon-dex',dexIcon,'Glucose source accounts','Dexcom first, Nightscout as backup',nsContent)}
+      </div>`;
+  } else if(gTaskView==='readings'){
+    primaryCards = `
+      <div class="grid">
+        ${section('alerts','icon-alert',alertIcon,'Glucose safety targets','Choose the ranges used for alerts',alertContent)}
+        ${section('pump','icon-display',pumpIcon,'Insulin profile','Optional context for smarter summaries',pumpContent)}
+      </div>`;
+  } else if(gTaskView==='schedule'){
+    primaryCards = `
+      <div class="grid">
+        ${section('display','icon-display',displayIcon,'Screen and quiet hours','Clock style, brightness, and DND schedule',displayContent)}
+        ${section('digest','icon-ai',aiIcon,'Daily AI summary','Review and schedule your summary delivery',digestContent)}
+      </div>`;
+  } else if(gTaskView==='phone'){
+    primaryCards = `
+      <div class="grid">
+        ${section('pushover','icon-pushover',pushoverIcon,'Phone notifications','Urgent alerts and digest push settings',pushoverContent)}
+        ${section('digest','icon-ai',aiIcon,'Digest delivery','Daily summary generation and push timing',digestContent)}
+      </div>`;
+  } else {
+    primaryCards = `
+      <div class="grid">
+        ${section('system','icon-system',sysIcon,'Device health','Current status and connection health',sysContent)}
+        ${section('display','icon-display',displayIcon,'Daily display settings','Clock, trend arrow, and quiet hours',displayContent)}
+      </div>
+      <div class="grid">
+        ${section('alerts','icon-alert',alertIcon,'Glucose guardrails','Thresholds and visual alert style',alertContent)}
+        ${section('pushover','icon-pushover',pushoverIcon,'Phone alerts','Configure urgent notifications',pushoverContent)}
+      </div>`;
+  }
+
+  const advancedDrawer = `
+    <div class="advanced-overlay${gAdvancedOpen?' show':''}" onclick="toggleAdvancedDrawer(false)"></div>
+    <aside class="advanced-drawer${gAdvancedOpen?' show':''}">
+      <div class="drawer-head">
+        <div>
+          <div class="drawer-title">Advanced tools</div>
+          <div class="drawer-sub">Technical controls moved here so daily setup stays simple.</div>
+        </div>
+        <button class="btn" onclick="toggleAdvancedDrawer(false)">Close</button>
+      </div>
+      <div class="grid">
+        ${section('control','icon-system',ctrlIcon,'Device actions','Run sync, reboot, and maintenance commands',controlContent)}
+        ${section('alerts_cloud','icon-alert',alertIcon,'Worker alert tuning','Server-side alert thresholds and cooldowns',alertTuningContent)}
+      </div>
+      <div class="grid">
+        ${section('diag','icon-diag',diagIcon,'Diagnostics','Connectivity and service checks',diagContent)}
+        ${section('insights','icon-diag',diagIcon,'Cloud insights','Telemetry trends and worker-side metrics',cloudInsightsContent)}
+      </div>
+      <div class="grid">
+        ${section('security','icon-security',secIcon,'Security','Access control, keys, and protection policies',secContent)}
+        ${section('backup','icon-backup',backupIcon,'Backup and restore','Export, import, and automatic snapshots',backupContent)}
+      </div>
+      <div class="grid">
+        ${section('maint','icon-system',sysIcon,'Maintenance center','Automation, rotations, and source health',maintContent)}
+        ${section('logs','icon-diag',diagIcon,'Log explorer','Search and inspect uploaded SD logs',logExplorerContent)}
+      </div>
+    </aside>`;
+
   document.getElementById('app').innerHTML = `
   <div class="hero-wrap">
     <div class="hero">
-      <h2>Configuration dashboard</h2>
-      <p>Everything is grouped by task so setup is faster and mistakes are easier to catch.</p>
+      <h2>Friendly setup flow</h2>
+      <p>Pick a task and update only what you need. Technical controls are tucked into Advanced tools.</p>
       <div class="hero-actions">
         <div class="toolbar-chip">Source priority: Dexcom → Nightscout fallback</div>
         <div class="toolbar-chip">Version v${m.config_version||0}</div>
       </div>
       <div class="hero-actions top-actions">
-        <button class="btn primary" onclick="expandAll()">Expand all sections</button>
-        <button class="btn ghost" onclick="collapseAll()">Collapse all sections</button>
-        <div class="segmented" role="tablist" aria-label="View mode">
-          <button class="seg-btn${gViewMode==='basic'?' active':''}" onclick="setViewMode('basic')">Basic</button>
-          <button class="seg-btn${gViewMode==='advanced'?' active':''}" onclick="setViewMode('advanced')">Advanced</button>
-        </div>
+        ${taskNav}
+        <button class="btn ghost" onclick="toggleAdvancedDrawer(true)">Open Advanced tools</button>
       </div>
     </div>
     <div class="quick-grid">
@@ -1069,42 +1139,10 @@ function render(){
     </div>
   </div>
   <div class="stack">
-  <div class="grid"><div class="toolbar-chip">Setup sequence: 1) Wi-Fi  2) Data sources  3) Display schedule  4) Glucose targets  5) Phone alerts</div>${gViewMode==='advanced'?'<div class="toolbar-chip">Advanced tuning enabled</div>':'<div class="toolbar-chip">Advanced tools hidden</div>'}</div>
-  <div class="grid">
-    ${section('wifi','icon-wifi',wifiIcon,'Wi-Fi setup','Connect BG MiniView to your network',wifiContent)}
-    ${section('ns','icon-dex',dexIcon,'Data sources','Choose where glucose readings come from',nsContent)}
+  <div class="grid"><div class="toolbar-chip">Simple flow: connect device, set glucose targets, pick quiet hours, then phone alerts.</div><div class="toolbar-chip">Need deeper controls? Use Advanced tools.</div></div>
+  ${primaryCards}
   </div>
-  <div class="grid">
-    ${section('display','icon-display',displayIcon,'Display and schedule','Screen, clock, and quiet hours',displayContent)}
-    ${section('alerts','icon-alert',alertIcon,'Glucose targets','Thresholds and on-device visual alerts',alertContent)}
-  </div>
-  <div class="grid">
-    ${section('pushover','icon-pushover',pushoverIcon,'Phone notifications','Urgent alerts sent through Pushover',pushoverContent)}
-    ${section('digest','icon-ai',aiIcon,'EndoAI','AI-powered glucose insights',digestContent)}
-  </div>
-  <div class="grid">
-    ${section('pump','icon-display',pumpIcon,'Pump profile','Optional AI context about insulin delivery setup',pumpContent)}
-    ${section('system','icon-system',sysIcon,'System status','Live device health and connection details',sysContent)}
-  </div>
-  ${gViewMode==='advanced' ? `
-  <div class="grid">
-    ${section('control','icon-system',ctrlIcon,'Device actions','Run sync, reboot, and maintenance commands',controlContent)}
-    ${section('alerts_cloud','icon-alert',alertIcon,'UI alerts','Worker-side alert thresholds and cooldowns',alertTuningContent)}
-  </div>
-  <div class="grid">
-    ${section('diag','icon-diag',diagIcon,'Diagnostics','Quick connectivity and service checks',diagContent)}
-    ${section('insights','icon-diag',diagIcon,'Cloud insights','Telemetry trends and Worker-side metrics',cloudInsightsContent)}
-  </div>
-  <div class="grid">
-    ${section('security','icon-security',secIcon,'Security','Access control, keys, and protection policies',secContent)}
-    ${section('backup','icon-backup',backupIcon,'Backup and restore','Export, import, and automatic snapshots',backupContent)}
-  </div>
-  <div class="grid">
-    ${section('maint','icon-system',sysIcon,'Maintenance center','Automation, rotations, and source health',maintContent)}
-    ${section('logs','icon-diag',diagIcon,'Log explorer','Search and inspect uploaded SD logs',logExplorerContent)}
-  </div>
-  ` : ''}
-  </div>
+  ${advancedDrawer}
   </div>`;
 
   syncWifiOpenUi();
