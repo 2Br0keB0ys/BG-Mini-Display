@@ -48,12 +48,20 @@ MCP smoke testing (using project test endpoint/key defaults):
 cd apps/cloudflare
 npm run test:mcp
 npm run test:mcp:bg
+npm run test:mcp:health
+npm run test:mcp:pushover
 ```
 
 - `test:mcp` verifies authenticated MCP metadata + `tools/list`.
 - `test:mcp:bg` additionally runs `get_current_bg`.
+- `test:mcp:health` prints a readable worker health summary.
+- `test:mcp:pushover` checks Pushover MCP status and auth readiness.
+- `test:mcp:pushover:live` sends a real test notification.
+- MCP includes `get_key_auth_status` to show active/pending/recovery key state.
+- MCP includes `get_full_readiness` for one-shot readiness checks across auth, digest, Pushover, device recency, and bindings.
 - Override defaults when needed:
     - `./scripts/test_mcp.ps1 -McpUrl "https://<worker>/mcp" -McpKey "bg_ro_..."`
+    - `./scripts/test_mcp.ps1 -UseAdminSession` for admin-session fallback when the device key has rotated.
 
 ## 2) Deploy Config UI (Cloudflare Pages)
 
@@ -102,7 +110,7 @@ Use the Cloudflare Pages UI for:
 - **Pump data source** (Glooko, Tandem, Medtronic, Tidepool) with 30+ minute polling
 - Alert thresholds and DND
 - **Pushover phone alerts** and digest push
-- **EndoAI** — AI-powered glucose summaries (daily at 7:45 AM, hourly 8 AM–11 PM)
+- **EndoAI** — AI-powered glucose summaries (daily at 7:00 AM, hourly 8 AM–11 PM)
 - Security and advanced options
 
 ## Display Features
@@ -146,6 +154,6 @@ Use the Cloudflare Pages UI for:
 - OTA is implemented via `ArduinoOTA` when enabled in firmware.
 - Cellular fallback is a planned hardware path and not currently active.
 - **Pump data sources:** Direct integrations with Glooko, Tandem, Medtronic, and Tidepool APIs
-- **EndoAI:** Daily summaries generated at 7:45 AM US/Central; hourly summaries every hour 8 AM–11 PM. Both can push to Pushover if credentials configured.
+- **EndoAI:** Daily summaries generated at 7:00 AM US/Central; hourly summaries every hour 8 AM–11 PM. Both can push to Pushover if credentials configured.
 - **Build optimizations:** Firmware uses Link-Time Optimization (`-flto`), disabled RTTI/exceptions, and `-O2` for fast compilation.
 - See `CLAUDE.md` for endpoint lists, auth model, pump provider details, and full architecture.

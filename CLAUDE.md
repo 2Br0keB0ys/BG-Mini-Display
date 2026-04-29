@@ -143,7 +143,7 @@ All adapters follow a common interface: authenticate, fetch latest pump data, re
 | POST | `/mcp` | MCP server — tool calls for BG data, config read, digest |
 
 **Cron triggers** (defined in `wrangler.toml`):
-- `45 12,13 * * *` — `generateDailyDigest(env, false, "daily")`: generates daily AI summary via `@cf/meta/llama-3.1-8b-instruct` using last 24h of Nightscout readings at 7:45 AM US/Central. Guard prevents double-run per calendar day. Stores in KV key `daily_digest`. Pushes to Pushover at configured hour if enabled.
+- `0 12,13 * * *` — `generateDailyDigest(env, false, "daily")`: generates daily AI summary via configured `ai_model` (default `@cf/meta/llama-3.1-8b-instruct`; currently using `@cf/meta/llama-3.3-70b-instruct-fp8-fast` in deployed config) using last 24h of Nightscout readings at 7:00 AM US/Central. Guard prevents double-run per calendar day. Stores in KV key `daily_digest`. Pushes to Pushover at configured hour if enabled.
 - `0 14-23 * * *` + `0 0-5 * * *` — `generateDailyDigest(env, false, "hourly")`: generates hourly summaries (1-hour window) every hour 8 AM–11 PM US/Central. Stored per-hour in KV keys like `hourly_digest_14`. Pushes to Pushover if digest push enabled. Uses shorter AI prompts (1-2 sentences, 120 token limit).
 - `*/5 * * * *` — `runPushoverAlertCheck()` + `sendDigestPushover()`: checks critical BG thresholds and sends Pushover notifications; also handles daily/hourly digest Pushover pushes on schedule.
 
@@ -157,10 +157,10 @@ Security features: replay protection (nonce + ±5min timestamp), IP-based rate l
 
 ### AI Architecture (Workers AI Integration)
 
-**Overview:** BG MiniView uses Cloudflare Workers AI to generate contextual glucose summary text via Llama 3.1 8B instruct model. Digests are generated on a cron schedule and delivered to the user via Pushover notifications (no device display). The system supports both daily summaries (24-hour window) and hourly summaries (rolling 1-hour window).
+**Overview:** BG MiniView uses Cloudflare Workers AI to generate contextual glucose summary text via a configurable model (`ai_model` in config). Digests are generated on a cron schedule and delivered to the user via Pushover notifications (no device display). The system supports both daily summaries (24-hour window) and hourly summaries (rolling 1-hour window).
 
 **AI Model & Configuration:**
-- **Model:** `@cf/meta/llama-3.1-8b-instruct` (Cloudflare Workers AI)
+- **Model:** Configurable via `ai_model`; code default is `@cf/meta/llama-3.1-8b-instruct`, and current deployed value is `@cf/meta/llama-3.3-70b-instruct-fp8-fast`.
 - **Temperature:** 0.7 (balanced creativity/consistency)
 - **Token limits:** Daily 280 tokens (≈180 words), Hourly 120 tokens (≈80 words)
 - **Binding:** `AI` (configured in `wrangler.toml` and `wrangler.toml` environment bindings)
