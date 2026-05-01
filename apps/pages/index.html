@@ -161,48 +161,46 @@ body{
 }
 .quick-tile .k{font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.08em;font-weight:700}
 .quick-tile .v{font-size:13px;font-weight:700;margin-top:5px}
-.stack{display:flex;flex-direction:column;gap:1rem}
-.flow-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:1rem;align-items:start}
+.stack{display:flex;flex-direction:column;gap:.75rem}
+.flow-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:.75rem;align-items:start}
 
 /* Section */
 .section{
-  background:linear-gradient(175deg,rgba(17,26,42,.95),rgba(12,19,31,.95));
-  border:1px solid var(--border);
-  border-radius:16px;
+  background:rgba(14,22,36,.85);
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:13px;
   overflow:hidden;
-  box-shadow:0 10px 24px rgba(0,0,0,.26);
+  box-shadow:0 2px 10px rgba(0,0,0,.18);
 }
 .section-head{
   display:flex;
   align-items:center;
-  gap:11px;
-  padding:13px 16px;
-  cursor:pointer;
+  gap:9px;
+  padding:9px 13px;
+  cursor:default;
   user-select:none;
-  border-bottom:1px solid transparent;
-  transition:background .16s;
+  border-bottom:1px solid rgba(255,255,255,.07);
 }
-.section-head:hover{background:rgba(255,255,255,.03)}
-.section-head.open{border-bottom-color:var(--border)}
-.section-icon{width:30px;height:30px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;border:1px solid rgba(255,255,255,.12)}
-.section-icon svg{width:15px;height:15px}
-.section-title{font-family:'Space Grotesk','Manrope',sans-serif;font-size:13px;font-weight:700;flex:1;letter-spacing:.01em}
-.section-sub{font-size:11px;color:var(--muted);margin-top:1px}
-.chevron{width:16px;height:16px;color:var(--faint);transition:transform .2s;flex-shrink:0}
-.chevron.open{transform:rotate(180deg)}
-.section-body{display:none;animation:fadeSlide .18s ease}
+.section-head:hover{background:transparent}
+.section-head.open{border-bottom-color:rgba(255,255,255,.07)}
+.section-icon{width:24px;height:24px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0;border:1px solid rgba(255,255,255,.1)}
+.section-icon svg{width:11px;height:11px}
+.section-title{font-family:'Space Grotesk','Manrope',sans-serif;font-size:11.5px;font-weight:700;flex:1;letter-spacing:.01em;text-transform:uppercase;color:var(--muted)}
+.section-sub{font-size:10px;color:var(--faint);margin-top:1px}
+.chevron{display:none}
+.section-body{display:none}
 .section-body.open{display:block}
 
 /* Field */
-.field{padding:12px;border:1px solid var(--border);border-radius:13px;background:rgba(255,255,255,.02);margin:0 0 10px 0;display:flex;flex-direction:column;gap:9px}
-.field:last-child{margin-bottom:0}
-.field-label{min-width:0}
-.field-label .name{font-size:13px;font-weight:800}
-.field-label .desc{font-size:11px;color:var(--muted);margin-top:2px;line-height:1.35}
-.field-control{display:flex;justify-content:flex-end;align-items:center;gap:8px;flex-wrap:wrap}
-.subfield{padding:9px 12px;margin:0 0 8px 0;display:flex;align-items:center;gap:12px;border:1px dashed var(--border);border-radius:12px;background:rgba(255,255,255,.015)}
-.subfield:last-child{margin-bottom:0}
-.subfield .field-label .name{font-size:12px;font-weight:700;color:var(--muted)}
+.field{padding:10px 13px;border:none;border-bottom:1px solid rgba(255,255,255,.055);background:none;margin:0;display:flex;flex-direction:row;align-items:center;gap:12px}
+.field:last-child{border-bottom:none}
+.field-label{flex:1;min-width:0}
+.field-label .name{font-size:12.5px;font-weight:700}
+.field-label .desc{font-size:10.5px;color:var(--muted);margin-top:2px;line-height:1.35}
+.field-control{display:flex;justify-content:flex-end;align-items:center;gap:8px;flex-wrap:wrap;flex-shrink:0}
+.subfield{padding:8px 13px 8px 30px;margin:0;display:flex;align-items:center;gap:12px;border:none;border-bottom:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.012)}
+.subfield:last-child{border-bottom:none}
+.subfield .field-label .name{font-size:11px;font-weight:700;color:var(--muted)}
 
 /* Inputs */
 input[type=text],input[type=password],input[type=url],input[type=number],select{
@@ -260,12 +258,12 @@ input[type=text].wide,input[type=password].wide,input[type=url].wide{width:220px
 .key-display{font-family:var(--mono);font-size:11px;background:var(--surface-2);padding:3px 8px;border-radius:var(--r);color:var(--muted);border:1px solid var(--border)}
 .rotate-block{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
 .rotate-meta{font-size:11px;color:var(--muted);text-align:right}
-.diag-row{display:flex;justify-content:space-between;align-items:center;padding:8px 16px;font-size:12px;border-bottom:1px solid var(--border)}
+.diag-row{display:flex;justify-content:space-between;align-items:center;padding:9px 13px;font-size:12px;border-bottom:1px solid rgba(255,255,255,.055)}
 .diag-row:last-child{border-bottom:none}
-.vrow{display:flex;justify-content:space-between;align-items:center;padding:8px 16px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)}
+.vrow{display:flex;justify-content:space-between;align-items:center;padding:9px 13px;font-size:12px;color:var(--muted);border-bottom:1px solid rgba(255,255,255,.055)}
 .vrow:last-child{border-bottom:none}
 .vrow .label{color:var(--text)}
-.log-row{display:flex;justify-content:space-between;padding:4px 16px;font-size:11px;color:var(--muted);border-bottom:1px solid var(--border)}
+.log-row{display:flex;justify-content:space-between;padding:4px 13px;font-size:11px;color:var(--muted);border-bottom:1px solid rgba(255,255,255,.04)}
 .log-row:last-child{border-bottom:none}
 .thr-row{display:flex;align-items:center;gap:6px}
 .thr-row input{width:68px}
@@ -278,7 +276,7 @@ input[type=text].wide,input[type=password].wide,input[type=url].wide{width:220px
 .segmented{display:inline-flex;gap:4px;padding:4px;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:12px}
 .seg-btn{padding:6px 10px;font-size:12px;font-weight:700;border:1px solid transparent;border-radius:9px;background:transparent;color:var(--muted);cursor:pointer;transition:all .14s}
 .seg-btn.active{background:var(--surface-2);color:var(--text);border-color:var(--border-mid)}
-.helper-tip{margin:10px 16px 6px;padding:9px 10px;border-radius:10px;border:1px solid var(--border);background:rgba(255,255,255,.03);font-size:11px;line-height:1.45;color:var(--muted)}
+.helper-tip{margin:0;padding:8px 13px;border-radius:0;border:none;border-bottom:1px solid rgba(255,255,255,.055);background:rgba(255,200,80,.03);font-size:10.5px;line-height:1.45;color:var(--muted)}
 .helper-tip b{color:var(--text);font-weight:700}
 .helper-tip strong{color:#ffd9bf;font-weight:700}
 .task-nav{display:flex;gap:8px;flex-wrap:wrap}
@@ -296,6 +294,7 @@ input[type=text].wide,input[type=password].wide,input[type=url].wide{width:220px
 .drawer-title{font-family:'Space Grotesk','Manrope',sans-serif;font-size:15px;font-weight:700}
 .drawer-sub{font-size:11px;color:var(--muted);margin-top:2px}
 .drawer-chip-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:.75rem;padding:0 .2rem}
+.drawer-actions{display:flex;gap:8px;align-items:center}
 
 /* Section icon colors */
 .icon-wifi{background:rgba(85,160,255,.14)}.icon-wifi svg{stroke:#8bc3ff;fill:none}
@@ -336,7 +335,7 @@ input[type=text].wide,input[type=password].wide,input[type=url].wide{width:220px
 <div class="header">
   <div class="header-inner">
     <div class="logo"><svg viewBox="0 0 24 24"><path d="M12 2a7 7 0 017 7c0 5-7 13-7 13S5 14 5 9a7 7 0 017-7zm0 4a3 3 0 100 6 3 3 0 000-6z"/></svg></div>
-    <div><h1>BG MiniView</h1><div id="configMeta" class="header-meta">Last settings update: —</div></div>
+    <div><h1>BG MiniView <span id="uiVersionBadge" style="font-size:11px;color:var(--muted);font-weight:500;letter-spacing:.01em;vertical-align:middle"></span></h1><div id="configMeta" class="header-meta">Last settings update: —</div></div>
     <div id="statusPill" class="status-pill offline"><span class="dot"></span>Loading...</div>
     <div class="save-bar"><button class="save-btn" onclick="saveConfig()">Save changes</button></div>
   </div>
@@ -348,6 +347,8 @@ input[type=text].wide,input[type=password].wide,input[type=url].wide{width:220px
 
 <script>
 const WORKER_URL = "https://bgdisplay-worker.zanebaize.workers.dev";
+const UI_VERSION = "1.2.0";
+(function(){ const el=document.getElementById('uiVersionBadge'); if(el) el.textContent='v'+UI_VERSION; })();
 let CONFIG = {}, META = {}, METRICS = null;
 let ADMIN_SESSION = "";
 let LOGS = { meta: null, preview: [], total: 0 };
@@ -355,7 +356,6 @@ let gDirty = false;
 function markDirty() { gDirty = true; }
 window.addEventListener('beforeunload', e => { if (gDirty) { e.preventDefault(); e.returnValue = ''; } });
 let MAINT = null;
-let gTaskView = localStorage.getItem('task-view') || 'connect';
 let gAdvancedOpen = false;
 
 // ── API ──────────────────────────────────────────────────────────────────────
@@ -588,8 +588,8 @@ function validateConfig(c) {
 }
 
 async function saveConfig(){
-  const btn=document.querySelector('.save-btn');
-  if(btn){ btn.textContent='Saving...'; btn.disabled=true; }
+  const buttons=[...document.querySelectorAll('.save-btn,[data-save-config="1"]')];
+  buttons.forEach(btn=>{ btn.dataset.prevText = btn.textContent; btn.textContent='Saving...'; btn.disabled=true; });
   try{
     const updates=collectConfig();
     const validationErrors = validateConfig(updates);
@@ -617,7 +617,7 @@ async function saveConfig(){
   }catch(e){
     toast('❌ Error saving — check Worker');
   } finally {
-    if(btn){ btn.textContent='Save changes'; btn.disabled=false; }
+    buttons.forEach(btn=>{ btn.textContent = btn.dataset.prevText || 'Save changes'; btn.disabled=false; delete btn.dataset.prevText; });
   }
 }
 
@@ -740,13 +740,6 @@ async function detectTimezoneNow(){
   }catch(e){
     toast('\u274c Timezone detection failed');
   }
-}
-
-function setTaskView(mode){
-  const allowed = ['connect','readings','schedule','phone','overview'];
-  gTaskView = allowed.includes(mode) ? mode : 'connect';
-  localStorage.setItem('task-view', gTaskView);
-  render();
 }
 
 function toggleAdvancedDrawer(forceOpen){
@@ -1017,7 +1010,7 @@ function render(){
     subfield('Lockout duration',sel('lockout_duration_min',[[5,'5 minutes'],[15,'15 minutes'],[60,'1 hour']],c.lockout_duration_min))+
     field('Last known device IP','Masked for privacy',`<span class="key-display">${m.status?.ip||'—'}</span>`)+
     field('Failed auth attempts','Last 24 hours',badge(`${m.failedAuthCount||0} attempts`,m.failedAuthCount>0?'red':'green'))+
-    `<div style="padding:8px 16px;background:var(--surface-2);border-top:1px solid var(--border)"><div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Recent configuration changes <span style="font-size:10px;font-weight:400">(v${m.config_version||0})</span></div>${(m.changelog||[]).slice(0,5).map(l=>`<div class="log-row"><span>${l.msg}</span><span>${fmtTs(l.ts)}</span></div>`).join('')||'<div style="font-size:12px;color:var(--faint);padding:4px 0">No changes recorded yet</div>'}<div style="text-align:right;margin-top:6px"><button class="btn" onclick="clearLog()">Clear history</button></div></div>`;
+    `<div style="padding:8px 13px;background:var(--surface-2);border-top:1px solid rgba(255,255,255,.07)"><div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Recent configuration changes <span style="font-size:10px;font-weight:400">(v${m.config_version||0})</span></div>${(m.changelog||[]).slice(0,5).map(l=>`<div class="log-row"><span>${l.msg}</span><span>${fmtTs(l.ts)}</span></div>`).join('')||'<div style="font-size:12px;color:var(--faint);padding:4px 0">No changes recorded yet</div>'}<div style="text-align:right;margin-top:6px"><button class="btn" onclick="clearLog()">Clear history</button></div></div>`;
 
   // Backup section
   const backupContent =
@@ -1032,7 +1025,7 @@ function render(){
     `<div class="diag-row"><span>Worker latency</span><span id="diag-latency" style="font-size:12px;color:var(--muted)">—</span></div>`+
     `<div class="diag-row"><span>Last seen</span><span style="font-size:12px;color:var(--muted)">${fmtTs(m.status?.lastSeen)}</span></div>`+
     `<div class="diag-row"><span>Firmware version</span><span style="font-size:12px;color:var(--muted)">${m.status?.firmware||'—'}</span></div>`+
-    `<div style="padding:10px 16px"><button class="btn full" onclick="runDiagnostics()">Run connectivity check</button></div>`;
+    `<div style="padding:10px 13px"><button class="btn full" onclick="runDiagnostics()">Run connectivity check</button></div>`;
 
   // Device Control section
   const cmd = m.pendingCommand;
@@ -1101,50 +1094,16 @@ function render(){
   const sourceLabel = c.dexcom_user ? 'Dexcom primary' : (c.nightscout_url ? 'Nightscout only' : 'Source not set');
   const lastSeenLabel = fmtTs(m.status?.lastSeen);
 
-  const taskNav = `
-    <div class="task-nav" role="tablist" aria-label="Task views">
-      <button class="task-btn${gTaskView==='connect'?' active':''}" onclick="setTaskView('connect')">Connect device</button>
-      <button class="task-btn${gTaskView==='readings'?' active':''}" onclick="setTaskView('readings')">Reading setup</button>
-      <button class="task-btn${gTaskView==='schedule'?' active':''}" onclick="setTaskView('schedule')">Quiet hours</button>
-      <button class="task-btn${gTaskView==='phone'?' active':''}" onclick="setTaskView('phone')">Phone alerts</button>
-      <button class="task-btn${gTaskView==='overview'?' active':''}" onclick="setTaskView('overview')">Overview</button>
-    </div>`;
-
-  let primaryCards = '';
-  if(gTaskView==='connect'){
-    primaryCards = `
+  const primaryCards = `
       <div class="flow-grid">
-        ${section('wifi','icon-wifi',wifiIcon,'Connect to Wi-Fi','Set your home network for BG MiniView',wifiContent)}
-        ${section('ns','icon-dex',dexIcon,'Glucose source accounts','Dexcom first, Nightscout as backup',nsContent)}
+        ${section('wifi','icon-wifi',wifiIcon,'Connect to Wi-Fi','Your home network SSID and password',wifiContent)}
+        ${section('ns','icon-dex',dexIcon,'Glucose sources','Dexcom primary · Nightscout fallback',nsContent)}
+        ${section('alerts','icon-alert',alertIcon,'Glucose targets','Ranges used for alerts and display color coding',alertContent)}
+        ${section('display','icon-display',displayIcon,'Screen & quiet hours','Clock style, brightness, and DND schedule',displayContent)}
+        ${section('pushover','icon-pushover',pushoverIcon,'Phone alerts','Urgent alerts and daily digest via Pushover',pushoverContent)}
+        ${section('digest','icon-ai',aiIcon,'AI daily summary','Review and schedule your glucose summary',digestContent)}
+        ${section('pump','icon-display',pumpIcon,'Insulin profile','Optional context for smarter AI summaries',pumpContent)}
       </div>`;
-  } else if(gTaskView==='readings'){
-    primaryCards = `
-      <div class="flow-grid">
-        ${section('alerts','icon-alert',alertIcon,'Glucose safety targets','Choose the ranges used for alerts',alertContent)}
-        ${section('pump','icon-display',pumpIcon,'Insulin profile','Optional context for smarter summaries',pumpContent)}
-      </div>`;
-  } else if(gTaskView==='schedule'){
-    primaryCards = `
-      <div class="flow-grid">
-        ${section('display','icon-display',displayIcon,'Screen and quiet hours','Clock style, brightness, and DND schedule',displayContent)}
-        ${section('system','icon-system',sysIcon,'System at a glance','Connection and device health details',sysContent)}
-      </div>`;
-  } else if(gTaskView==='phone'){
-    primaryCards = `
-      <div class="flow-grid">
-        ${section('pushover','icon-pushover',pushoverIcon,'Phone notifications','Urgent alerts and digest push settings',pushoverContent)}
-        ${section('alerts','icon-alert',alertIcon,'Alert targets','Thresholds that drive urgent notifications',alertContent)}
-      </div>`;
-  } else {
-    primaryCards = `
-      <div class="flow-grid">
-        ${section('system','icon-system',sysIcon,'Device health','Current status and connection health',sysContent)}
-        ${section('display','icon-display',displayIcon,'Daily display settings','Clock, trend arrow, and quiet hours',displayContent)}
-        ${section('digest','icon-ai',aiIcon,'Daily AI summary','Review and schedule your summary delivery',digestContent)}
-        ${section('alerts','icon-alert',alertIcon,'Glucose guardrails','Thresholds and visual alert style',alertContent)}
-        ${section('pushover','icon-pushover',pushoverIcon,'Phone alerts','Configure urgent notifications',pushoverContent)}
-      </div>`;
-  }
 
   const advancedDrawer = `
     <div class="advanced-overlay${gAdvancedOpen?' show':''}" onclick="toggleAdvancedDrawer(false)"></div>
@@ -1154,7 +1113,10 @@ function render(){
           <div class="drawer-title">Advanced tools</div>
           <div class="drawer-sub">Technical controls moved here so daily setup stays simple.</div>
         </div>
-        <button class="btn" onclick="toggleAdvancedDrawer(false)">Close</button>
+        <div class="drawer-actions">
+          <button class="btn primary" data-save-config="1" onclick="saveConfig()">Save changes</button>
+          <button class="btn" onclick="toggleAdvancedDrawer(false)">Close</button>
+        </div>
       </div>
       <div class="drawer-chip-row">
         <div class="toolbar-chip">Operations</div>
@@ -1177,26 +1139,22 @@ function render(){
   document.getElementById('app').innerHTML = `
   <div class="hero-wrap">
     <div class="hero">
-      <h2>Friendly setup flow</h2>
-      <p>Pick a task and update only what you need. Technical controls are tucked into Advanced tools.</p>
+      <h2>Device settings</h2>
+      <p>All settings in one view. Diagnostics and technical controls are in Advanced tools.</p>
       <div class="hero-actions">
-        <div class="toolbar-chip">Source priority: Dexcom → Nightscout fallback</div>
-        <div class="toolbar-chip">Version v${m.config_version||0}</div>
-      </div>
-      <div class="hero-actions top-actions">
-        ${taskNav}
-        <button class="btn ghost" onclick="toggleAdvancedDrawer(true)">Open Advanced tools</button>
+        <div class="toolbar-chip">Dexcom primary · Nightscout fallback</div>
+        <div class="toolbar-chip">Config v${m.config_version||0}</div>
+        <button class="btn ghost" onclick="toggleAdvancedDrawer(true)">Advanced tools</button>
       </div>
     </div>
     <div class="quick-grid">
       <div class="quick-tile"><div class="k">Device status</div><div class="v">${online?'Online':'Offline'}</div></div>
-      <div class="quick-tile"><div class="k">Connection mode</div><div class="v">${connectionLabel}</div></div>
+      <div class="quick-tile"><div class="k">Connection</div><div class="v">${connectionLabel}</div></div>
       <div class="quick-tile"><div class="k">Last seen</div><div class="v">${lastSeenLabel}</div></div>
       <div class="quick-tile"><div class="k">Data source</div><div class="v">${sourceLabel}</div></div>
     </div>
   </div>
   <div class="stack">
-  <div class="grid"><div class="toolbar-chip">Simple flow: connect device, set glucose targets, pick quiet hours, then phone alerts.</div><div class="toolbar-chip">Need deeper controls? Use Advanced tools.</div></div>
   ${primaryCards}
   </div>
   ${advancedDrawer}
