@@ -124,6 +124,7 @@ const DEFAULT_CONFIG = {
   admin_write_rate_limit_per_min: 15,
   session_timeout_min: 30, ip_allowlist_enabled: false, ip_allowlist: [],
   // Alerts / Monitoring
+  alert_offline_enabled: true,
   alert_offline_min: 15,
   alert_stale_min: 30,
   alert_battery_low_pct: 15,
@@ -157,6 +158,7 @@ function normalizeConfig(cfg) {
   // Pushover credentials are stored encrypted, never in the main config blob
   delete out.pushover_user_key; delete out.pushover_api_token;
 
+  out.alert_offline_enabled = out.alert_offline_enabled !== false;
   out.alert_offline_min = Math.max(5, Math.min(240, Number(out.alert_offline_min || 15)));
   out.alert_stale_min = Math.max(5, Math.min(240, Number(out.alert_stale_min || 30)));
   out.alert_battery_low_pct = Math.max(5, Math.min(40, Number(out.alert_battery_low_pct || 15)));
@@ -1022,7 +1024,7 @@ async function buildFullReadinessReport(env, config, auth) {
 
 async function runDeviceOfflineCheck(env) {
   const config = normalizeConfig(await env.BGDISPLAY_CONFIG.get("config", { type: "json" }));
-  if (!config.pushover_enabled) return;
+  if (!config.pushover_enabled || !config.alert_offline_enabled) return;
 
   let creds = null;
   try {
@@ -1100,6 +1102,14 @@ async function runPushoverAlertCheck(env) {
     await appendChangeLog(env, `Pushover alert sent: ${fullMsg}`);
     await appendWorkerEvent(env, { type: "pushover-alert", msg: fullMsg });
   }
+}
+
+async function touchDeviceSeen(env, ip, route = "") {
+  const status = await env.BGDISPLAY_CONFIG.get("device_status", { type: "json" }) || {};
+  status.lastSeen = Date.now();
+  status.ip = maskIP(ip);
+  if (route) status.lastContactPath = route;
+  await env.BGDISPLAY_CONFIG.put("device_status", JSON.stringify(status));
 }
 
 // ─── Feature 3: MCP Server (JSON-RPC 2.0) ─────────────────────────────────────
@@ -1946,6 +1956,7 @@ export default {
       const sig = await verifyDeviceSignature(request, env, keyHash, "");
       if (!sig.ok) return json({ error: sig.error }, 401);
       await clearFailedAuth(env, ip);
+      await touchDeviceSeen(env, ip, "/api/ping");
       const version = await getConfigVersion(env);
       const deviceVersion = parseInt(url.searchParams.get("v") || "0");
       return json({ v: version, changed: version > deviceVersion, ts: Date.now() });
@@ -1960,6 +1971,7 @@ export default {
       const keyHash = await sha256(deviceKey);
       if (auth.pendingKeyHash && keyHash === auth.pendingKeyHash) {
         await promoteKey(env, auth); await clearFailedAuth(env, ip);
+        await touchDeviceSeen(env, ip, "/api/config");
         const version = await getConfigVersion(env);
         const deviceConfig = { ...config };
         return json({ config: deviceConfig, config_version: version, ts: Date.now(), keyConfirmed: true });
@@ -1972,6 +1984,7 @@ export default {
       const sig = await verifyDeviceSignature(request, env, keyHash, "");
       if (!sig.ok) return json({ error: sig.error }, 401);
       await clearFailedAuth(env, ip);
+      await touchDeviceSeen(env, ip, "/api/config");
       const pendingKey = await handleAutoRotation(env, auth);
       auth = await env.BGDISPLAY_CONFIG.get("auth", { type: "json" });
       const version = await getConfigVersion(env);
@@ -2060,6 +2073,7 @@ export default {
       if (!isDeviceKeyValid(auth, keyHash)) return json({ error: "Invalid key" }, 401);
       const sig = await verifyDeviceSignature(request, env, keyHash, "");
       if (!sig.ok) return json({ error: sig.error }, 401);
+      await touchDeviceSeen(env, ip, "/api/command");
       const cmd = await env.BGDISPLAY_CONFIG.get("command:all", { type: "json" });
       if (!cmd) return json({ pending: false, ts: Date.now() });
       if (cmd.expiresAt && Date.now() > cmd.expiresAt) {
@@ -2107,6 +2121,7 @@ export default {
       if (!isDeviceKeyValid(auth, keyHash)) return json({ error: "Invalid key" }, 401);
       const sig = await verifyDeviceSignature(request, env, keyHash, "");
       if (!sig.ok) return json({ error: sig.error }, 401);
+      await touchDeviceSeen(env, ip, "/api/digest");
       const digest = await env.BGDISPLAY_CONFIG.get("daily_digest", { type: "json" });
       if (!digest) return json({ available: false });
       return json({ available: true, text: digest.text, generatedAt: digest.generatedAt, date: digest.date, stats: digest.stats || null });
@@ -2179,7 +2194,7 @@ export default {
 
       const offlineMin = Number(config?.alert_offline_min || 15);
       const cooldownMs = Number(config?.alert_cooldown_min || 60) * 60 * 1000;
-      if (status?.lastSeen && Date.now() - status.lastSeen > offlineMin * 60 * 1000) {
+      if (config?.alert_offline_enabled !== false && status?.lastSeen && Date.now() - status.lastSeen > offlineMin * 60 * 1000) {
         if (await shouldEmitAlert(env, "device-offline", cooldownMs)) {
           await appendChangeLog(env, `Alert: device offline (>${offlineMin} min)`);
           await appendWorkerEvent(env, { type: "alert", level: "warning", msg: "device-offline" });
@@ -2356,7 +2371,7 @@ export default {
       if (!adminReplay.ok) return json({ error: adminReplay.error }, 409);
       const body = await request.json().catch(() => null);
       if (!body?.type) return json({ error: "Missing command type" }, 400);
-      const allowed = ["reboot", "sync-now", "upload-logs", "factory-reset"];
+      const allowed = ["reboot", "sync-now", "upload-logs", "factory-reset", "fetch-digest", "display-message"];
       if (!allowed.includes(body.type)) return json({ error: "Unsupported command" }, 400);
       const cmd = { id: crypto.randomUUID(), type: body.type, args: body.args || {}, createdAt: Date.now(), expiresAt: Date.now() + 10 * 60 * 1000 };
       await env.BGDISPLAY_CONFIG.put("command:all", JSON.stringify(cmd));

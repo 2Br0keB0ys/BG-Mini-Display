@@ -3,7 +3,7 @@
 #include <Preferences.h>
 #include "crypto.h"
 
-#define FIRMWARE_VERSION "4.0.1-S"
+#define FIRMWARE_VERSION "4.1.0"
 
 #ifndef ENABLE_OTA
 #define ENABLE_OTA 1
@@ -65,6 +65,10 @@ struct AppConfig {
 
   // Last known config version from Worker
   int  lastConfigVersion=0;
+
+  // Glooko / Omnipod pump proxy (credentials are worker-side, device uses /api/omnipod)
+  bool glookoEnabled=false;
+  int  glookoPollMin=30;
 };
 
 inline void sanitizeConfig(AppConfig& c) {
@@ -81,6 +85,9 @@ inline void sanitizeConfig(AppConfig& c) {
   if (c.low <= c.urgentLow) c.low = c.urgentLow + 1;
   if (c.high <= c.low) c.high = c.low + 1;
   if (c.urgentHigh <= c.high) c.urgentHigh = c.high + 1;
+
+  if (c.glookoPollMin < 30)  c.glookoPollMin = 30;
+  if (c.glookoPollMin > 240) c.glookoPollMin = 240;
 }
 
 // Save config — sensitive fields encrypted, rest plain
@@ -118,6 +125,8 @@ inline void saveConfig(Preferences& p, const AppConfig& c) {
   p.putInt("autoDim",       c.autoDimMin);
   p.putInt("dimTo",         c.dimToPct);
   p.putInt("cfgVersion",    c.lastConfigVersion);
+  p.putBool("glookoEn",     c.glookoEnabled);
+  p.putInt("glookoMin",     c.glookoPollMin);
 
   // Encrypted sensitive fields
   nvsPutEncrypted(p, "deviceKey",  c.deviceKey);
@@ -163,6 +172,8 @@ inline void loadConfig(Preferences& p, AppConfig& c) {
   c.autoDimMin         = p.getInt("autoDim",10);
   c.dimToPct           = p.getInt("dimTo",10);
   c.lastConfigVersion  = p.getInt("cfgVersion",0);
+  c.glookoEnabled      = p.getBool("glookoEn", false);
+  c.glookoPollMin      = p.getInt("glookoMin", 30);
 
   // Decrypt sensitive fields
   String dk = nvsGetEncrypted(p, "deviceKey");

@@ -18,6 +18,7 @@
 #include "sd_logger.h"
 #include "ota.h"
 #include "ws_sync.h"
+#include "glooko.h"
 
 #if __has_include("secrets.h")
 #include "secrets.h"
@@ -63,6 +64,10 @@ struct SourceHealthStats {
 SourceHealthStats sourceHealth;
 char gResetReason[20] = "unknown";
 char gDigestText[1024] = "";  // Worker caps daily digest at ~980 chars; safe with 1024-byte buffer
+OmnipodStatus lastOmnipod;
+unsigned long lastOmnipodPoll = 0;
+unsigned long lastDigestFetch = 0;
+int           gDigestFetchDay = -1; // local yday of last successful digest fetch
 bool gFactoryResetArmed = false;
 unsigned long gFactoryResetArmMs = 0;
 bool gLogUploadActive = false;   // set true during uploadSdLogs, prevents concurrent auto-reboot
@@ -366,6 +371,21 @@ void setup() {
     else if (lastReading.source == SOURCE_DEXCOM) src = "DEX";
     sdLogBG(lastReading.value, lastReading.trend, src);
     logRuntimeSnapshot("initial-fetch", appConfig, lastReading);
+
+    // Fetch AI digest on boot so BtnB / touch shows it immediately
+    fetchDigest(appConfig);
+    lastDigestFetch = millis();
+    {
+      time_t epoch = time(nullptr);
+      if (epoch > 1700000000) {
+        struct tm t;
+        localtime_r(&epoch, &t);
+        gDigestFetchDay = t.tm_yday;
+      }
+    }
+    if (strlen(gDigestText)) {
+      sdLogfEx("AI", "DIGEST", "boot_ok len:%u", (unsigned)strlen(gDigestText));
+    }
   }
 }
 
@@ -550,6 +570,35 @@ void loop() {
       Serial.println("WiFi lost — reconnecting...");
       sdLogEx("ERR", "WIFI", "link_lost_reconnect");
       WiFi.reconnect();
+    }
+  }
+
+  // Digest auto-refresh — once per local calendar day (picks up the freshly generated morning digest)
+  if (WiFi.status() == WL_CONNECTED && now - lastDigestFetch > 14400000UL) { // check every 4 h
+    time_t epoch = time(nullptr);
+    if (epoch > 1700000000) {
+      struct tm t;
+      localtime_r(&epoch, &t);
+      bool newDay  = (t.tm_yday != gDigestFetchDay);
+      bool noCache = (strlen(gDigestText) == 0);
+      if (newDay || noCache) {
+        sdLog("AI", "Auto-refreshing digest");
+        fetchDigest(appConfig);
+        lastDigestFetch = now;
+        if (strlen(gDigestText)) gDigestFetchDay = t.tm_yday;
+      } else {
+        lastDigestFetch = now; // reset timer; nothing to fetch yet
+      }
+    }
+  }
+
+  // Omnipod / pump proxy poll — only when Glooko integration enabled
+  if (appConfig.glookoEnabled && WiFi.status() == WL_CONNECTED) {
+    unsigned long podPollMs = (unsigned long)appConfig.glookoPollMin * 60000UL;
+    if (podPollMs < 1800000UL) podPollMs = 1800000UL; // hard floor 30 min
+    if (now - lastOmnipodPoll > podPollMs) {
+      lastOmnipodPoll = now;
+      fetchGlookoOmnipod(appConfig, lastOmnipod);
     }
   }
 
@@ -779,6 +828,8 @@ void pullCloudflareConfig(AppConfig& cfg, Preferences& p) {
     if (c.containsKey("timezone"))            strlcpy(cfg.timezone,     c["timezone"],       32);
     if (c.containsKey("dnd_from"))            strlcpy(cfg.dndFrom,      c["dnd_from"],       8);
     if (c.containsKey("dnd_to"))              strlcpy(cfg.dndTo,        c["dnd_to"],         8);
+    if (c.containsKey("glooko_enabled"))      cfg.glookoEnabled    = c["glooko_enabled"];
+    if (c.containsKey("glooko_poll_min"))     cfg.glookoPollMin    = c["glooko_poll_min"];
 
     if (c.containsKey("dnd_schedule") && c["dnd_schedule"].is<JsonObject>()) {
       static const char* kDays[7] = {"sun", "mon", "tue", "wed", "thu", "fri", "sat"};
@@ -915,12 +966,16 @@ void pullCloudflareConfig(AppConfig& cfg, Preferences& p) {
 bool pushStatus(AppConfig& cfg) {
   if (!strlen(cfg.workerUrl)) return false;
   if (!hasValidClock()) return false;
-  HTTPClient http;
   String path = "/api/status";
-  http.begin(String(cfg.workerUrl)+path);
+  String base = normalizeWorkerBase(cfg.workerUrl);
+  String defaultBase = getDefaultWorkerBase();
+  bool usedDefaultBase = false;
+
+  HTTPClient http;
+  http.begin(base + path);
   http.addHeader("Content-Type","application/json");
   http.addHeader("X-Device-Key", cfg.deviceKey);
-  StaticJsonDocument<384> doc;
+  StaticJsonDocument<512> doc;
   doc["connection"]     = "wifi";
   doc["uptime"]         = (millis() - bootTime) / 1000;
   doc["firmware"]       = FIRMWARE_VERSION;
@@ -944,17 +999,53 @@ bool pushStatus(AppConfig& cfg) {
     doc["dexOk"]          = sourceHealth.dexOk;
     doc["dexFail"]        = sourceHealth.dexFail;
     doc["bgPollFailStreak"] = sourceHealth.consecutiveBgFailures;
+    // AI digest availability — lets MCP see whether the device has a cached digest
+    doc["digestAvailable"]  = strlen(gDigestText) > 0;
+    if (gDigestFetchDay >= 0) doc["digestFetchDay"] = gDigestFetchDay;
+    // Omnipod / pump proxy status (only when enabled and valid data available)
+    if (cfg.glookoEnabled) {
+      doc["glookoEnabled"] = true;
+      if (lastOmnipod.valid) {
+        doc["podActive"]      = lastOmnipod.podActive;
+        doc["podMinToExpiry"] = lastOmnipod.minutesToExpiry;
+        if (lastOmnipod.podChangeTimestamp > 0) {
+          doc["podChangeTs"]  = (long)lastOmnipod.podChangeTimestamp;
+        }
+      }
+    }
   String body; serializeJson(doc, body);
-    addSignedHeaders(http, "POST", path, body, cfg);
+  addSignedHeaders(http, "POST", path, body, cfg);
   int code = http.POST(body);
+  http.end();
+
+  if ((code < 0 || code >= 500) && defaultBase.length() > 0 && base != defaultBase) {
+    sdLogEx("ERR", "STATUS", "push_primary_failed_try_default");
+    HTTPClient retry;
+    retry.begin(defaultBase + path);
+    retry.addHeader("Content-Type", "application/json");
+    retry.addHeader("X-Device-Key", cfg.deviceKey);
+    addSignedHeaders(retry, "POST", path, body, cfg);
+    int retryCode = retry.POST(body);
+    retry.end();
+    if (retryCode >= 200 && retryCode < 300) {
+      code = retryCode;
+      usedDefaultBase = true;
+    }
+  }
+
   if (code < 200 || code >= 300) {
     sdLogfEx("ERR", "STATUS", "push_fail http:%d", code);
     logHttpFailure("Status push", code);
-    http.end();
     return false;
   }
+
+  if (usedDefaultBase) {
+    strlcpy(cfg.workerUrl, defaultBase.c_str(), sizeof(cfg.workerUrl));
+    saveConfig(prefs, cfg);
+    sdLogEx("CFG", "STATUS", "worker_url_healed_default");
+  }
+
   sdLogfEx("SYS", "STATUS", "push_ok bg:%d src:%d cfgV:%d", lastReading.value, (int)lastReading.source, cfg.lastConfigVersion);
-  http.end();
   return true;
 }
 
@@ -976,7 +1067,7 @@ void pollCloudflareCommand(AppConfig& cfg, Preferences& p) {
     return;
   }
 
-  StaticJsonDocument<512> doc;
+  StaticJsonDocument<768> doc;
   if (deserializeJson(doc, http.getString())) {
     sdLogEx("ERR", "CMD", "poll_parse_failed");
     http.end();
@@ -993,6 +1084,8 @@ void pollCloudflareCommand(AppConfig& cfg, Preferences& p) {
   unsigned long long createdAt = doc["command"]["createdAt"] | 0ULL;
   unsigned long long expiresAt = doc["command"]["expiresAt"] | 0ULL;
   const char* cmdSig = doc["command"]["sig"] | "";
+  JsonObject cmdArgs = doc["command"]["args"].is<JsonObject>()
+    ? doc["command"]["args"].as<JsonObject>() : JsonObject();
 
   if (!strlen(cmdId) || !strlen(cmdType)) return;
   if (!verifyCommandSignature(cfg, cmdId, cmdType, createdAt, expiresAt, cmdSig)) {
@@ -1033,6 +1126,43 @@ void pollCloudflareCommand(AppConfig& cfg, Preferences& p) {
     bool ok = uploadSdLogs(cfg, cmdId);
     setDisplayBanner(dispState, ok ? "Logs uploaded" : "Log upload failed", ok ? CLR_GREEN : CLR_RED);
     ackCloudflareCommand(cfg, cmdId, ok, ok ? "logs uploaded" : "log upload failed");
+    return;
+  }
+
+  if (!strcmp(cmdType, "fetch-digest")) {
+    sdLog("CMD", "Executing command: fetch-digest");
+    setDisplayBanner(dispState, "Fetching digest...", CLR_MUTED);
+    fetchDigest(cfg);
+    lastDigestFetch = millis();
+    if (strlen(gDigestText)) {
+      time_t epoch = time(nullptr);
+      if (epoch > 1700000000) {
+        struct tm t;
+        localtime_r(&epoch, &t);
+        gDigestFetchDay = t.tm_yday;
+      }
+      setDisplayBanner(dispState, "Digest ready", CLR_GREEN, 1500UL);
+      showDigestScreen(gDigestText, 30000UL);
+    } else {
+      setDisplayBanner(dispState, "No digest available", CLR_DIM, 2500UL);
+    }
+    ackCloudflareCommand(cfg, cmdId, true, strlen(gDigestText) ? "digest shown" : "no digest");
+    return;
+  }
+
+  if (!strcmp(cmdType, "display-message")) {
+    sdLog("CMD", "Executing command: display-message");
+    const char* msg = cmdArgs.containsKey("message") ? cmdArgs["message"].as<const char*>() : "";
+    int durSec = cmdArgs.containsKey("duration_sec") ? cmdArgs["duration_sec"].as<int>() : 5;
+    if (durSec < 1) durSec = 1;
+    if (durSec > 60) durSec = 60;
+    if (msg && strlen(msg)) {
+      sdLogfEx("CMD", "CMD", "display_message dur:%d msg_len:%u", durSec, (unsigned)strlen(msg));
+      setDisplayBanner(dispState, msg, CLR_TEXT, (unsigned long)durSec * 1000UL);
+      ackCloudflareCommand(cfg, cmdId, true, "displayed");
+    } else {
+      ackCloudflareCommand(cfg, cmdId, false, "empty message");
+    }
     return;
   }
 
