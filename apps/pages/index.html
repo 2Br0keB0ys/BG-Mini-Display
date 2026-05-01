@@ -538,7 +538,7 @@ function collectConfig(){
     'dnd_enabled','dnd_from','dnd_to','clock_24hr','timezone',
     'rate_limit_per_min','lockout_enabled','lockout_attempts','lockout_duration_min',
     'session_timeout_min','ip_allowlist_enabled','auto_backup',
-    'alert_offline_min','alert_stale_min','alert_battery_low_pct','alert_cooldown_min',
+    'alert_offline_enabled','alert_offline_min','alert_stale_min','alert_battery_low_pct','alert_cooldown_min',
     'pushover_enabled','pushover_alert_cooldown_min',
     'digest_pushover_enabled','digest_pushover_hour'];
   fields.forEach(f=>{ const v=get(f); if(v!==undefined&&v!=='') c[f]=v; });
@@ -1061,6 +1061,7 @@ function render(){
 
   // UI Alerts section
   const alertTuningContent =
+    field('Offline device alert','Send a Pushover alert when the device has not checked in. Turn this off to suppress offline notices.',tog('alert_offline_enabled',c.alert_offline_enabled!==false))+
     field('Offline alert threshold','Send an alert when the device has not checked in for this long.',sel('alert_offline_min',[[10,'10 minutes'],[15,'15 minutes'],[30,'30 minutes'],[60,'60 minutes']],c.alert_offline_min||15))+
     field('Stale data alert threshold','Send an alert when glucose data is older than this.',sel('alert_stale_min',[[15,'15 minutes'],[30,'30 minutes'],[45,'45 minutes'],[60,'60 minutes']],c.alert_stale_min||30))+
     field('Low battery threshold','Send an alert when battery is at or below this level.',sel('alert_battery_low_pct',[[10,'10%'],[15,'15%'],[20,'20%'],[25,'25%']],c.alert_battery_low_pct||15))+
