@@ -1025,6 +1025,7 @@ async function buildFullReadinessReport(env, config, auth) {
 async function runDeviceOfflineCheck(env) {
   const config = normalizeConfig(await env.BGDISPLAY_CONFIG.get("config", { type: "json" }));
   if (!config.pushover_enabled || !config.alert_offline_enabled) return;
+  if (isInDNDWindow(config)) return;
 
   let creds = null;
   try {
