@@ -36,6 +36,14 @@
 #define BGDISPLAY_DEFAULT_TIMEZONE "US/Central"
 #endif
 
+#ifndef BGDISPLAY_CHECKLY_HEARTBEAT_URL
+#define BGDISPLAY_CHECKLY_HEARTBEAT_URL ""
+#endif
+
+#ifndef BGDISPLAY_CHECKLY_HEARTBEAT_SEC
+#define BGDISPLAY_CHECKLY_HEARTBEAT_SEC 60
+#endif
+
 Preferences  prefs;
 AppConfig    appConfig;
 BGReading    lastReading;
@@ -50,6 +58,7 @@ unsigned long lastTimeDraw    = 0;
 unsigned long bootTime        = millis();
 unsigned long lastNoSourceWarn = 0;
 unsigned long lastHeartbeatMs = 0;
+unsigned long lastChecklyHeartbeatMs = 0;
 
 static const bool kVerboseDiagLogs = false;
 
@@ -105,6 +114,7 @@ void factoryResetToInitialSetup(AppConfig&, Preferences&);
 void logConfigDiagnostics(const char* stage, const AppConfig& cfg);
 void logRuntimeSnapshot(const char* stage, const AppConfig& cfg, const BGReading& reading);
 void logHeartbeat(const AppConfig& cfg, const BGReading& reading);
+void pingChecklyHeartbeat();
 
 String toHex(const uint8_t* data, size_t len) {
   static const char* hex = "0123456789abcdef";
@@ -578,6 +588,14 @@ void loop() {
     logHeartbeat(appConfig, lastReading);
   }
 
+  // Checkly heartbeat ping for external device liveness monitoring.
+  unsigned long checklyIntervalMs = (unsigned long)BGDISPLAY_CHECKLY_HEARTBEAT_SEC * 1000UL;
+  if (checklyIntervalMs < 10000UL) checklyIntervalMs = 10000UL;
+  if (WiFi.status() == WL_CONNECTED && now - lastChecklyHeartbeatMs > checklyIntervalMs) {
+    lastChecklyHeartbeatMs = now;
+    pingChecklyHeartbeat();
+  }
+
   // Status push every 5 min
   if (WiFi.status()==WL_CONNECTED && now - lastStatusPush > 300000UL) {
     lastStatusPush = now;
@@ -660,6 +678,27 @@ void checkDailyAutoReboot() {
   Serial.println("Daily auto reboot at 3AM");
   delay(300);
   ESP.restart();
+}
+
+void pingChecklyHeartbeat() {
+  const char* heartbeatUrl = BGDISPLAY_CHECKLY_HEARTBEAT_URL;
+  if (!heartbeatUrl || !heartbeatUrl[0]) return;
+
+  HTTPClient http;
+  http.begin(String(heartbeatUrl));
+  http.setTimeout(4000);
+  http.addHeader("User-Agent", String("BGMiniView/") + FIRMWARE_VERSION);
+  int code = http.GET();
+  http.end();
+
+  if (code < 200 || code >= 300) {
+    if (code < 0) {
+      String err = HTTPClient::errorToString(code);
+      sdLogfEx("ERR", "CHKLY", "heartbeat_http:%d (%s)", code, err.c_str());
+    } else {
+      sdLogfEx("ERR", "CHKLY", "heartbeat_http:%d", code);
+    }
+  }
 }
 
 // ─── Smart Config Ping ────────────────────────────────────────────────────────

@@ -153,14 +153,12 @@ void startAPMode(AppConfig& cfg, Preferences& prefs) {
   const int leftY = cardY + headH + 9;
   const int leftW = (qrX - 10) - leftX;
   const int leftH = 98;
-  const int textMaxW = leftW - 16;
 
   const uint16_t CLR_PANEL = 0x18C3;
   const uint16_t CLR_BORDER = 0x3186;
   const uint16_t CLR_HEAD = 0x2104;
   const uint16_t CLR_TEXT_MAIN = 0xFFFF;
   const uint16_t CLR_TEXT_MUTED = 0xAD55;
-  const uint16_t CLR_ACCENT = 0x07E0;
   const uint16_t CLR_TEXT_DIM = 0x632C;
 
   M5.Display.fillScreen(0x0000);
