@@ -60,11 +60,15 @@ npm run deploy:worker
 Project: bg-miniview / Environment: production
 
 CHECKLY_API_KEY          = sk_xxxxxxxxxxxxx
+CHECKLY_ACCOUNT_ID       = xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx [recommended]
 CHECKLY_MONITOR_KEY      = ckm_xxxxxxxxxxxxx
 WORKER_URL               = https://bgdisplay.xxxxx.workers.dev
 NIGHTSCOUT_URL           = https://your-ns.herokuapp.com  [optional]
 ALERT_EMAIL              = you@example.com               [optional]
 SLACK_WEBHOOK            = https://hooks.slack.com/...   [optional]
+CLOUDFLARE_API_TOKEN     = (recommended for deploy automation)
+BGDISPLAY_DEFAULT_DEVICE_KEY = bg_ro_xxxxxxxxxxxxx       [for firmware sync]
+BGDISPLAY_CHECKLY_HEARTBEAT_URL = https://ping.checklyhq.com/... [optional]
 ```
 
 Service token stored in: `$env:INFISICAL_TOKEN` (Windows User scope)
@@ -116,6 +120,12 @@ CLAUDE.md                               [UPDATED] + Checkly + Infisical section
 
 5. **Watch Dashboard**
    - https://app.checklyhq.com/dashboard
+
+6. **Run Full Project Ops (optional)**
+   ```powershell
+   cd scripts
+   .\project_infisical_ops.ps1 -DeployWorker -SetupCheckly -SyncFirmwareSecrets
+   ```
 
 ---
 

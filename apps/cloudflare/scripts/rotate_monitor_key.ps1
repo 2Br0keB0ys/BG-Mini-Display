@@ -147,14 +147,14 @@ if ($infisicalEnabled -and $infisicalAvailable) {
 }
 
 Write-Host "Reapplying Checkly monitor definitions with new monitor key..." -ForegroundColor Cyan
-$setupArgs = @(
-  "-SkipInfisical",
-  "-ChecklyApiKey", $ChecklyApiKey,
-  "-WorkerUrl", $WorkerUrl,
-  "-MonitorKey", $NewMonitorKey
-)
-if ($ChecklyAccountId) { $setupArgs += @("-ChecklyAccountId", $ChecklyAccountId) }
-if ($NightscoutUrl) { $setupArgs += @("-NightscoutUrl", $NightscoutUrl) }
+$setupArgs = @{
+  SkipInfisical = $true
+  ChecklyApiKey = $ChecklyApiKey
+  WorkerUrl = $WorkerUrl
+  MonitorKey = $NewMonitorKey
+}
+if ($ChecklyAccountId) { $setupArgs.ChecklyAccountId = $ChecklyAccountId }
+if ($NightscoutUrl) { $setupArgs.NightscoutUrl = $NightscoutUrl }
 
 & $setupChecklyPath @setupArgs
 
