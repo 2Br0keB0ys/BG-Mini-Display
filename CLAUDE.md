@@ -288,7 +288,7 @@ Single HTML file — no build step. Dark mode only. `WORKER_URL` is hardcoded at
 
 # 2. Run setup script (auto-pulls from Infisical)
 cd apps\cloudflare
-.\scripts\setup_checkly.ps1 -UseInfisical
+.\scripts\setup_checkly.ps1
 ```
 
 ### Quick Start (Manual)
@@ -300,6 +300,13 @@ cd apps\cloudflare
                     -NightscoutUrl "https://your-ns.herokuapp.com" `
                     -AlertEmail "you@example.com" `
                     -MonitorKey "ckm_..."
+```
+
+### Monitor Key Rotation
+
+```powershell
+cd apps\cloudflare
+.\scripts\rotate_monitor_key.ps1
 ```
 
 **Monitoring Endpoints:**
@@ -373,13 +380,13 @@ Example payload from `/api/monitor/status-check`:
 **Infisical Integration Details:**
 - **Project:** `bg-miniview` (Infisical Cloud)
 - **Environment:** `production`
-- **Secrets stored:** `CHECKLY_API_KEY`, `WORKER_URL`, `NIGHTSCOUT_URL`, `ALERT_EMAIL`, `SLACK_WEBHOOK` (optional)
+- **Secrets stored:** `CHECKLY_API_KEY`, `CHECKLY_ACCOUNT_ID`, `CHECKLY_MONITOR_KEY`, `WORKER_URL`, `NIGHTSCOUT_URL`, `ALERT_EMAIL`, `SLACK_WEBHOOK` (optional)
 - **Auth:** Service token in `INFISICAL_TOKEN` environment variable
 - **Setup guide:** See [INFISICAL_SETUP.md](apps/cloudflare/scripts/INFISICAL_SETUP.md)
 
 **Next Steps:**
 1. *(Optional)* Set up Infisical project: Follow [INFISICAL_SETUP.md](apps/cloudflare/scripts/INFISICAL_SETUP.md)
-2. Run setup script: `.\setup_checkly.ps1 -UseInfisical` or with manual params
+2. Run setup script: `.\setup_checkly.ps1` (Infisical-first) or with manual params
 3. Visit `https://app.checklyhq.com/checks` to review monitors
 4. Enable Slack/Email alerts under Integrations
 5. Monitor dashboard: `https://app.checklyhq.com/dashboard`

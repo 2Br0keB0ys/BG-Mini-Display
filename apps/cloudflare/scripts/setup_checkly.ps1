@@ -5,6 +5,8 @@ param(
   [Parameter(Mandatory = $false)]
   [switch]$UseInfisical,
   [Parameter(Mandatory = $false)]
+  [switch]$SkipInfisical,
+  [Parameter(Mandatory = $false)]
   [switch]$FastStabilize,
   [Parameter(Mandatory = $false)]
   [string]$InfisicalEnv = "dev",
@@ -32,6 +34,15 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Normalize-WorkerUrl {
+  param([string]$Raw)
+  if (-not $Raw) { return "" }
+  $u = [string]$Raw
+  $u = $u.Trim()
+  if (-not $u) { return "" }
+  return $u.TrimEnd('/')
+}
+
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $InfisicalConfigPath = Join-Path $ScriptDir ".infisical.json"
 if (Test-Path $InfisicalConfigPath) {
@@ -46,9 +57,12 @@ if (-not $InfisicalProjectId) {
 }
 
 $InfisicalCliPath = "C:\Users\zaneb\AppData\Roaming\npm\infisical.cmd"
-if (-not (Test-Path $InfisicalCliPath)) {
-  Write-Host "Infisical CLI not found at $InfisicalCliPath" -ForegroundColor Red
-  exit 1
+$InfisicalEnabled = $UseInfisical -or (-not $SkipInfisical)
+$InfisicalCliAvailable = Test-Path $InfisicalCliPath
+
+if ($InfisicalEnabled -and -not $InfisicalCliAvailable) {
+  Write-Host "Infisical CLI not found at $InfisicalCliPath" -ForegroundColor Yellow
+  Write-Host "Continuing with manual/script parameters only." -ForegroundColor Yellow
 }
 
 function Invoke-InfisicalCli {
@@ -75,8 +89,12 @@ function Get-InfisicalSecret {
   return ""
 }
 
-if ($UseInfisical) {
-  Write-Host "Fetching secrets from Infisical..." -ForegroundColor Cyan
+if ($InfisicalEnabled -and $InfisicalCliAvailable) {
+  if ($UseInfisical) {
+    Write-Host "Fetching secrets from Infisical..." -ForegroundColor Cyan
+  } else {
+    Write-Host "Infisical-first mode: attempting to hydrate missing values from Infisical..." -ForegroundColor Cyan
+  }
   # Support both service-token auth (INFISICAL_TOKEN) and prior CLI login session.
   try {
     $exportArgs = @("--silent", "export", "--env", $InfisicalEnv, "--format", "json")
@@ -106,13 +124,35 @@ if ($UseInfisical) {
     if (-not $AlertEmail -and $secretMap.ContainsKey("ALERT_EMAIL")) { $AlertEmail = $secretMap["ALERT_EMAIL"] }
     if (-not $CloudflareApiToken -and $secretMap.ContainsKey("CLOUDFLARE_API_TOKEN")) { $CloudflareApiToken = $secretMap["CLOUDFLARE_API_TOKEN"] }
     if (-not $CloudflareAccountId -and $secretMap.ContainsKey("CLOUDFLARE_ACCOUNT_ID")) { $CloudflareAccountId = $secretMap["CLOUDFLARE_ACCOUNT_ID"] }
+    if (-not $MonitorKey -and $secretMap.ContainsKey("CHECKLY_MONITOR_KEY")) { $MonitorKey = $secretMap["CHECKLY_MONITOR_KEY"] }
   } catch {
     Write-Host "Failed to export secrets from Infisical: $($_.Exception.Message)" -ForegroundColor Red
   }
 }
 
-if (-not $ChecklyApiKey -or -not $WorkerUrl) {
-  Write-Host "Missing ChecklyApiKey or WorkerUrl" -ForegroundColor Red
+$WorkerUrl = Normalize-WorkerUrl $WorkerUrl
+
+$missingRequired = @()
+if (-not $ChecklyApiKey) { $missingRequired += "CHECKLY_API_KEY / -ChecklyApiKey" }
+if (-not $WorkerUrl) { $missingRequired += "WORKER_URL / -WorkerUrl" }
+if (-not $MonitorKey) { $missingRequired += "CHECKLY_MONITOR_KEY / -MonitorKey" }
+
+if ($missingRequired.Count -gt 0) {
+  Write-Host "Missing required inputs:" -ForegroundColor Red
+  foreach ($m in $missingRequired) {
+    Write-Host "  - $m" -ForegroundColor Red
+  }
+  Write-Host "Tip: set these in Infisical and rerun (default mode), or pass flags explicitly." -ForegroundColor Yellow
+  exit 1
+}
+
+if ($WorkerUrl -notmatch '^https://') {
+  Write-Host "WorkerUrl must use https://" -ForegroundColor Red
+  exit 1
+}
+
+if ($MonitorKey -notmatch '^ckm_[A-Za-z0-9]+$') {
+  Write-Host "MonitorKey format is invalid. Expected prefix ckm_." -ForegroundColor Red
   exit 1
 }
 
@@ -226,20 +266,24 @@ function Upsert-Check {
   $match = $existing | Where-Object { $_.name -eq $Name } | Select-Object -First 1
   if ($match) {
     $resp = Invoke-Checkly -Method "PUT" -Path "/checks/$($match.id)" -Body $tmp
-    $id = ($resp | ConvertFrom-Json).id
+    $parsed = $null
+    try { $parsed = $resp | ConvertFrom-Json } catch {}
+    $id = if ($parsed -and $parsed.id) { $parsed.id } else { $match.id }
     Write-Host "  Updated: $Name ($id)" -ForegroundColor Green
   } else {
     $resp = Invoke-Checkly -Method "POST" -Path "/checks" -Body $tmp
-    $id = ($resp | ConvertFrom-Json).id
+    $parsed = $null
+    try { $parsed = $resp | ConvertFrom-Json } catch {}
+    $id = if ($parsed -and $parsed.id) { $parsed.id } else { "unknown" }
+    if ($id -eq "unknown") {
+      Remove-Item $tmp -Force
+      throw "Create failed for check '$Name' (no id in response)"
+    }
     Write-Host "  Created: $Name ($id)" -ForegroundColor Green
   }
 
   Remove-Item $tmp -Force
 }
-
-$authGuardAssertions = @(
-  @{ source = "STATUS_CODE"; comparison = "EQUALS"; target = "401"; property = ""; regex = "" }
-)
 
 $common = @{
   checkType = "API"
@@ -260,9 +304,9 @@ $monitorUrl = "$WorkerUrl/api/monitor/status-check"
 Upsert-Check "BG Device Connectivity" ($common + @{
   name = "BG Device Connectivity"
   frequency = Get-CheckFrequency "BG Device Connectivity"
-  description = "Passes only when worker is reachable and device.online=true."
+  description = "Passes only when monitor endpoint reports device.online=true."
   request = @{
-    method = "GET"; url = "$WorkerUrl/api/status-check"; followRedirects = $true; skipSSL = $false; ipFamily = "IPv4"; body = ""; bodyType = "NONE"; headers = @(); queryParameters = @();
+    method = "GET"; url = $monitorUrl; followRedirects = $true; skipSSL = $false; ipFamily = "IPv4"; body = ""; bodyType = "NONE"; headers = $monitorHeaders; queryParameters = @();
     assertions = @(
       @{ source = "STATUS_CODE"; comparison = "EQUALS"; target = "200"; property = ""; regex = "" },
       @{ source = "JSON_BODY"; comparison = "EQUALS"; target = "true"; property = "$.device.online"; regex = "" }
@@ -296,18 +340,6 @@ Upsert-Check "Dexcom Share Connectivity" ($common + @{
 })
 
 if ($NightscoutUrl) {
-  $nightscoutHeaders = @()
-  $nightscoutAssertions = @(
-    @{ source = "STATUS_CODE"; comparison = "EQUALS"; target = "401"; property = ""; regex = "" }
-  )
-  if ($NightscoutApiToken) {
-    $nightscoutHeaders = @(
-      @{ key = "Authorization"; value = "Bearer $NightscoutApiToken" }
-    )
-    $nightscoutAssertions = @(
-      @{ source = "STATUS_CODE"; comparison = "EQUALS"; target = "200"; property = ""; regex = "" }
-    )
-  }
   Upsert-Check "Nightscout Connectivity" ($common + @{
     name = "Nightscout Connectivity"; frequency = Get-CheckFrequency "Nightscout Connectivity"; description = "Nightscout endpoint availability check.";
     request = @{ method = "GET"; url = $monitorUrl; followRedirects = $true; skipSSL = $false; ipFamily = "IPv4"; body = ""; bodyType = "NONE"; headers = $monitorHeaders; queryParameters = @(); assertions = @(@{ source = "JSON_BODY"; comparison = "EQUALS"; target = "true"; property = "$.upstream.nightscoutReachable"; regex = "" }) }
