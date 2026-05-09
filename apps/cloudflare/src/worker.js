@@ -5,7 +5,7 @@
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, X-Device-Key, X-Command-Id, X-Log-Lines, X-Admin-Session, CF-Access-Jwt-Assertion",
+  "Access-Control-Allow-Headers": "Content-Type, X-Device-Key, X-Monitor-Key, X-Command-Id, X-Log-Lines, X-Admin-Session, CF-Access-Jwt-Assertion",
 };
 
 const KEY_ROTATE_MS      = 7 * 24 * 60 * 60 * 1000;
@@ -249,6 +249,15 @@ function maskIP(ip) {
 
 function parseHost(urlLike) {
   try { return new URL(urlLike).hostname.toLowerCase(); } catch { return ""; }
+}
+
+function isValidMonitorKey(request, env) {
+  const expected = String(env.CHECKLY_MONITOR_KEY || "").trim();
+  if (!expected) return false;
+  const fromHeader = String(request.headers.get("X-Monitor-Key") || "").trim();
+  const auth = String(request.headers.get("Authorization") || "").trim();
+  const bearer = auth.toLowerCase().startsWith("bearer ") ? auth.slice(7).trim() : "";
+  return (fromHeader && fromHeader === expected) || (bearer && bearer === expected);
 }
 
 function isTrustedAdminOrigin(request, env) {
@@ -2167,6 +2176,82 @@ export default {
           digestIsFresh: digestHours !== null && digestHours < 24,
           digestText: dailyDigest?.text || null,
           digestDate: dailyDigest?.date || null,
+        },
+        config: {
+          version: (await getConfigVersion(env)) || 0,
+        },
+      });
+    }
+
+    // ── /api/monitor/status-check — Monitor-key protected detailed health ───
+    if (path === "/api/monitor/status-check" && method === "GET") {
+      if (!isValidMonitorKey(request, env)) {
+        return json({ error: "Invalid monitor key" }, 401);
+      }
+
+      const deviceStatus = await env.BGDISPLAY_CONFIG.get("device_status", { type: "json" }) || {};
+      const dailyDigest = await env.BGDISPLAY_CONFIG.get("daily_digest", { type: "json" });
+      const cfg = await env.BGDISPLAY_CONFIG.get("config", { type: "json" }) || {};
+      const now = Date.now();
+      const lastSeenMs = deviceStatus.lastSeen ? (now - deviceStatus.lastSeen) : null;
+      const lastSeenSec = lastSeenMs ? Math.floor(lastSeenMs / 1000) : null;
+      const digestHours = dailyDigest && dailyDigest.generatedAt ? Math.floor((now - dailyDigest.generatedAt) / (60 * 60 * 1000)) : null;
+
+      const probe = async (urlToCheck, expectStatus) => {
+        try {
+          const resp = await fetch(urlToCheck, { method: "GET", redirect: "manual" });
+          const ok = Array.isArray(expectStatus)
+            ? expectStatus.includes(resp.status)
+            : resp.status === expectStatus;
+          return { ok, status: resp.status };
+        } catch (e) {
+          return { ok: false, status: 0, error: String(e?.message || e) };
+        }
+      };
+
+      const hasDeviceAuth = !!(auth && auth.keyHash);
+      const [dexcomProbe, nightscoutProbe] = await Promise.all([
+        probe("https://share2.dexcom.com/", [404, 405]),
+        cfg.nightscout_url
+          ? probe(`${String(cfg.nightscout_url).replace(/\/+$/, "")}/api/v1/entries.json?count=1`, [200, 401])
+          : Promise.resolve({ ok: true, status: 0, skipped: true }),
+      ]);
+
+      return json({
+        ok: true,
+        timestamp: now,
+        workerVersion: env.WORKER_VERSION || "unknown",
+        device: {
+          online: lastSeenSec !== null && lastSeenSec < 600,
+          lastSeenSeconds: lastSeenSec,
+          lastSeenDate: deviceStatus.lastSeen ? new Date(deviceStatus.lastSeen).toISOString() : null,
+          lastContactPath: deviceStatus.lastContactPath || null,
+          ip: deviceStatus.ip || null,
+        },
+        digest: {
+          hasDailyDigest: !!dailyDigest,
+          digestGeneratedHoursAgo: digestHours,
+          digestIsFresh: digestHours !== null && digestHours < 24,
+          digestDate: dailyDigest?.date || null,
+        },
+        protectedRoutes: {
+          configAuthGuard: hasDeviceAuth,
+          wsAuthGuard: hasDeviceAuth,
+          digestAuthGuard: hasDeviceAuth,
+          commandAuthGuard: hasDeviceAuth,
+          statuses: {
+            config: hasDeviceAuth ? 401 : 503,
+            ws: hasDeviceAuth ? 401 : 503,
+            digest: hasDeviceAuth ? 401 : 503,
+            command: hasDeviceAuth ? 401 : 503,
+          },
+        },
+        upstream: {
+          dexcomRootReachable: dexcomProbe.ok,
+          dexcomStatus: dexcomProbe.status,
+          nightscoutReachable: nightscoutProbe.ok,
+          nightscoutStatus: nightscoutProbe.status,
+          nightscoutSkipped: !!nightscoutProbe.skipped,
         },
         config: {
           version: (await getConfigVersion(env)) || 0,
