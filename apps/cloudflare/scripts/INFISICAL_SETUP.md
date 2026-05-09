@@ -18,6 +18,7 @@ Add these secrets (click **+ Add Secret** for each):
 |-----|-------|-------------|----------|
 | `CHECKLY_API_KEY` | (from Checkly Account Settings → API Keys) | API key for monitor creation | ✅ Yes |
 | `CHECKLY_ACCOUNT_ID` | (from `GET /v1/accounts` id) | Checkly account header value used by API | ✅ Recommended |
+| `CHECKLY_MONITOR_KEY` | `ckm_...` | Shared key used by `/api/monitor/status-check` | ✅ Yes |
 | `WORKER_URL` | `https://bgdisplay.your-domain.workers.dev` | Cloudflare Worker URL | ✅ Yes |
 | `NIGHTSCOUT_URL` | `https://your-ns.herokuapp.com` | Nightscout instance URL | ⚠️ Optional |
 | `NIGHTSCOUT_API_TOKEN` | Nightscout bearer token | Optional auth for private Nightscout endpoint checks | ⚠️ Optional |
@@ -84,15 +85,39 @@ infisical --version
 cd apps\cloudflare
 
 # Method 1: Script auto-fetches from Infisical
-.\scripts\setup_checkly.ps1 -UseInfisical
+.\scripts\setup_checkly.ps1
 
 # Method 2: If you prefer to pass secrets manually
 .\scripts\setup_checkly.ps1 `
   -ChecklyApiKey "YOUR_KEY" `
+  -MonitorKey "ckm_..." `
   -WorkerUrl "https://..." `
   -NightscoutUrl "https://..." `
   -AlertEmail "you@example.com"
 ```
+
+## Step 7: Rotate Monitor Key Safely
+
+Use the rotation helper to rotate `CHECKLY_MONITOR_KEY` in one flow:
+
+```powershell
+cd apps\cloudflare
+.\scripts\rotate_monitor_key.ps1
+```
+
+What it does:
+1. Generates a new `ckm_...` key (or uses `-NewMonitorKey` if provided).
+2. Updates Cloudflare Worker secret `CHECKLY_MONITOR_KEY`.
+3. Deploys the worker (unless `-SkipWorkerDeploy`).
+4. Reapplies Checkly monitor definitions with the new key.
+5. Verifies `/api/monitor/status-check` responds with `ok=true`.
+
+Optional flags:
+- `-UseInfisical` (or default behavior) to hydrate values from Infisical.
+- `-SkipInfisical` to force only manual parameters.
+- `-InfisicalEnv production`
+- `-InfisicalProjectId <id>`
+- `-ChecklyApiKey ... -WorkerUrl ... -MonitorKey ...`
 
 ## Infisical Project Structure (Reference)
 
@@ -100,14 +125,15 @@ cd apps\cloudflare
 bg-miniview/
   └─ production/
       ├─ CHECKLY_API_KEY = st_xxxxx
-  ├─ CHECKLY_ACCOUNT_ID = xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+        ├─ CHECKLY_ACCOUNT_ID = xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+        ├─ CHECKLY_MONITOR_KEY = ckm_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
       ├─ WORKER_URL = https://bgdisplay.xxxxx.workers.dev
       ├─ NIGHTSCOUT_URL = https://xxxx.herokuapp.com
       ├─ NIGHTSCOUT_API_TOKEN = (optional) <nightscout-token>
       ├─ ALERT_EMAIL = you@example.com
-  ├─ SLACK_WEBHOOK = (optional) https://hooks.slack.com/...
-  ├─ CLOUDFLARE_API_TOKEN = (optional) <token>
-  └─ CLOUDFLARE_ACCOUNT_ID = (optional) <account-id>
+        ├─ SLACK_WEBHOOK = (optional) https://hooks.slack.com/...
+        ├─ CLOUDFLARE_API_TOKEN = (optional) <token>
+        └─ CLOUDFLARE_ACCOUNT_ID = (optional) <account-id>
 ```
 
 ## Troubleshooting
@@ -131,6 +157,7 @@ bg-miniview/
 - Ensure secret keys match exactly (case-sensitive):
   - `CHECKLY_API_KEY` (not `checklyApiKey`)
   - `CHECKLY_ACCOUNT_ID` (not `checklyAccountId`)
+  - `CHECKLY_MONITOR_KEY` (not `monitorKey`)
   - `WORKER_URL` (not `workerUrl`)
   - `NIGHTSCOUT_URL` (not `nightscoutUrl`)
 
@@ -147,4 +174,4 @@ bg-miniview/
 2. ✅ Add 5 secrets (CHECKLY_API_KEY, WORKER_URL, etc.)
 3. ✅ Create service token
 4. ✅ Store token in `$env:INFISICAL_TOKEN`
-5. ✅ Run: `.\scripts\setup_checkly.ps1 -UseInfisical`
+5. ✅ Run: `.\scripts\setup_checkly.ps1`
