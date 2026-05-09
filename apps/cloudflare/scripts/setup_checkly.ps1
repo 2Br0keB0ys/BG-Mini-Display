@@ -5,6 +5,8 @@ param(
   [Parameter(Mandatory = $false)]
   [switch]$UseInfisical,
   [Parameter(Mandatory = $false)]
+  [switch]$FastStabilize,
+  [Parameter(Mandatory = $false)]
   [string]$InfisicalEnv = "dev",
   [Parameter(Mandatory = $false)]
   [string]$InfisicalProjectId = "",
@@ -144,6 +146,9 @@ if (-not $ChecklyAccountId) {
 Write-Host "`nBG MiniView Checkly Setup" -ForegroundColor Cyan
 Write-Host "Worker: $WorkerUrl" -ForegroundColor Gray
 Write-Host "Account: $ChecklyAccountId`n" -ForegroundColor Gray
+if ($FastStabilize) {
+  Write-Host "Fast stabilization mode enabled: all checks will run every 5 minutes." -ForegroundColor Yellow
+}
 
 try {
   $workerTest = curl.exe -sS --max-time 20 "$WorkerUrl/api/detect-timezone" | ConvertFrom-Json
@@ -174,6 +179,29 @@ foreach ($dup in $dupes) {
 
 if ($dupes.Count -gt 0) {
   $existing = Invoke-Checkly -Method "GET" -Path "/checks?limit=100" | ConvertFrom-Json
+}
+
+$normalFrequencies = @{
+  "BG Device Connectivity" = 5
+  "BG Config Reachability" = 60
+  "BG WebSocket Reachability" = 120
+  "BG Digest Reachability" = 120
+  "BG Command Reachability" = 180
+  "Dexcom Share Connectivity" = 180
+  "Nightscout Connectivity" = 120
+  "BG Daily Digest Freshness" = 360
+  "BG Hourly Pipeline Alive" = 180
+  "BG Worker Health" = 360
+}
+
+function Get-CheckFrequency {
+  param(
+    [string]$CheckName
+  )
+
+  if ($FastStabilize) { return 5 }
+  if ($normalFrequencies.ContainsKey($CheckName)) { return [int]$normalFrequencies[$CheckName] }
+  return 60
 }
 
 function Upsert-Check {
@@ -219,7 +247,7 @@ Write-Host "`nUpserting monitors..." -ForegroundColor Yellow
 
 Upsert-Check "BG Device Connectivity" ($common + @{
   name = "BG Device Connectivity"
-  frequency = 5
+  frequency = Get-CheckFrequency "BG Device Connectivity"
   description = "Passes only when worker is reachable and device.online=true."
   request = @{
     method = "GET"; url = "$WorkerUrl/api/status-check"; followRedirects = $true; skipSSL = $false; ipFamily = "IPv4"; body = ""; bodyType = "NONE"; headers = @(); queryParameters = @();
@@ -231,27 +259,27 @@ Upsert-Check "BG Device Connectivity" ($common + @{
 })
 
 Upsert-Check "BG Config Reachability" ($common + @{
-  name = "BG Config Reachability"; frequency = 60; description = "Passes only when /api/config returns auth guard response.";
+  name = "BG Config Reachability"; frequency = Get-CheckFrequency "BG Config Reachability"; description = "Passes only when /api/config returns auth guard response.";
   request = @{ method = "GET"; url = "$WorkerUrl/api/config?v=4"; followRedirects = $true; skipSSL = $false; ipFamily = "IPv4"; body = ""; bodyType = "NONE"; headers = @(); queryParameters = @(); assertions = $authGuardAssertions }
 })
 
 Upsert-Check "BG WebSocket Reachability" ($common + @{
-  name = "BG WebSocket Reachability"; frequency = 120; description = "Passes only when /api/ws is protected and returns 401 unauthenticated.";
+  name = "BG WebSocket Reachability"; frequency = Get-CheckFrequency "BG WebSocket Reachability"; description = "Passes only when /api/ws is protected and returns 401 unauthenticated.";
   request = @{ method = "GET"; url = "$WorkerUrl/api/ws"; followRedirects = $true; skipSSL = $false; ipFamily = "IPv4"; body = ""; bodyType = "NONE"; headers = @(); queryParameters = @(); assertions = $authGuardAssertions }
 })
 
 Upsert-Check "BG Digest Reachability" ($common + @{
-  name = "BG Digest Reachability"; frequency = 120; description = "Passes only when /api/digest returns auth guard response.";
+  name = "BG Digest Reachability"; frequency = Get-CheckFrequency "BG Digest Reachability"; description = "Passes only when /api/digest returns auth guard response.";
   request = @{ method = "GET"; url = "$WorkerUrl/api/digest"; followRedirects = $true; skipSSL = $false; ipFamily = "IPv4"; body = ""; bodyType = "NONE"; headers = @(); queryParameters = @(); assertions = $authGuardAssertions }
 })
 
 Upsert-Check "BG Command Reachability" ($common + @{
-  name = "BG Command Reachability"; frequency = 180; description = "Passes only when /api/command returns auth guard response.";
+  name = "BG Command Reachability"; frequency = Get-CheckFrequency "BG Command Reachability"; description = "Passes only when /api/command returns auth guard response.";
   request = @{ method = "GET"; url = "$WorkerUrl/api/command"; followRedirects = $true; skipSSL = $false; ipFamily = "IPv4"; body = ""; bodyType = "NONE"; headers = @(); queryParameters = @(); assertions = $authGuardAssertions }
 })
 
 Upsert-Check "Dexcom Share Connectivity" ($common + @{
-  name = "Dexcom Share Connectivity"; frequency = 180; description = "Dexcom Share endpoint availability check.";
+  name = "Dexcom Share Connectivity"; frequency = Get-CheckFrequency "Dexcom Share Connectivity"; description = "Dexcom Share endpoint availability check.";
   request = @{ method = "GET"; url = "https://share2.dexcom.com/ShareWebServices/Services/General/LoginPublisherAccountByName"; followRedirects = $true; skipSSL = $false; ipFamily = "IPv4"; body = ""; bodyType = "NONE"; headers = @(); queryParameters = @(); assertions = @(@{ source = "STATUS_CODE"; comparison = "EQUALS"; target = "405"; property = ""; regex = "" }) }
 })
 
@@ -269,23 +297,23 @@ if ($NightscoutUrl) {
     )
   }
   Upsert-Check "Nightscout Connectivity" ($common + @{
-    name = "Nightscout Connectivity"; frequency = 120; description = "Nightscout endpoint availability check.";
+    name = "Nightscout Connectivity"; frequency = Get-CheckFrequency "Nightscout Connectivity"; description = "Nightscout endpoint availability check.";
     request = @{ method = "GET"; url = "$NightscoutUrl/api/v1/entries.json?count=1"; followRedirects = $true; skipSSL = $false; ipFamily = "IPv4"; body = ""; bodyType = "NONE"; headers = $nightscoutHeaders; queryParameters = @(); assertions = $nightscoutAssertions }
   })
 }
 
 Upsert-Check "BG Daily Digest Freshness" ($common + @{
-  name = "BG Daily Digest Freshness"; frequency = 360; description = "Daily digest freshness signal.";
+  name = "BG Daily Digest Freshness"; frequency = Get-CheckFrequency "BG Daily Digest Freshness"; description = "Daily digest freshness signal.";
   request = @{ method = "GET"; url = "$WorkerUrl/api/status-check"; followRedirects = $true; skipSSL = $false; ipFamily = "IPv4"; body = ""; bodyType = "NONE"; headers = @(); queryParameters = @(); assertions = @(@{ source = "JSON_BODY"; comparison = "EQUALS"; target = "true"; property = "$.digest.digestIsFresh"; regex = "" }) }
 })
 
 Upsert-Check "BG Hourly Pipeline Alive" ($common + @{
-  name = "BG Hourly Pipeline Alive"; frequency = 180; description = "Hourly pipeline signal based on status endpoint availability.";
+  name = "BG Hourly Pipeline Alive"; frequency = Get-CheckFrequency "BG Hourly Pipeline Alive"; description = "Hourly pipeline signal based on status endpoint availability.";
   request = @{ method = "GET"; url = "$WorkerUrl/api/status-check"; followRedirects = $true; skipSSL = $false; ipFamily = "IPv4"; body = ""; bodyType = "NONE"; headers = @(); queryParameters = @(); assertions = @(@{ source = "STATUS_CODE"; comparison = "EQUALS"; target = "200"; property = ""; regex = "" }) }
 })
 
 Upsert-Check "BG Worker Health" ($common + @{
-  name = "BG Worker Health"; frequency = 360; description = "Basic worker endpoint health.";
+  name = "BG Worker Health"; frequency = Get-CheckFrequency "BG Worker Health"; description = "Basic worker endpoint health.";
   request = @{ method = "GET"; url = "$WorkerUrl/api/detect-timezone"; followRedirects = $true; skipSSL = $false; ipFamily = "IPv4"; body = ""; bodyType = "NONE"; headers = @(); queryParameters = @(); assertions = @(@{ source = "STATUS_CODE"; comparison = "EQUALS"; target = "200"; property = ""; regex = "" }) }
 })
 
