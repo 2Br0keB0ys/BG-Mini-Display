@@ -2140,6 +2140,40 @@ export default {
       });
     }
 
+    // ── /api/status-check — Checkly monitoring endpoint (no auth, public read-only) ──
+    if (path === "/api/status-check" && method === "GET") {
+      const deviceStatus = await env.BGDISPLAY_CONFIG.get("device_status", { type: "json" }) || {};
+      const dailyDigest = await env.BGDISPLAY_CONFIG.get("daily_digest", { type: "json" });
+      const config = await env.BGDISPLAY_CONFIG.get("config", { type: "json" });
+      const now = Date.now();
+      const lastSeenMs = deviceStatus.lastSeen ? (now - deviceStatus.lastSeen) : null;
+      const lastSeenSec = lastSeenMs ? Math.floor(lastSeenMs / 1000) : null;
+      const digestHours = dailyDigest && dailyDigest.generatedAt ? Math.floor((now - dailyDigest.generatedAt) / (60 * 60 * 1000)) : null;
+
+      return json({
+        ok: true,
+        timestamp: now,
+        workerVersion: env.WORKER_VERSION || "unknown",
+        device: {
+          online: lastSeenSec !== null && lastSeenSec < 600, // online if seen in last 10 min
+          lastSeenSeconds: lastSeenSec,
+          lastSeenDate: deviceStatus.lastSeen ? new Date(deviceStatus.lastSeen).toISOString() : null,
+          lastContactPath: deviceStatus.lastContactPath || null,
+          ip: deviceStatus.ip || null,
+        },
+        digest: {
+          hasDailyDigest: !!dailyDigest,
+          digestGeneratedHoursAgo: digestHours,
+          digestIsFresh: digestHours !== null && digestHours < 24,
+          digestText: dailyDigest?.text || null,
+          digestDate: dailyDigest?.date || null,
+        },
+        config: {
+          version: (await getConfigVersion(env)) || 0,
+        },
+      });
+    }
+
     // ── /mcp — MCP server (JSON-RPC 2.0, device-key or admin-session auth) ────
     // Key can be passed as X-Device-Key header OR ?key= query param (for Claude connector URL).
     if (path === "/mcp" && (method === "POST" || method === "GET")) {

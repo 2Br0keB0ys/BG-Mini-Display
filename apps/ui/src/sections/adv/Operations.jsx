@@ -14,7 +14,7 @@ export function DeviceActions({ meta, onCommand, showToast }) {
   return (
     <Card iconClass="ic-system" icon={ctrlIcon} title="Device actions" sub="Sync, reboot, maintenance">
       <Field label="Quick actions">
-        <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+        <div className="quick-action-grid">
           <button className="btn" onClick={() => onCommand('sync-now')}>Sync now</button>
           <button className="btn" onClick={() => onCommand('upload-logs')}>Pull SD logs</button>
           <button className="btn btn-danger" onClick={() => onCommand('reboot')}>Reboot</button>

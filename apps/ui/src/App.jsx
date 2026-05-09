@@ -214,12 +214,12 @@ export default function App() {
 
         {/* Main sections */}
         <div className="sections-grid">
+          <DigestSection form={formData} onChange={onFormChange} meta={meta} showToast={showToast} />
           <WiFiSection form={formData} onChange={onFormChange} />
           <SourcesSection form={formData} onChange={onFormChange} />
           <TargetsSection form={formData} onChange={onFormChange} />
           <DisplaySection form={formData} onChange={onFormChange} showToast={showToast} />
           <PhoneAlertsSection form={formData} onChange={onFormChange} meta={meta} />
-          <DigestSection form={formData} onChange={onFormChange} meta={meta} showToast={showToast} />
           <PumpSection form={formData} onChange={onFormChange} />
         </div>
       </main>

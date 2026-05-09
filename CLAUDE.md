@@ -275,6 +275,96 @@ Single HTML file — no build step. Dark mode only. `WORKER_URL` is hardcoded at
 5. Device connects to WiFi → immediately pulls full config from `/api/config`, opens WebSocket to `/api/ws`, fetches AI digest from `/api/digest`
 6. All future config changes via `https://setup.2brokeboys.uk` (Cloudflare Pages UI) — config saves trigger instant WS push to device
 
+## Monitoring — Checkly Integration + Infisical Secrets
+
+**Overview:** Checkly monitors critical endpoints, third-party integrations, and digest freshness. The Hobby plan includes 10 uptime monitors. Integrates with **Infisical** for secure secrets management (Checkly API key, worker URL, Nightscout URL, etc.).
+
+### Quick Start (with Infisical)
+
+```powershell
+# 1. Setup Infisical secrets (one-time)
+# Follow: apps/cloudflare/scripts/INFISICAL_SETUP.md
+
+# 2. Run setup script (auto-pulls from Infisical)
+cd apps\cloudflare
+.\scripts\setup_checkly.ps1 -UseInfisical
+```
+
+### Quick Start (Manual)
+
+```powershell
+# Or pass secrets as parameters
+.\setup_checkly.ps1 -ChecklyApiKey "YOUR_KEY" `
+                    -WorkerUrl "https://bgdisplay.your-domain.workers.dev" `
+                    -NightscoutUrl "https://your-ns.herokuapp.com" `
+                    -AlertEmail "you@example.com"
+```
+
+**New Endpoint:** `/api/status-check` (no auth required) — Returns device connectivity telemetry:
+```json
+{
+  "ok": true,
+  "timestamp": 1715206800000,
+  "workerVersion": "3.0.0",
+  "device": {
+    "online": true,
+    "lastSeenSeconds": 45,
+    "lastContactPath": "/api/config",
+    "ip": "12.34.56.*** (masked)"
+  },
+  "digest": {
+    "hasDailyDigest": true,
+    "digestGeneratedHoursAgo": 2,
+    "digestIsFresh": true,
+    "digestText": "...",
+    "digestDate": "2026-05-08"
+  },
+  "config": {
+    "version": 42
+  }
+}
+```
+
+**Monitor Allocation (Hobby: 10 max):**
+1. **Config Pull** — `/api/config?v=4` (device must always pull config)
+2. **WebSocket Relay** — `/api/ws` (real-time sync)
+3. **Digest Fetch** — `/api/digest` (device fetches AI summary)
+4. **Command Poll** — `/api/command` (remote command availability)
+5. **Status Check** — `/api/status-check` (connectivity telemetry)
+6. **Dexcom API** — `https://share2.dexcom.com/.../Login` (third-party integration)
+7. **Nightscout** — `/api/v1/entries.json?count=1` (fallback BG source)
+8. **Daily Digest Freshness** — Verify digest generated today (via `/api/status-check`)
+9. **Hourly Digest Cycle** — Verify hourly digests exist (via `/api/status-check`)
+10. **Worker Health** — `/api/detect-timezone` (basic worker uptime)
+
+**Alert Configuration:** After auto-setup, manually configure in Checkly UI:
+- **Frequency:** 5 min intervals (fits Hobby API run limits)
+- **Timeout:** 10 sec, 2 retries
+- **Regions:** US East (single region, conserves runs)
+- **Alerts:** Email + Slack (configure under Settings → Integrations)
+
+**Infisical Integration Details:**
+- **Project:** `bg-miniview` (Infisical Cloud)
+- **Environment:** `production`
+- **Secrets stored:** `CHECKLY_API_KEY`, `WORKER_URL`, `NIGHTSCOUT_URL`, `ALERT_EMAIL`, `SLACK_WEBHOOK` (optional)
+- **Auth:** Service token in `INFISICAL_TOKEN` environment variable
+- **Setup guide:** See [INFISICAL_SETUP.md](apps/cloudflare/scripts/INFISICAL_SETUP.md)
+
+**Next Steps:**
+1. *(Optional)* Set up Infisical project: Follow [INFISICAL_SETUP.md](apps/cloudflare/scripts/INFISICAL_SETUP.md)
+2. Run setup script: `.\setup_checkly.ps1 -UseInfisical` or with manual params
+3. Visit `https://app.checklyhq.com/checks` to review monitors
+4. Enable Slack/Email alerts under Integrations
+5. Monitor dashboard: `https://app.checklyhq.com/dashboard`
+
+**Troubleshooting:**
+- **"INFISICAL_TOKEN not set":** Run: `[Environment]::SetEnvironmentVariable("INFISICAL_TOKEN", "st_...", "User")`
+- **"Infisical CLI not found":** Install: `scoop install infisical` or `npm install -g @infisical/cli`
+- **"API key invalid":** Verify Checkly API key (from Account Settings → API Keys)
+- **"Worker not responding":** Check worker URL and ensure it's deployed
+- **"Monitor creation failed":** Review Checkly API quota (Hobby: 10 monitors)
+
 ## Config Field Notes
 
 Worker uses `snake_case` JSON keys. Firmware `pullCloudflareConfig()` accepts both `snake_case` and legacy `camelCase` variants for backward compatibility. `normalizeConfig()` in the worker fills defaults and validates ranges on every read/write.
+

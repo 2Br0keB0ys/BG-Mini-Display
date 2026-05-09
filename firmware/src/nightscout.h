@@ -8,8 +8,13 @@
 bool fetchNightscout(AppConfig& cfg, BGReading& reading) {
   if (!strlen(cfg.nightscoutUrl)) return false;
 
-  // Build URL — use token param if secret provided
-  String url = String(cfg.nightscoutUrl) + "/api/v1/entries.json?count=1";
+  // Build URL — normalize trailing slash and use token param if secret provided.
+  String base = String(cfg.nightscoutUrl);
+  base.trim();
+  while (base.endsWith("/")) {
+    base.remove(base.length() - 1);
+  }
+  String url = base + "/api/v1/entries.json?count=1";
   if (strlen(cfg.nightscoutSecret) > 0) {
     url += "&token="; url += cfg.nightscoutSecret;
   }
