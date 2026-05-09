@@ -49,7 +49,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs PlatformIO firmware build and w
 
 ### Firmware (`firmware/src/`)
 
-Current firmware version: `4.0.1-S` (defined in `config.h`).
+Current firmware version: `4.1.1` (defined in `config.h`).
 
 The main sketch is `bgdisplay.ino`. All modules are header-only files included by the sketch:
 
@@ -87,6 +87,7 @@ The main sketch is `bgdisplay.ino`. All modules are header-only files included b
 - **Timezone support:** US/Central, US/Eastern, US/Mountain, US/Pacific (mapped to POSIX strings). NTP: NIST primary → public pool fallback.
 - **AI Daily & Hourly Digests:** Generated on Worker via Cloudflare Workers AI; pushed to Pushover only (device display removed in v4.0.1-S). See **AI Architecture** section below.
 - **WebSocket reconnect:** `ws_sync.h` uses 8 s reconnect interval. WS event handler is flag-only (sets `_wsTriggerPull`); the actual config pull happens in `wsTick()` after `_wsClient.loop()` returns to avoid re-entrancy.
+- **Checkly heartbeat (device-side):** Firmware can send direct heartbeat pings to Checkly using `BGDISPLAY_CHECKLY_HEARTBEAT_URL` and `BGDISPLAY_CHECKLY_HEARTBEAT_SEC` in `secrets.h` (defaults in `secrets.example.h`).
 
 ### Cloudflare Worker (`apps/cloudflare/src/worker.js`)
 
@@ -277,7 +278,7 @@ Single HTML file — no build step. Dark mode only. `WORKER_URL` is hardcoded at
 
 ## Monitoring — Checkly Integration + Infisical Secrets
 
-**Overview:** Checkly monitors critical endpoints, third-party integrations, and digest freshness. The Hobby plan includes 10 uptime monitors. Integrates with **Infisical** for secure secrets management (Checkly API key, worker URL, Nightscout URL, etc.).
+**Overview:** Checkly monitors critical endpoints, third-party integrations, digest freshness, and direct device liveness. The Hobby plan includes 10 monitors. Integrates with **Infisical** for secure secrets management (Checkly API key, worker URL, Nightscout URL, monitor key, etc.).
 
 ### Quick Start (with Infisical)
 
@@ -297,10 +298,15 @@ cd apps\cloudflare
 .\setup_checkly.ps1 -ChecklyApiKey "YOUR_KEY" `
                     -WorkerUrl "https://bgdisplay.your-domain.workers.dev" `
                     -NightscoutUrl "https://your-ns.herokuapp.com" `
-                    -AlertEmail "you@example.com"
+                    -AlertEmail "you@example.com" `
+                    -MonitorKey "ckm_..."
 ```
 
-**New Endpoint:** `/api/status-check` (no auth required) — Returns device connectivity telemetry:
+**Monitoring Endpoints:**
+- `/api/monitor/status-check` (requires `X-Monitor-Key`) - canonical endpoint for production Checkly API checks. Includes protected-route auth guard signals and upstream reachability signals.
+- `/api/status-check` (no auth required) - legacy/public connectivity telemetry.
+
+Example payload from `/api/monitor/status-check`:
 ```json
 {
   "ok": true,
@@ -316,8 +322,17 @@ cd apps\cloudflare
     "hasDailyDigest": true,
     "digestGeneratedHoursAgo": 2,
     "digestIsFresh": true,
-    "digestText": "...",
     "digestDate": "2026-05-08"
+  },
+  "protectedRoutes": {
+    "configAuthGuard": true,
+    "wsAuthGuard": true,
+    "digestAuthGuard": true,
+    "commandAuthGuard": true
+  },
+  "upstream": {
+    "dexcomRootReachable": true,
+    "nightscoutReachable": true
   },
   "config": {
     "version": 42
@@ -325,17 +340,29 @@ cd apps\cloudflare
 }
 ```
 
-**Monitor Allocation (Hobby: 10 max):**
-1. **Config Pull** — `/api/config?v=4` (device must always pull config)
-2. **WebSocket Relay** — `/api/ws` (real-time sync)
-3. **Digest Fetch** — `/api/digest` (device fetches AI summary)
-4. **Command Poll** — `/api/command` (remote command availability)
-5. **Status Check** — `/api/status-check` (connectivity telemetry)
-6. **Dexcom API** — `https://share2.dexcom.com/.../Login` (third-party integration)
-7. **Nightscout** — `/api/v1/entries.json?count=1` (fallback BG source)
-8. **Daily Digest Freshness** — Verify digest generated today (via `/api/status-check`)
-9. **Hourly Digest Cycle** — Verify hourly digests exist (via `/api/status-check`)
-10. **Worker Health** — `/api/detect-timezone` (basic worker uptime)
+**Current Checkly Allocation (Hobby: 10 max):**
+1. **BG Device Connectivity** — monitor endpoint `$.device.online`
+2. **BG Config Reachability** — monitor endpoint `$.protectedRoutes.configAuthGuard`
+3. **BG WebSocket Reachability** — monitor endpoint `$.protectedRoutes.wsAuthGuard`
+4. **BG Digest Reachability** — monitor endpoint `$.protectedRoutes.digestAuthGuard`
+5. **BG Command Reachability** — monitor endpoint `$.protectedRoutes.commandAuthGuard`
+6. **Dexcom Share Connectivity** — monitor endpoint `$.upstream.dexcomRootReachable`
+7. **Nightscout Connectivity** — monitor endpoint `$.upstream.nightscoutReachable`
+8. **BG Daily Digest Freshness** — monitor endpoint `$.digest.digestIsFresh`
+9. **BG Hourly Pipeline Alive** — monitor endpoint status 200
+10. **BG Worker Health** — `/api/detect-timezone` status 200
+
+**Current Frequency Baseline:**
+- 5 min: BG Device Connectivity
+- 60 min: BG Config Reachability
+- 120 min: BG WebSocket Reachability, BG Digest Reachability, Nightscout Connectivity
+- 180 min: BG Command Reachability, Dexcom Share Connectivity, BG Hourly Pipeline Alive
+- 360 min: BG Daily Digest Freshness, BG Worker Health
+
+**Firmware Heartbeat Monitor:**
+- Heartbeat URL is configured in firmware `secrets.h` via `BGDISPLAY_CHECKLY_HEARTBEAT_URL`.
+- Cadence is `BGDISPLAY_CHECKLY_HEARTBEAT_SEC` (default 60s).
+- Checkly Heartbeat period/grace should be aligned to this cadence.
 
 **Alert Configuration:** After auto-setup, manually configure in Checkly UI:
 - **Frequency:** 5 min intervals (fits Hobby API run limits)

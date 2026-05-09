@@ -531,58 +531,6 @@ void updateDisplay(AppConfig& cfg, BGReading& reading, DisplayState& state) {
 
 // ─── AI Daily Digest Screen ───────────────────────────────────────────────────
 
-static void _drawWrappedText(int x, int y, int maxW, int lineH, const char* text) {
-  char line[96] = "";
-  char word[64] = "";
-  int  curY = y;
-  const char* p = text;
-  int  dispH = M5.Display.height();
-
-  while (*p || strlen(line) > 0) {
-    // Collect next word
-    size_t wi = 0;
-    while (*p && *p != ' ' && *p != '\n' && wi < sizeof(word) - 2) {
-      word[wi++] = *p++;
-    }
-    word[wi] = '\0';
-    bool newline = (*p == '\n');
-    if (*p == ' ' || *p == '\n') p++;
-
-    if (strlen(line) == 0) {
-      strlcpy(line, word, sizeof(line));
-    } else {
-      char trial[96];
-      snprintf(trial, sizeof(trial), "%s %s", line, word);
-      if (canvas.textWidth(trial) <= maxW) {
-        strlcpy(line, trial, sizeof(line));
-      } else {
-        canvas.setTextDatum(top_left);
-        canvas.drawString(line, x, curY);
-        curY += lineH;
-        strlcpy(line, word, sizeof(line));
-      }
-    }
-
-    if (newline || *p == '\0') {
-      if (strlen(line) > 0) {
-        if (curY + lineH < dispH - 14) {
-          canvas.setTextDatum(top_left);
-          canvas.drawString(line, x, curY);
-          curY += lineH;
-        }
-        line[0] = '\0';
-      }
-    }
-    if (curY + lineH >= dispH - 14) break;
-    if (!*p && strlen(line) == 0) break;
-  }
-  // Flush remaining
-  if (strlen(line) > 0 && curY + lineH < dispH - 14) {
-    canvas.setTextDatum(top_left);
-    canvas.drawString(line, x, curY);
-  }
-}
-
 void showDigestScreen(const char* text, unsigned long durationMs = 10000) {
   if (!text || !strlen(text)) return;
   int W = M5.Display.width(), H = M5.Display.height();
@@ -617,7 +565,9 @@ void showDigestScreen(const char* text, unsigned long durationMs = 10000) {
       strlcpy(curLine, word, sizeof(curLine));
     } else {
       char trial[80];
-      snprintf(trial, sizeof(trial), "%s %s", curLine, word);
+      strlcpy(trial, curLine, sizeof(trial));
+      strlcat(trial, " ", sizeof(trial));
+      strlcat(trial, word, sizeof(trial));
       if (canvas.textWidth(trial) <= W - 16) {
         strlcpy(curLine, trial, sizeof(curLine));
       } else {
