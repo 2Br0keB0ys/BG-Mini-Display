@@ -24,8 +24,12 @@ Add these secrets (click **+ Add Secret** for each):
 | `NIGHTSCOUT_API_TOKEN` | Nightscout bearer token | Optional auth for private Nightscout endpoint checks | ⚠️ Optional |
 | `ALERT_EMAIL` | `you@example.com` | Alert email(s), comma-separated | ⚠️ Optional |
 | `SLACK_WEBHOOK` | `https://hooks.slack.com/services/...` | Slack webhook URL | ⚠️ Optional |
-| `CLOUDFLARE_API_TOKEN` | Cloudflare API token | Optional: future Cloudflare automation hooks | ⚠️ Optional |
-| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account id | Optional: future Cloudflare automation hooks | ⚠️ Optional |
+| `CLOUDFLARE_API_TOKEN` | Cloudflare API token | Recommended for deploy automation | ✅ Recommended |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account id | Optional for deploy context | ⚠️ Optional |
+| `BGDISPLAY_DEFAULT_DEVICE_KEY` | `bg_ro_...` | Firmware bootstrap device key used in `secrets.h` | ✅ Recommended |
+| `BGDISPLAY_DEFAULT_TIMEZONE` | `US/Central` | Firmware bootstrap timezone | ⚠️ Optional |
+| `BGDISPLAY_CHECKLY_HEARTBEAT_URL` | `https://ping.checklyhq.com/...` | Device-side heartbeat endpoint for firmware | ⚠️ Optional |
+| `BGDISPLAY_CHECKLY_HEARTBEAT_SEC` | `60` | Device-side heartbeat interval in seconds | ⚠️ Optional |
 
 **Save all secrets.**
 
@@ -118,6 +122,27 @@ Optional flags:
 - `-InfisicalEnv production`
 - `-InfisicalProjectId <id>`
 - `-ChecklyApiKey ... -WorkerUrl ... -MonitorKey ...`
+
+## Step 8: Run Full Project Operations from Infisical
+
+For project-wide automation (deploy + monitoring + firmware secret sync), run:
+
+```powershell
+cd scripts
+.\project_infisical_ops.ps1 -DeployWorker -SetupCheckly -SyncFirmwareSecrets
+```
+
+Common action switches:
+- `-DeployWorker`
+- `-DeployPages`
+- `-SetupCheckly`
+- `-RotateMonitorKey`
+- `-SyncFirmwareSecrets`
+
+Notes:
+- Defaults to Infisical-first hydration unless you pass `-SkipInfisical`.
+- `-SyncFirmwareSecrets` writes `firmware/src/secrets.h` from hydrated values.
+- You can chain actions in one run for full operational workflows.
 
 ## Infisical Project Structure (Reference)
 

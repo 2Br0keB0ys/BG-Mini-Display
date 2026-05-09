@@ -309,6 +309,19 @@ cd apps\cloudflare
 .\scripts\rotate_monitor_key.ps1
 ```
 
+### Project-Wide Infisical Ops
+
+```powershell
+cd scripts
+.\project_infisical_ops.ps1 -DeployWorker -SetupCheckly -SyncFirmwareSecrets
+```
+
+Use this orchestrator to run full-project actions from one place:
+- Deploy Worker / Pages
+- Apply Checkly monitor definitions
+- Rotate monitor key
+- Sync `firmware/src/secrets.h` from Infisical values
+
 **Monitoring Endpoints:**
 - `/api/monitor/status-check` (requires `X-Monitor-Key`) - canonical endpoint for production Checkly API checks. Includes protected-route auth guard signals and upstream reachability signals.
 - `/api/status-check` (no auth required) - legacy/public connectivity telemetry.
