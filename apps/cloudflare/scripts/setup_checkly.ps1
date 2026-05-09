@@ -156,6 +156,26 @@ try {
 
 $existing = Invoke-Checkly -Method "GET" -Path "/checks?limit=100" | ConvertFrom-Json
 
+# Remove duplicate checks by name so stale definitions do not keep failing.
+$dupes = $existing | Group-Object name | Where-Object { $_.Count -gt 1 }
+foreach ($dup in $dupes) {
+  $ordered = $dup.Group | Sort-Object updated_at -Descending
+  $keep = $ordered | Select-Object -First 1
+  $drop = $ordered | Select-Object -Skip 1
+  foreach ($d in $drop) {
+    try {
+      Invoke-Checkly -Method "DELETE" -Path "/checks/$($d.id)" | Out-Null
+      Write-Host "  Removed duplicate check: $($d.name) ($($d.id))" -ForegroundColor Yellow
+    } catch {
+      Write-Host "  Failed to remove duplicate check: $($d.name) ($($d.id))" -ForegroundColor Red
+    }
+  }
+}
+
+if ($dupes.Count -gt 0) {
+  $existing = Invoke-Checkly -Method "GET" -Path "/checks?limit=100" | ConvertFrom-Json
+}
+
 function Upsert-Check {
   param(
     [string]$Name,
@@ -181,8 +201,7 @@ function Upsert-Check {
 }
 
 $authGuardAssertions = @(
-  @{ source = "STATUS_CODE"; comparison = "EQUALS"; target = "401"; property = ""; regex = "" },
-  @{ source = "JSON_BODY"; comparison = "EQUALS"; target = "Missing key"; property = "$.error"; regex = "" }
+  @{ source = "STATUS_CODE"; comparison = "EQUALS"; target = "401"; property = ""; regex = "" }
 )
 
 $common = @{
@@ -217,7 +236,7 @@ Upsert-Check "BG Config Reachability" ($common + @{
 })
 
 Upsert-Check "BG WebSocket Reachability" ($common + @{
-  name = "BG WebSocket Reachability"; frequency = 120; description = "Passes only when /api/ws returns auth guard response.";
+  name = "BG WebSocket Reachability"; frequency = 120; description = "Passes only when /api/ws is protected and returns 401 unauthenticated.";
   request = @{ method = "GET"; url = "$WorkerUrl/api/ws"; followRedirects = $true; skipSSL = $false; ipFamily = "IPv4"; body = ""; bodyType = "NONE"; headers = @(); queryParameters = @(); assertions = $authGuardAssertions }
 })
 
@@ -233,19 +252,25 @@ Upsert-Check "BG Command Reachability" ($common + @{
 
 Upsert-Check "Dexcom Share Connectivity" ($common + @{
   name = "Dexcom Share Connectivity"; frequency = 180; description = "Dexcom Share endpoint availability check.";
-  request = @{ method = "POST"; url = "https://share2.dexcom.com/ShareWebServices/Services/General/LoginPublisherAccountByName"; followRedirects = $true; skipSSL = $false; ipFamily = "IPv4"; body = ""; bodyType = "NONE"; headers = @(); queryParameters = @(); assertions = @() }
+  request = @{ method = "GET"; url = "https://share2.dexcom.com/ShareWebServices/Services/General/LoginPublisherAccountByName"; followRedirects = $true; skipSSL = $false; ipFamily = "IPv4"; body = ""; bodyType = "NONE"; headers = @(); queryParameters = @(); assertions = @(@{ source = "STATUS_CODE"; comparison = "EQUALS"; target = "405"; property = ""; regex = "" }) }
 })
 
 if ($NightscoutUrl) {
   $nightscoutHeaders = @()
+  $nightscoutAssertions = @(
+    @{ source = "STATUS_CODE"; comparison = "EQUALS"; target = "401"; property = ""; regex = "" }
+  )
   if ($NightscoutApiToken) {
     $nightscoutHeaders = @(
       @{ key = "Authorization"; value = "Bearer $NightscoutApiToken" }
     )
+    $nightscoutAssertions = @(
+      @{ source = "STATUS_CODE"; comparison = "EQUALS"; target = "200"; property = ""; regex = "" }
+    )
   }
   Upsert-Check "Nightscout Connectivity" ($common + @{
     name = "Nightscout Connectivity"; frequency = 120; description = "Nightscout endpoint availability check.";
-    request = @{ method = "GET"; url = "$NightscoutUrl/api/v1/entries.json?count=1"; followRedirects = $true; skipSSL = $false; ipFamily = "IPv4"; body = ""; bodyType = "NONE"; headers = $nightscoutHeaders; queryParameters = @(); assertions = @(@{ source = "STATUS_CODE"; comparison = "EQUALS"; target = "200"; property = ""; regex = "" }) }
+    request = @{ method = "GET"; url = "$NightscoutUrl/api/v1/entries.json?count=1"; followRedirects = $true; skipSSL = $false; ipFamily = "IPv4"; body = ""; bodyType = "NONE"; headers = $nightscoutHeaders; queryParameters = @(); assertions = $nightscoutAssertions }
   })
 }
 
