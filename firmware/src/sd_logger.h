@@ -158,8 +158,9 @@ bool sdCollectLogsForUpload(String& out, int& lineCount, int maxLines = 500, siz
     f.close();
   };
 
-  // Send older data first, then the active log for timeline continuity.
-  appendFile("/bgdisplay.old.log");
+  // Send oldest data first for timeline continuity: old2 → old → current.
+  appendFile("/bgdisplay.old2.log");
+  if (lineCount < maxLines && out.length() < maxBytes) appendFile("/bgdisplay.old.log");
   if (lineCount < maxLines && out.length() < maxBytes) appendFile(LOG_FILE);
 
   return lineCount > 0;

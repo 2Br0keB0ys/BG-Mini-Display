@@ -394,9 +394,9 @@ void drawFrame(AppConfig& cfg, BGReading& reading, DisplayState& state) {
   // Last reading time / stale
   canvas.setFont(&fonts::FreeSans9pt7b);
   canvas.setTextDatum(middle_center);
-  bool isStale = reading.timestamp > 0 &&
+  bool isStaleReading = reading.timestamp > 0 &&
     (time(nullptr) - reading.timestamp) > (cfg.staleDataWarnMin * 60);
-  if (isStale || reading.stale) {
+  if (isStaleReading) {
     canvas.setTextColor(CLR_ORANGE);
     canvas.drawString("STALE DATA", rightCenterX, centerY + 30);
   } else if (cfg.showLastReadingTime && reading.timestamp > 0) {
@@ -500,9 +500,11 @@ void updateDisplay(AppConfig& cfg, BGReading& reading, DisplayState& state) {
   }
 
   // ── Dirty checks — only redraw if something visible changed ──────────────────
+  bool isStale      = reading.timestamp > 0 &&
+    (time(nullptr) - reading.timestamp) > (cfg.staleDataWarnMin * 60);
   bool bgChanged    = (reading.value  != state.lastBGValue);
   bool trendChanged = (reading.trend  != state.lastTrend);
-  bool staleChanged = (reading.stale  != state.lastStale);
+  bool staleChanged = (isStale != state.lastStale);
   bool keyChanged   = (state.showKeyError != state.lastKeyErr);
   bool timeChanged  = (strcmp(timeStr, state.lastTimeStr) != 0);
   bool rssiChanged  = (rssiCoarse != lastRssiCoarse);
@@ -517,7 +519,7 @@ void updateDisplay(AppConfig& cfg, BGReading& reading, DisplayState& state) {
   // Update tracking state
   state.lastBGValue  = reading.value;
   state.lastTrend    = reading.trend;
-  state.lastStale    = reading.stale;
+  state.lastStale    = isStale;
   state.lastKeyErr   = state.showKeyError;
   state.lastRSSI     = rssi;
   state.initialized  = true;

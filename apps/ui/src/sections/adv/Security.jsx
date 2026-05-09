@@ -47,8 +47,8 @@ export default function SecuritySection({ form, onChange, meta, showToast, onCon
         <span className="key-tag">bg_ro_••••{meta.keyTail || '????'}</span>
       </Field>
       <Field label="Recovery device key" desc={meta.recoveryKeyEnabled ? `Enabled (tail ${meta.recoveryKeyTail || '????'})${meta.recoveryKeyUpdatedAt ? ` · updated ${fmtTs(meta.recoveryKeyUpdatedAt)}` : ''}` : 'Disabled'}>
-        <div style={{ display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap' }}>
-          <input className="inp" style={{ width: 200 }} type="password" value={rkInput} placeholder="bg_ro_..." onChange={e => setRkInput(e.target.value)} />
+        <div className="recovery-controls">
+          <input className="inp recovery-key-input" type="password" value={rkInput} placeholder="bg_ro_..." onChange={e => setRkInput(e.target.value)} />
           <button className="btn" onClick={saveRk}>Set</button>
           <button className="btn btn-danger" onClick={() => { if (confirm('Clear recovery key?')) clearRk(); }}>Clear</button>
         </div>

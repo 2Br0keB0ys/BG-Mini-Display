@@ -1,0 +1,150 @@
+# BG MiniView + Infisical Setup Guide
+
+## Step 1: Create Infisical Project
+
+1. Go to https://app.infisical.com
+2. **Create new project:**
+   - Name: `bg-miniview`
+   - Description: "Blood glucose display monitoring and configuration"
+3. Choose environment: `production` (default)
+
+## Step 2: Add Secrets to Infisical
+
+Navigate to your `bg-miniview` project → `production` environment → **Secrets** tab.
+
+Add these secrets (click **+ Add Secret** for each):
+
+| Key | Value | Description | Required |
+|-----|-------|-------------|----------|
+| `CHECKLY_API_KEY` | (from Checkly Account Settings → API Keys) | API key for monitor creation | ✅ Yes |
+| `CHECKLY_ACCOUNT_ID` | (from `GET /v1/accounts` id) | Checkly account header value used by API | ✅ Recommended |
+| `WORKER_URL` | `https://bgdisplay.your-domain.workers.dev` | Cloudflare Worker URL | ✅ Yes |
+| `NIGHTSCOUT_URL` | `https://your-ns.herokuapp.com` | Nightscout instance URL | ⚠️ Optional |
+| `NIGHTSCOUT_API_TOKEN` | Nightscout bearer token | Optional auth for private Nightscout endpoint checks | ⚠️ Optional |
+| `ALERT_EMAIL` | `you@example.com` | Alert email(s), comma-separated | ⚠️ Optional |
+| `SLACK_WEBHOOK` | `https://hooks.slack.com/services/...` | Slack webhook URL | ⚠️ Optional |
+| `CLOUDFLARE_API_TOKEN` | Cloudflare API token | Optional: future Cloudflare automation hooks | ⚠️ Optional |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account id | Optional: future Cloudflare automation hooks | ⚠️ Optional |
+
+**Save all secrets.**
+
+## Step 3: Create Service Token (for Automation)
+
+This allows the setup script to fetch secrets without interactive login.
+
+1. Go to **Project Settings** (gear icon, top right)
+2. Navigate to **Service Tokens** tab
+3. Click **+ Add Service Token**
+4. Configuration:
+   - Name: `bg-miniview-setup-script`
+   - Environment: `production`
+   - Permissions: `read` (only needs to read secrets)
+5. Click **Create Token**
+6. **Copy the token immediately** — you'll only see it once
+
+The token looks like: `st_xxxxxxxxxxxxxxxxxxxxxxxxxxxx`
+
+## Step 4: Store Service Token Locally
+
+**Option A (Recommended for personal machine):**
+```powershell
+# Store in environment variable (Windows)
+[Environment]::SetEnvironmentVariable("INFISICAL_TOKEN", "st_xxxxxxxxxxxxxxxxxxxxxxxxxxxx", "User")
+
+# Verify:
+$env:INFISICAL_TOKEN
+```
+
+**Option B (For CI/CD systems):**
+- Add `INFISICAL_TOKEN` as secret in your CI system (GitHub Actions, etc.)
+
+**Option C (Temporary, one-time use):**
+```powershell
+$env:INFISICAL_TOKEN = "st_xxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+```
+
+## Step 5: Install Infisical CLI (Windows)
+
+```powershell
+# Install via Scoop (recommended)
+scoop install infisical
+
+# Or via npm
+npm install -g @infisical/cli
+
+# Or download from: https://infisical.com/docs/cli/overview
+
+# Verify installation:
+infisical --version
+```
+
+## Step 6: Run Setup Script
+
+```powershell
+cd apps\cloudflare
+
+# Method 1: Script auto-fetches from Infisical
+.\scripts\setup_checkly.ps1 -UseInfisical
+
+# Method 2: If you prefer to pass secrets manually
+.\scripts\setup_checkly.ps1 `
+  -ChecklyApiKey "YOUR_KEY" `
+  -WorkerUrl "https://..." `
+  -NightscoutUrl "https://..." `
+  -AlertEmail "you@example.com"
+```
+
+## Infisical Project Structure (Reference)
+
+```
+bg-miniview/
+  └─ production/
+      ├─ CHECKLY_API_KEY = st_xxxxx
+  ├─ CHECKLY_ACCOUNT_ID = xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+      ├─ WORKER_URL = https://bgdisplay.xxxxx.workers.dev
+      ├─ NIGHTSCOUT_URL = https://xxxx.herokuapp.com
+      ├─ NIGHTSCOUT_API_TOKEN = (optional) <nightscout-token>
+      ├─ ALERT_EMAIL = you@example.com
+  ├─ SLACK_WEBHOOK = (optional) https://hooks.slack.com/...
+  ├─ CLOUDFLARE_API_TOKEN = (optional) <token>
+  └─ CLOUDFLARE_ACCOUNT_ID = (optional) <account-id>
+```
+
+## Troubleshooting
+
+### "infisical: command not found"
+- Infisical CLI not installed or not in PATH
+- Install: `scoop install infisical` or `npm install -g @infisical/cli`
+- Restart terminal after install
+
+### "INFISICAL_TOKEN not set"
+- Set token: `[Environment]::SetEnvironmentVariable("INFISICAL_TOKEN", "st_...", "User")`
+- Restart VS Code / terminal
+
+### "Cannot fetch secrets from Infisical"
+- Verify service token is valid (not expired)
+- Check project name is `bg-miniview`
+- Verify environment is `production`
+- Run `infisical auth` to test authentication
+
+### "Secret not found"
+- Ensure secret keys match exactly (case-sensitive):
+  - `CHECKLY_API_KEY` (not `checklyApiKey`)
+  - `CHECKLY_ACCOUNT_ID` (not `checklyAccountId`)
+  - `WORKER_URL` (not `workerUrl`)
+  - `NIGHTSCOUT_URL` (not `nightscoutUrl`)
+
+## Security Notes
+
+- **Service Token:** Treat like a password. Never commit to git.
+- **Environment Variable:** Stored in Windows Registry (`HKEY_CURRENT_USER\Environment`)
+- **Rotation:** Regenerate service token periodically in Infisical UI
+- **Audit:** Infisical logs all secret access — check "Activity" tab in project
+
+## Next Steps
+
+1. ✅ Create `bg-miniview` project in Infisical Cloud
+2. ✅ Add 5 secrets (CHECKLY_API_KEY, WORKER_URL, etc.)
+3. ✅ Create service token
+4. ✅ Store token in `$env:INFISICAL_TOKEN`
+5. ✅ Run: `.\scripts\setup_checkly.ps1 -UseInfisical`

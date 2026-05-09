@@ -386,12 +386,36 @@ void setup() {
     if (strlen(gDigestText)) {
       sdLogfEx("AI", "DIGEST", "boot_ok len:%u", (unsigned)strlen(gDigestText));
     }
+
+    // Push status once on boot so backend/device connectivity updates immediately.
+    if (pushStatus(appConfig)) {
+      lastStatusPush = millis();
+      sdLog("SYS", "Initial status pushed");
+    }
   }
 }
 
 void loop() {
   M5.update();
   unsigned long now = millis();
+  bool wifiConnectedNow = (WiFi.status() == WL_CONNECTED);
+  static bool wifiWasConnected = (WiFi.status() == WL_CONNECTED);
+
+  // Fast recovery path after a link drop: refresh time/config and push status now.
+  if (wifiConnectedNow && !wifiWasConnected) {
+    sdLog("NET", "WiFi link restored");
+    syncTime(appConfig.timezone);
+    pullCloudflareConfig(appConfig, prefs);
+    if (pushStatus(appConfig)) {
+      lastStatusPush = now;
+      sdLog("SYS", "Status pushed after reconnect");
+    }
+    lastConfigPing = now;
+    lastCommandPoll = now;
+    lastBGPoll = now;
+    lastLogUpload = now;
+  }
+  wifiWasConnected = wifiConnectedNow;
 
   wsTick(appConfig, prefs);
 
@@ -1123,7 +1147,8 @@ void pollCloudflareCommand(AppConfig& cfg, Preferences& p) {
   if (!strcmp(cmdType, "upload-logs")) {
     sdLog("CMD", "Executing command: upload-logs");
     setDisplayBanner(dispState, "Uploading logs...", CLR_MUTED);
-    bool ok = uploadSdLogs(cfg, cmdId);
+    // Use high limits to pull the full SD card history across all rotation files.
+    bool ok = uploadSdLogs(cfg, cmdId, 1500, 180000);
     setDisplayBanner(dispState, ok ? "Logs uploaded" : "Log upload failed", ok ? CLR_GREEN : CLR_RED);
     ackCloudflareCommand(cfg, cmdId, ok, ok ? "logs uploaded" : "log upload failed");
     return;

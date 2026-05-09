@@ -91,9 +91,9 @@ export function LogsSection({ showToast }) {
 
   return (
     <Card iconClass="ic-diag" icon={diagIcon} title="Log explorer" sub="Search uploaded SD logs">
-      <div className="field-row">
+      <div className="field-row log-filter-row">
         <div className="field-label"><div className="field-name">Filter logs</div><div className="field-desc">Search the latest uploaded SD log package.</div></div>
-        <div className="field-control" style={{ gap: 7, flexWrap: 'wrap' }}>
+        <div className="field-control log-filter-controls">
           <input className="inp" type="text" value={q} placeholder="search text" onChange={e => setQ(e.target.value)} />
           <select className="inp inp-sm" value={lvl} onChange={e => setLvl(e.target.value)}>
             <option value="">All</option>
