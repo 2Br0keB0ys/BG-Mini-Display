@@ -16,6 +16,9 @@ firmware/src/*.ino.cpp
 # Local secret material
 apps/cloudflare/bgdisplay-device-key.txt
 
+# Device provisioning audit logs (contain chip IDs and timing metadata)
+firmware/scripts/provision_logs/
+
 # Node modules if installed later
 **/node_modules/
 
