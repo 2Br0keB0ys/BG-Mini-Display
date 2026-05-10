@@ -18,11 +18,11 @@ param(
   [Parameter(Mandatory = $false)]
   [string]$ChipId = "",
 
-  # Hardware security fuses (irreversible — off by default)
+  # Hardware security fuses (irreversible - off by default)
   [Parameter(Mandatory = $false)]
   [switch]$ApplyHardwareSecurity,
 
-  # Skip flags — allow partial runs
+  # Skip flags - allow partial runs
   [Parameter(Mandatory = $false)]
   [switch]$SkipHardwareCheck,
   [Parameter(Mandatory = $false)]
@@ -92,7 +92,7 @@ Write-Host "Port: $Port | Repo: $repoRoot" -ForegroundColor Gray
 Write-Host "Started: $($startTime.ToString('yyyy-MM-dd HH:mm:ss'))" -ForegroundColor Gray
 Write-Host ""
 
-# ── Step 1: Hardware check (eFuse summary) ────────────────────────────────────
+# -- Step 1: Hardware check (eFuse summary) ------------------------------------
 if ($SkipHardwareCheck) {
   Step-Skip "Hardware check" "SkipHardwareCheck"
 } else {
@@ -106,7 +106,7 @@ if ($SkipHardwareCheck) {
   }
 }
 
-# ── Step 2: Apply hardware security fuses (IRREVERSIBLE) ─────────────────────
+# -- Step 2: Apply hardware security fuses (IRREVERSIBLE) ---------------------
 if (-not $ApplyHardwareSecurity) {
   Step-Skip "Hardware security fuses" "pass -ApplyHardwareSecurity to burn eFuses (irreversible)"
 } else {
@@ -125,7 +125,7 @@ if (-not $ApplyHardwareSecurity) {
   }
 }
 
-# ── Step 3: Detect Chip ID via esptool ────────────────────────────────────────
+# -- Step 3: Detect Chip ID via esptool ----------------------------------------
 # Reads the eFuse MAC from the device (same value as ESP.getEfuseMac() in firmware).
 # Chip ID is logged in the audit trail and printed for reference.
 # The device will self-enroll on first WiFi connect using this ID.
@@ -157,7 +157,7 @@ if ($ChipId) {
           -bor ([uint64]$macBytes[4] -shl 32) `
           -bor ([uint64]$macBytes[5] -shl 40)
         $ChipId = $chipInt.ToString("x16")
-        Write-Host "    MAC: $macStr → Chip ID: $ChipId" -ForegroundColor Gray
+        Write-Host "    MAC: $macStr -> Chip ID: $ChipId" -ForegroundColor Gray
         Step-Pass "Chip ID detection"
       } else {
         Step-Warn "Chip ID detection" "Could not parse MAC from esptool output. Run with -ChipId to set manually."
@@ -168,7 +168,7 @@ if ($ChipId) {
   }
 }
 
-# ── Step 4: Sync secrets.h from Infisical ────────────────────────────────────
+# -- Step 4: Sync secrets.h from Infisical ------------------------------------
 if ($SkipSecretsSync) {
   Step-Skip "Secrets sync" "SkipSecretsSync"
 } else {
@@ -191,7 +191,7 @@ if ($SkipSecretsSync) {
   }
 }
 
-# ── Step 5: PlatformIO build ──────────────────────────────────────────────────
+# -- Step 5: PlatformIO build --------------------------------------------------
 if ($SkipBuild) {
   Step-Skip "Firmware build" "SkipBuild"
 } else {
@@ -209,7 +209,7 @@ if ($SkipBuild) {
   }
 }
 
-# ── Step 6: PlatformIO flash ──────────────────────────────────────────────────
+# -- Step 6: PlatformIO flash --------------------------------------------------
 if ($SkipFlash) {
   Step-Skip "Firmware flash" "SkipFlash"
 } else {
@@ -227,7 +227,7 @@ if ($SkipFlash) {
   }
 }
 
-# ── Step 7: Verify worker is reachable ────────────────────────────────────────
+# -- Step 7: Verify worker is reachable ----------------------------------------
 # Checks the Cloudflare Worker is up. Device self-enrolls on first WiFi connect
 # (AP mode: connect to BG_MiniView_XXXX, enter WiFi credentials, device calls /api/enroll).
 $verifyUrl = $WorkerUrl
@@ -247,7 +247,7 @@ if (-not $verifyUrl -and $UseInfisical) {
 if ($SkipVerify) {
   Step-Skip "Worker verify" "SkipVerify"
 } elseif (-not $verifyUrl) {
-  Step-Skip "Worker verify" "no WorkerUrl — pass -WorkerUrl or -UseInfisical to enable"
+  Step-Skip "Worker verify" "no WorkerUrl - pass -WorkerUrl or -UseInfisical to enable"
 } else {
   Write-Host "[7] Verifying worker is reachable at $verifyUrl..." -ForegroundColor Cyan
   $deadline = (Get-Date).AddSeconds(30)
@@ -263,11 +263,11 @@ if ($SkipVerify) {
   if ($ok) {
     Step-Pass "Worker verify"
   } else {
-    Step-Warn "Worker verify" "Worker did not respond in 30s — check deployment"
+    Step-Warn "Worker verify" "Worker did not respond in 30s - check deployment"
   }
 }
 
-# ── Summary ───────────────────────────────────────────────────────────────────
+# -- Summary -------------------------------------------------------------------
 $endTime     = Get-Date
 $durationSec = [int]($endTime - $startTime).TotalSeconds
 
@@ -292,14 +292,14 @@ if ($hasFail) {
   if ($ChipId) {
     Write-Host ""
     Write-Host "Next steps:" -ForegroundColor Cyan
-    Write-Host "  1. Power on device — it will start in AP mode (SSID: BG_MiniView_XXXX)" -ForegroundColor Gray
+    Write-Host "  1. Power on device - it will start in AP mode (SSID: BG_MiniView_XXXX)" -ForegroundColor Gray
     Write-Host "  2. Connect to AP and enter WiFi credentials" -ForegroundColor Gray
     Write-Host "  3. Device will self-enroll at /api/enroll using chip ID: $ChipId" -ForegroundColor Gray
-    Write-Host "  4. Verify enrollment in the admin UI (Security → Enrolled Devices)" -ForegroundColor Gray
+    Write-Host "  4. Verify enrollment in the admin UI (Security -> Enrolled Devices)" -ForegroundColor Gray
   }
 }
 
-# ── Audit log ─────────────────────────────────────────────────────────────────
+# -- Audit log -----------------------------------------------------------------
 if (-not $SkipAuditLog) {
   try {
     New-Item -ItemType Directory -Force -Path $AuditLogDir | Out-Null

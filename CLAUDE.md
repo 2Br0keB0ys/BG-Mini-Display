@@ -81,7 +81,7 @@ The main sketch is `bgdisplay.ino`. All modules are header-only files included b
 - **Daily auto-reboot:** At 3:00 AM local time, once per calendar day, after device has been up 10+ min.
 - **Power button:** Single click → immediate config sync (DND wake). Hold once → arms factory reset; hold again within 10s → confirms factory reset.
 - **Factory reset:** Clears all NVS except `workerUrl`, `deviceKey`, and `timezone` (cloud identity preserved so device can pull config again after WiFi re-setup).
-- **First-flash bootstrap:** Worker URL and device key come from `secrets.h` macros (`BGDISPLAY_DEFAULT_WORKER_URL`, `BGDISPLAY_DEFAULT_DEVICE_KEY`). Copy `secrets.example.h` to `secrets.h` and fill in before flashing.
+- **First-flash bootstrap:** Worker URL and device key come from `secrets.h` macros (`BGDISPLAY_DEFAULT_WORKER_URL`, `BGDISPLAY_DEFAULT_DEVICE_KEY`). Copy `secrets.example.h` to `secrets.h` and fill in before flashing. After WiFi connect, `enrollDevice()` in `bgdisplay.ino` calls `POST /api/enroll` — on success the device saves a unique per-chip key to NVS and uses it for all subsequent requests.
 - **NVS encryption:** Chip ID acts as hardware root-of-trust. Same key used for SD logs (different salt).
 - **Stack:** `ARDUINO_LOOP_STACK_SIZE=16384` in root `platformio.ini` (prevents overflow crash).
 - **Timezone support:** US/Central, US/Eastern, US/Mountain, US/Pacific (mapped to POSIX strings). NTP: NIST primary → public pool fallback.
@@ -95,7 +95,7 @@ Current worker version: `3.0.0` (set in `wrangler.toml` `WORKER_VERSION` var).
 
 Single file handling all backend logic. Two KV namespaces:
 - `BGDISPLAY_CONFIG`: config JSON, version counter, changelog (50 entries), device status, telemetry (720 points), SD logs, commands, `daily_digest`, `pushover_creds`, `last_pushover_alert`
-- `BGDISPLAY_AUTH`: key hashes + recovery key hash, nonce cache, rate limit buckets, admin sessions, lockout state
+- `BGDISPLAY_AUTH`: key hashes + recovery key hash, nonce cache, rate limit buckets, admin sessions, lockout state, device registry (`device_registry:<chipId>` keys)
 
 **Bindings:**
 - `CONFIG_SYNC` — Durable Object (`ConfigSyncRelay`) for WebSocket relay; one instance per device
@@ -114,6 +114,7 @@ All adapters follow a common interface: authenticate, fetch latest pump data, re
 | Method | Path | Purpose |
 |--------|------|---------|
 | GET | `/api/ws` | WebSocket upgrade → Durable Object relay |
+| POST | `/api/enroll` | Device self-enrollment — device sends chipId + key, worker generates unique key per chip |
 | GET | `/api/ping?v=N` | Lightweight version check |
 | GET | `/api/config` | Full config pull + key rotation |
 | POST | `/api/key-ack` | ACK key rotation |
@@ -135,11 +136,15 @@ All adapters follow a common interface: authenticate, fetch latest pump data, re
 | GET | `/api/admin/maintenance` | Maintenance signals |
 | POST | `/api/admin/command` | Queue device command |
 | POST/DELETE | `/api/admin/recovery-key` | Set/clear recovery firmware key |
-| GET | `/api/admin/logs/latest` | View/download uploaded SD logs |
+| GET | `/api/admin/logs/latest` | View/download uploaded SD logs (`?download=1&session=TOKEN` for browser download) |
 | GET | `/api/admin/export` | Download config JSON |
 | POST | `/api/admin/import` | Restore config |
 | POST | `/api/admin/clear-log` | Wipe changelog |
 | GET | `/api/admin/digest` | View today's cached AI digest |
+| GET | `/api/admin/devices` | List enrolled devices (chipId, keyTail, enrolledAt, lastSeen, hasPerDeviceConfig) |
+| DELETE | `/api/admin/devices/:chipId` | Revoke device enrollment; restores previous key hash so device can re-enroll |
+| GET | `/api/admin/device-config/:chipId` | Per-device config overrides |
+| POST | `/api/admin/device-config/:chipId` | Set per-device config overrides (empty object = delete overrides) |
 
 **MCP endpoint** (JSON-RPC 2.0, device-key auth):
 
@@ -248,17 +253,32 @@ Each prompt is paired with a user message containing:
 - **v4.0.1-S (current):** Removed device morning digest display; digests now Pushover-only
 - **v4.0.1 and earlier:** Digests displayed on device for 10 seconds at boot
 
-### Config UI (`apps/pages/index.html`)
+### Config UI (`apps/ui/`)
 
-Single HTML file — no build step. Dark mode only. `WORKER_URL` is hardcoded at the top of the `<script>` block and must be edited before deploying. Section open/closed state persists in `localStorage`. Render is fully string-template based — `render()` rebuilds the entire `#app` innerHTML each call. DND times are displayed and stored in 12-hour format in the UI, converted to 24-hour on save.
+React + Vite + Tailwind app. Build: `npm run deploy:pages` from `apps/cloudflare/` (builds `apps/ui/`, deploys to Cloudflare Pages). Dark mode only, Inter font. Fixed sidebar navigation on desktop (≥900px), horizontal scroll tabs on mobile. `WORKER_URL` is set via `apps/ui/src/constants.js`.
 
-**Sections:** Display, BG Sources (Nightscout + Dexcom), Alerts/DND, **Pushover alerts** (enable toggle, user key, API token, cooldown — creds sent to worker separately, not stored in config JSON), **EndoAI** (shows today's AI-generated glucose summary text, generation button, model info, schedule details, Pushover push controls with time selector), Security, Advanced. **Top controls:** Global "Expand all" and "Collapse all" buttons for quick section navigation (state persisted in localStorage).
+**Layout:** Sidebar nav → main content with anchor sections. IntersectionObserver tracks the active section for sidebar highlighting. Advanced settings in a slide-in drawer (opened from sidebar).
+
+**Main sections** (sidebar nav): Network (WiFi), Glucose sources (Nightscout + Dexcom), Targets & alerts, Display & schedule, Notifications (Pushover + EndoAI digest), Insulin profile (pump info).
+
+**Advanced drawer sections:** Device actions (sync, pull SD logs, reboot, factory reset), Worker alert tuning, Diagnostics, Cloud insights, Security (key rotation, rate limiting, recovery key, changelog), **Enrolled devices** (device registry — shows chip IDs, online status, enrollment date, revoke button), Backup & restore, System status.
+
+**SD log download:** "Device actions" card → "Latest SD log upload" → Download button opens `GET /api/admin/logs/latest?download=1&session=TOKEN` in a new tab (worker accepts session via query param for this endpoint only).
+
+DND times displayed and stored in 12-hour format in the UI, converted to 24-hour on save. `apps/pages/index.html` is a legacy single-file version — not deployed.
 
 ### Scripts (`firmware/scripts/`)
 
 | Script | Purpose |
 |--------|---------|
 | `secure_provision.ps1` | ESP32 hardware security provisioning — burns flash encryption key + secure boot V1 key into eFuses, disables JTAG/download-mode decrypt. Dry-run by default; requires `-Apply` flag to make irreversible changes. Keys stored in `~/.bgdisplay-keys/`. **One-time operation per device — cannot be undone.** |
+| `firmware_secrets_sync.ps1` | Generates `firmware/src/secrets.h` from Infisical (if authenticated) or explicit parameters. Pass `-SkipInfisical` to use params only. Throws if `DeviceBootstrapKey` or `WorkerUrl` are missing. |
+| `provision_device.ps1` | End-to-end device provisioning: (1) eFuse read, (2) optional fuse burn, (3) chip ID detection via esptool MAC read, (4) secrets.h sync, (5) PlatformIO build, (6) flash, (7) worker verify. Use `-SkipSecretsSync` when Infisical is not authenticated. Use `-WorkerUrl` to enable the verify step without Infisical. **Must be saved as ASCII** — Unicode chars (em-dashes, box-drawing) in PS 5.1 cause CP1252 mis-decoding that prematurely closes string literals. |
+
+**Enrollment flow (automatic on first WiFi connect):**
+After flashing, the device calls `POST /api/enroll` (with its chip ID and bootstrap device key) during `enrollDevice()` in `bgdisplay.ino`. The worker generates a new unique key for this chip ID, stores it in `BGDISPLAY_AUTH` under `device_registry:<chipId>`, and returns the new key. The firmware saves the new key to NVS. Verify enrollment in the admin UI → Advanced tools → Enrolled devices.
+
+**This device:** MAC `84:1f:e8:82:ed:e8` · Chip ID `0000e8ed82e81f84` · Flashed 2026-05-10
 
 ## Hardware
 
@@ -271,10 +291,12 @@ Single HTML file — no build step. Dark mode only. `WORKER_URL` is hardcoded at
 
 1. Set Worker secrets: `wrangler secret put KV_ENCRYPT_KEY` (required for Pushover creds encryption)
 2. Deploy worker: `npm run deploy:worker` (creates Durable Object class on first deploy via migration tag `v1`)
-3. Flash firmware (with `secrets.h` containing real worker URL + device key)
+3. Flash firmware using `firmware/scripts/provision_device.ps1 -Port COM6 -SkipSecretsSync -WorkerUrl <url>` (or `pio run -t upload` directly). Script detects chip ID, builds, flashes, and verifies.
 4. On first boot with no saved WiFi → AP mode (`BG_MiniView_XXXX` network) — form only collects WiFi SSID + password
-5. Device connects to WiFi → immediately pulls full config from `/api/config`, opens WebSocket to `/api/ws`, fetches AI digest from `/api/digest`
-6. All future config changes via `https://setup.2brokeboys.uk` (Cloudflare Pages UI) — config saves trigger instant WS push to device
+5. Device connects to WiFi → calls `POST /api/enroll` with its chip ID + bootstrap key → receives unique per-chip key → saves to NVS
+6. Device pulls full config from `/api/config`, opens WebSocket to `/api/ws`, fetches AI digest from `/api/digest`
+7. Verify enrollment in admin UI → Advanced tools → Enrolled devices (shows chip ID, online status, enrollment date)
+8. All future config changes via `https://setup.2brokeboys.uk` (Cloudflare Pages UI) — config saves trigger instant WS push to device
 
 ## Monitoring — Checkly Integration + Infisical Secrets
 

@@ -2,6 +2,8 @@ import Card from '../../components/Card';
 import Field from '../../components/Field';
 import { Badge } from '../../components/Badge';
 import { fmtTs } from '../../helpers';
+import { getSession } from '../../api';
+import { WORKER_URL } from '../../constants';
 
 const ctrlIcon = <svg viewBox="0 0 24 24" strokeWidth="2"><path d="M12 2v10"/><path d="M6.2 6.2a8 8 0 1011.3 0"/></svg>;
 const alertIcon = <svg viewBox="0 0 24 24" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>;
@@ -21,8 +23,8 @@ export function DeviceActions({ meta, onCommand, showToast }) {
           <button className="btn btn-danger" onClick={() => { if (confirm('Queue factory reset? Device will wipe local config.')) onCommand('factory-reset'); }}>Factory reset</button>
         </div>
       </Field>
-      <Field label="Latest SD log upload" desc={log ? `${log.lineCount || 0} lines, ${log.bytes || 0} bytes (${fmtTs(log.uploadedAt)})` : 'No uploads yet'}>
-        {log && <button className="btn" onClick={() => showToast('Opening logs…')}>Download</button>}
+      <Field label="Latest SD log upload" desc={log ? `${log.lineCount || 0} lines, ${log.bytes || 0} bytes · ${fmtTs(log.uploadedAt)}` : 'No uploads yet'}>
+        {log && <button className="btn" onClick={() => { const s = getSession(); window.open(`${WORKER_URL}/api/admin/logs/latest?download=1&session=${encodeURIComponent(s)}`, '_blank'); }}>Download</button>}
       </Field>
       <Field label="Pending command">
         <Badge text={cmd ? `${cmd.type} queued` : 'None'} variant={cmd ? 'amber' : 'green'} />
