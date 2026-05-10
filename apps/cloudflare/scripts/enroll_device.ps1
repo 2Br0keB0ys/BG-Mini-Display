@@ -45,7 +45,15 @@ if ($UseInfisical) {
 
 if (-not $WorkerUrl) { throw "WorkerUrl is required (-WorkerUrl or -UseInfisical)." }
 if (-not $DeviceKey) { throw "DeviceKey is required (-DeviceKey or -UseInfisical)." }
-if (-not $ChipId)    { throw "ChipId is required (-ChipId). Get this from device serial output (16 hex chars)." }
+if (-not $ChipId)    { throw "ChipId is required (-ChipId). Get this from device serial output (16 hex chars, e.g. 000046e0146f6480)." }
+
+# NOTE: Enrollment updates auth.keyHash on the worker to a new unique key.
+# If you call this BEFORE flashing, you must update BGDISPLAY_DEFAULT_DEVICE_KEY in
+# Infisical with the returned key, re-run firmware_secrets_sync.ps1, and rebuild before
+# flashing — otherwise the firmware's bootstrap key will be rejected by the worker.
+# Recommended flow: flash first, then let the device self-enroll on first WiFi connect.
+# Use this script to manually re-enroll a device or to pre-register in CI pipelines
+# where the firmware will be rebuilt with the returned key before flashing.
 $ChipId = $ChipId.ToLower().Trim()
 if ($ChipId -notmatch '^[0-9a-f]{8,16}$') { throw "ChipId must be 8-16 hex characters." }
 

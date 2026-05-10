@@ -20,6 +20,8 @@ param(
   [switch]$SyncDeviceConfig,
   [Parameter(Mandatory = $false)]
   [string]$AdminSessionToken = "",
+  [Parameter(Mandatory = $false)]
+  [switch]$BuildFirmware,
 
   [Parameter(Mandatory = $false)]
   [switch]$FastStabilize,
@@ -146,9 +148,9 @@ $NightscoutUrl = Normalize-Url $NightscoutUrl
 if ($CloudflareApiToken) { $env:CLOUDFLARE_API_TOKEN = $CloudflareApiToken }
 if ($CloudflareAccountId) { $env:CLOUDFLARE_ACCOUNT_ID = $CloudflareAccountId }
 
-if (-not ($DeployWorker -or $DeployPages -or $SetupCheckly -or $RotateMonitorKey -or $SyncFirmwareSecrets -or $SyncDeviceConfig)) {
+if (-not ($DeployWorker -or $DeployPages -or $SetupCheckly -or $RotateMonitorKey -or $SyncFirmwareSecrets -or $SyncDeviceConfig -or $BuildFirmware)) {
   Write-Host "No actions selected. Available actions:" -ForegroundColor Yellow
-  Write-Host "  -DeployWorker -DeployPages -SetupCheckly -RotateMonitorKey -SyncFirmwareSecrets -SyncDeviceConfig" -ForegroundColor Yellow
+  Write-Host "  -DeployWorker -DeployPages -SetupCheckly -RotateMonitorKey -SyncFirmwareSecrets -SyncDeviceConfig -BuildFirmware" -ForegroundColor Yellow
   exit 1
 }
 
@@ -178,7 +180,7 @@ if ($SyncFirmwareSecrets) {
 
 Write-Host "Project Infisical Ops" -ForegroundColor Cyan
 Write-Host "Repo: $repoRoot" -ForegroundColor Gray
-Write-Host "Actions: worker=$DeployWorker pages=$DeployPages setupCheckly=$SetupCheckly rotateKey=$RotateMonitorKey syncFirmware=$SyncFirmwareSecrets syncDeviceConfig=$SyncDeviceConfig" -ForegroundColor Gray
+Write-Host "Actions: worker=$DeployWorker pages=$DeployPages setupCheckly=$SetupCheckly rotateKey=$RotateMonitorKey syncFirmware=$SyncFirmwareSecrets syncDeviceConfig=$SyncDeviceConfig buildFirmware=$BuildFirmware" -ForegroundColor Gray
 
 if ($DeployWorker) {
   Write-Host "Deploying worker..." -ForegroundColor Cyan
@@ -240,6 +242,44 @@ if ($SyncFirmwareSecrets) {
   }
   if ($ChecklyHeartbeatUrl) { $syncArgs.ChecklyHeartbeatUrl = $ChecklyHeartbeatUrl }
   & $firmwareSyncScript @syncArgs
+}
+
+if ($BuildFirmware) {
+  Write-Host "Building firmware (secrets sync + pio compile)..." -ForegroundColor Cyan
+
+  # Sync secrets.h first (skips if no bootstrap key available)
+  $firmwareSyncScript = Join-Path $repoRoot "firmware\scripts\firmware_secrets_sync.ps1"
+  if (Test-Path $firmwareSyncScript) {
+    $syncArgs = @{}
+    if ($DeviceBootstrapKey -and $WorkerUrl) {
+      $syncArgs.SkipInfisical      = $true
+      $syncArgs.DeviceBootstrapKey = $DeviceBootstrapKey
+      $syncArgs.WorkerUrl          = $WorkerUrl
+      if ($Timezone)           { $syncArgs.Timezone            = $Timezone }
+      if ($ChecklyHeartbeatUrl){ $syncArgs.ChecklyHeartbeatUrl = $ChecklyHeartbeatUrl }
+      $syncArgs.ChecklyHeartbeatSec = $ChecklyHeartbeatSec
+      Write-Host "  Syncing secrets.h..." -ForegroundColor Gray
+      & $firmwareSyncScript @syncArgs
+    } elseif ($infisicalEnabled -and $infisicalAvailable) {
+      $syncArgs.InfisicalEnv = $InfisicalEnv
+      if ($InfisicalProjectId) { $syncArgs.InfisicalProjectId = $InfisicalProjectId }
+      Write-Host "  Syncing secrets.h from Infisical..." -ForegroundColor Gray
+      & $firmwareSyncScript @syncArgs
+    } else {
+      Write-Host "  No secrets available — building without secrets.h (CI mode, uses __has_include guard)." -ForegroundColor DarkGray
+    }
+  }
+
+  $pioExe = "$env:USERPROFILE\.platformio\penv\Scripts\pio.exe"
+  if (-not (Test-Path $pioExe)) { throw "PlatformIO not found at $pioExe — install via VS Code PlatformIO extension." }
+  Push-Location $repoRoot
+  try {
+    & $pioExe run
+    if ($LASTEXITCODE -ne 0) { throw "pio run exited $LASTEXITCODE" }
+    Write-Host "Firmware build succeeded." -ForegroundColor Green
+  } finally {
+    Pop-Location
+  }
 }
 
 if ($SyncDeviceConfig) {
