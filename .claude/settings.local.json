@@ -1,7 +1,13 @@
 {
   "permissions": {
     "allow": [
-      "Bash(*:*)"
+      "Bash(*:*)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(~/.platformio/penv/Scripts/pio.exe run *)",
+      "Bash(~/.platformio/penv/Scripts/pio.exe device *)",
+      "PowerShell(& \"C:\\\\Users\\\\zaneb\\\\AppData\\\\Roaming\\\\npm\\\\infisical.cmd\" secrets list --projectId=8eaddd1f-66e5-43cc-abe6-1e84100ebd9d 2>&1)",
+      "Bash(git push *)"
     ]
   }
 }
