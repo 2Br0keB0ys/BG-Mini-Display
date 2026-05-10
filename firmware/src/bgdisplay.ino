@@ -384,12 +384,15 @@ void setup() {
   showBootScreen();
 
   bool hasStoredWifi = strlen(appConfig.wifiSSID) > 0;
+  bootProgress(18, "Connecting to WiFi...");
   if (!connectWiFi(appConfig, prefs)) {
     sdLogError("WiFi connect failed, entering AP setup");
     if (!hasStoredWifi) {
       sdLog("NET", "No saved WiFi; entering initial setup AP");
+      bootProgress(25, "WiFi setup — connect to BG_MiniView_XXXX");
       startAPMode(appConfig, prefs);
     } else if (setupUnlockPressedDuringBoot()) {
+      bootProgress(25, "WiFi setup mode...");
       startAPMode(appConfig, prefs);
     } else {
       sdLogError("AP setup locked; hold power during boot to unlock");
@@ -397,6 +400,7 @@ void setup() {
   }
 
   if (WiFi.status() == WL_CONNECTED) {
+    bootProgress(40, "Syncing time...");
     sdLog("NET", "WiFi connected");
     logRuntimeSnapshot("wifi-connected", appConfig, lastReading);
     syncTime(appConfig.timezone);
@@ -404,17 +408,21 @@ void setup() {
     sdLogWifi(appConfig.wifiSSID, WiFi.RSSI());
     // Enroll on first boot with factory-default key so each device gets a unique key
     if (strcmp(appConfig.deviceKey, BGDISPLAY_DEFAULT_DEVICE_KEY) == 0) {
+      bootProgress(55, "Enrolling device...");
       enrollDevice(appConfig, prefs);
     }
+    bootProgress(65, "Pulling config...");
     pullCloudflareConfig(appConfig, prefs);
     logConfigDiagnostics("after-config-pull", appConfig);
     wsInit(appConfig);
     // Try Dexcom first, fall back to Nightscout
     bool ok = false;
     if (strlen(appConfig.dexcomUser) > 0) {
+      bootProgress(78, "Fetching Dexcom...");
       ok = fetchDexcomShare(appConfig, lastReading);
     }
     if (!ok && strlen(appConfig.nightscoutUrl) > 0) {
+      bootProgress(78, "Fetching Nightscout...");
       fetchNightscout(appConfig, lastReading);
     }
     const char* src = "BG";
@@ -423,7 +431,7 @@ void setup() {
     sdLogBG(lastReading.value, lastReading.trend, src);
     logRuntimeSnapshot("initial-fetch", appConfig, lastReading);
 
-    // Fetch AI digest on boot so BtnB / touch shows it immediately
+    bootProgress(90, "Loading digest...");
     fetchDigest(appConfig);
     lastDigestFetch = millis();
     {
@@ -437,6 +445,9 @@ void setup() {
     if (strlen(gDigestText)) {
       sdLogfEx("AI", "DIGEST", "boot_ok len:%u", (unsigned)strlen(gDigestText));
     }
+
+    bootProgress(100, "Ready");
+    delay(500);
   }
 }
 

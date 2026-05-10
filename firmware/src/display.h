@@ -266,48 +266,73 @@ String timeSince(time_t ts) {
 
 void initDisplay(AppConfig& cfg) {
   int W = M5.Display.width(), H = M5.Display.height();
-  canvas.createSprite(W, H);   // allocate off-screen buffer once
+  canvas.createSprite(W, H);
   canvas.setTextDatum(middle_center);
   M5.Display.fillScreen(CLR_BG);
   M5.Display.setBrightness(map(cfg.brightness, 0, 100, 0, 255));
 }
 
-void showBootScreen() {
+// ─── Boot Screen ──────────────────────────────────────────────────────────────
+
+static int  _bootPct       = 0;
+static char _bootLabel[48] = {};
+
+static void drawBootFrame() {
   int W = M5.Display.width(), H = M5.Display.height();
+  const int cx = W / 2;
   canvas.fillScreen(CLR_BG);
 
-  // Brand card
-  const int cardW = 260;
-  const int cardH = 136;
-  const int cardX = (W - cardW) / 2;
-  const int cardY = (H - cardH) / 2;
-  canvas.fillRoundRect(cardX, cardY, cardW, cardH, 14, 0x18C3);
-  canvas.drawRoundRect(cardX, cardY, cardW, cardH, 14, CLR_SEP);
-
-  // Simple drop-shaped logo with BG initials.
-  const int logoCx = W / 2;
-  const int logoCy = cardY + 30;
-  canvas.fillCircle(logoCx, logoCy + 6, 16, CLR_RED);
-  canvas.fillTriangle(logoCx, logoCy - 15, logoCx - 14, logoCy + 2, logoCx + 14, logoCy + 2, CLR_RED);
-
+  // Teardrop logo: triangle pointing up + circle at base, seamlessly joined
+  canvas.fillTriangle(cx, 26,  cx - 21, 60,  cx + 21, 60,  CLR_RED);
+  canvas.fillCircle(cx, 72, 23, CLR_RED);
   canvas.setTextDatum(middle_center);
   canvas.setFont(&fonts::FreeSansBold9pt7b);
   canvas.setTextColor(CLR_TEXT);
-  canvas.drawString("BG", logoCx, logoCy + 8);
+  canvas.drawString("BG", cx, 74);
 
-  canvas.setTextDatum(middle_center);
+  // Title + subtitle
   canvas.setFont(&fonts::FreeSansBold9pt7b);
   canvas.setTextColor(CLR_TEXT);
-  canvas.drawString("BG MiniView", W/2, cardY + 74);
+  canvas.drawString("BG MiniView", cx, 114);
   canvas.setFont(&fonts::FreeSans9pt7b);
   canvas.setTextColor(CLR_MUTED);
-  canvas.drawString("Dexcom primary  Nightscout fallback", W/2, cardY + 96);
+  canvas.drawString("Glucose Display", cx, 134);
+
+  // Separator
+  canvas.drawFastHLine(50, 149, W - 100, CLR_SEP);
+
+  // Progress track + fill
+  const int barX = 25, barY = 160, barW = W - 50, barH = 10;
+  canvas.fillRoundRect(barX, barY, barW, barH, 5, CLR_DIM);
+  if (_bootPct > 0) {
+    int pct     = min(_bootPct, 100);
+    int fillW   = max(barH, barW * pct / 100);
+    uint16_t fc = (pct >= 100) ? CLR_GREEN : 0x07FF;  // cyan while loading, green when done
+    canvas.fillRoundRect(barX, barY, fillW, barH, 5, fc);
+  }
+
+  // Status label
   canvas.setFont(&fonts::FreeSans9pt7b);
-  canvas.setTextColor(CLR_YELLOW);
-  canvas.drawString("v" FIRMWARE_VERSION, W/2, cardY + 118);
+  canvas.setTextColor((_bootPct >= 100) ? CLR_GREEN : CLR_MUTED);
+  canvas.drawString(*_bootLabel ? _bootLabel : "Starting...", cx, 183);
+
+  // Version — very dim, bottom
+  canvas.setTextColor(CLR_DIM);
+  canvas.drawString("v" FIRMWARE_VERSION, cx, 228);
+
   canvas.pushSprite(0, 0);
-  delay(1200);
-  return;
+}
+
+void showBootScreen() {
+  _bootPct       = 0;
+  _bootLabel[0]  = '\0';
+  drawBootFrame();
+}
+
+void bootProgress(int pct, const char* label) {
+  _bootPct = pct;
+  if (label) strlcpy(_bootLabel, label, sizeof(_bootLabel));
+  drawBootFrame();
 }
 
 // ─── Core Draw (to off-screen canvas, then push atomically) ──────────────────
