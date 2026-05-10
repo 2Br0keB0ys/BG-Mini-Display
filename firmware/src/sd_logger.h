@@ -69,27 +69,9 @@ inline void sdLogEx(const char* level, const char* feature, const char* msg) {
 
   time_t now = time(nullptr);
   struct tm t; localtime_r(&now, &t);
-  int year = t.tm_year + 1900;
-  if (year < 0) year = 0;
-  if (year > 9999) year = 9999;
-  int month = t.tm_mon + 1;
-  if (month < 1) month = 1;
-  if (month > 12) month = 12;
-  int day = t.tm_mday;
-  if (day < 1) day = 1;
-  if (day > 31) day = 31;
-  int hour = t.tm_hour;
-  if (hour < 0) hour = 0;
-  if (hour > 23) hour = 23;
-  int minute = t.tm_min;
-  if (minute < 0) minute = 0;
-  if (minute > 59) minute = 59;
-  int second = t.tm_sec;
-  if (second < 0) second = 0;
-  if (second > 59) second = 59;
   char ts[32];
   snprintf(ts, sizeof(ts), "%04d-%02d-%02dT%02d:%02d:%02d",
-    year, month, day, hour, minute, second);
+    t.tm_year+1900, t.tm_mon+1, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec);
 
   String entry =
     String("{\"ts\":\"") + ts +

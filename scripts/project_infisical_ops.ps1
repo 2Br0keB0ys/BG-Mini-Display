@@ -35,6 +35,8 @@ param(
   [Parameter(Mandatory = $false)]
   [string]$NightscoutUrl = "",
   [Parameter(Mandatory = $false)]
+  [string]$NightscoutApiToken = "",
+  [Parameter(Mandatory = $false)]
   [string]$AlertEmail = "",
   [Parameter(Mandatory = $false)]
   [string]$CloudflareApiToken = "",
@@ -114,6 +116,8 @@ if ($infisicalEnabled -and $infisicalAvailable) {
   if (-not $MonitorKey -and $secretMap.ContainsKey("CHECKLY_MONITOR_KEY")) { $MonitorKey = $secretMap["CHECKLY_MONITOR_KEY"] }
   if (-not $WorkerUrl -and $secretMap.ContainsKey("WORKER_URL")) { $WorkerUrl = $secretMap["WORKER_URL"] }
   if (-not $NightscoutUrl -and $secretMap.ContainsKey("NIGHTSCOUT_URL")) { $NightscoutUrl = $secretMap["NIGHTSCOUT_URL"] }
+  if (-not $NightscoutApiToken -and $secretMap.ContainsKey("NIGHTSCOUT_API_TOKEN")) { $NightscoutApiToken = $secretMap["NIGHTSCOUT_API_TOKEN"] }
+  if (-not $NightscoutApiToken -and $secretMap.ContainsKey("NIGHTSCOUT_APITOKEN")) { $NightscoutApiToken = $secretMap["NIGHTSCOUT_APITOKEN"] }
   if (-not $AlertEmail -and $secretMap.ContainsKey("ALERT_EMAIL")) { $AlertEmail = $secretMap["ALERT_EMAIL"] }
   if (-not $CloudflareApiToken -and $secretMap.ContainsKey("CLOUDFLARE_API_TOKEN")) { $CloudflareApiToken = $secretMap["CLOUDFLARE_API_TOKEN"] }
   if (-not $CloudflareAccountId -and $secretMap.ContainsKey("CLOUDFLARE_ACCOUNT_ID")) { $CloudflareAccountId = $secretMap["CLOUDFLARE_ACCOUNT_ID"] }
@@ -193,6 +197,7 @@ if ($SetupCheckly) {
   }
   if ($ChecklyAccountId) { $setupArgs.ChecklyAccountId = $ChecklyAccountId }
   if ($NightscoutUrl) { $setupArgs.NightscoutUrl = $NightscoutUrl }
+  if ($NightscoutApiToken) { $setupArgs.NightscoutApiToken = $NightscoutApiToken }
   if ($AlertEmail) { $setupArgs.AlertEmail = $AlertEmail }
   if ($FastStabilize) { $setupArgs.FastStabilize = $true }
 
@@ -208,6 +213,7 @@ if ($RotateMonitorKey) {
   }
   if ($ChecklyAccountId) { $rotateArgs.ChecklyAccountId = $ChecklyAccountId }
   if ($NightscoutUrl) { $rotateArgs.NightscoutUrl = $NightscoutUrl }
+  if ($NightscoutApiToken) { $rotateArgs.NightscoutApiToken = $NightscoutApiToken }
   if ($NewMonitorKey) { $rotateArgs.NewMonitorKey = $NewMonitorKey }
   if ($SkipWorkerDeployOnRotate) { $rotateArgs.SkipWorkerDeploy = $true }
 

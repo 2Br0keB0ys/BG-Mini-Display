@@ -360,24 +360,15 @@ Example payload from `/api/monitor/status-check`:
 }
 ```
 
-**Current Checkly Allocation (Hobby: 10 max):**
-1. **BG Device Connectivity** — monitor endpoint `$.device.online`
-2. **BG Config Reachability** — monitor endpoint `$.protectedRoutes.configAuthGuard`
-3. **BG WebSocket Reachability** — monitor endpoint `$.protectedRoutes.wsAuthGuard`
-4. **BG Digest Reachability** — monitor endpoint `$.protectedRoutes.digestAuthGuard`
-5. **BG Command Reachability** — monitor endpoint `$.protectedRoutes.commandAuthGuard`
-6. **Dexcom Share Connectivity** — monitor endpoint `$.upstream.dexcomRootReachable`
-7. **Nightscout Connectivity** — monitor endpoint `$.upstream.nightscoutReachable`
-8. **BG Daily Digest Freshness** — monitor endpoint `$.digest.digestIsFresh`
-9. **BG Hourly Pipeline Alive** — monitor endpoint status 200
-10. **BG Worker Health** — `/api/detect-timezone` status 200
+**Current Checkly Allocation (Consolidated):**
+1. **BG Worker API Health** — single comprehensive check against `/api/monitor/status-check` using `X-Monitor-Key`, with assertions for endpoint health (`ok=true`) and protected-route guards. Device liveness is tracked separately via heartbeat to avoid false failures when the device is intentionally offline.
+2. **Nightscout Direct Connectivity** — direct check against `NIGHTSCOUT_URL/api/v1/status.json` using `NIGHTSCOUT_API_TOKEN` (when provided) as a query parameter so Nightscout can be validated independently of worker-side probes.
+
+This leaves additional monitor capacity available on the Hobby plan while preserving independent Nightscout visibility.
 
 **Current Frequency Baseline:**
-- 5 min: BG Device Connectivity
-- 60 min: BG Config Reachability
-- 120 min: BG WebSocket Reachability, BG Digest Reachability, Nightscout Connectivity
-- 180 min: BG Command Reachability, Dexcom Share Connectivity, BG Hourly Pipeline Alive
-- 360 min: BG Daily Digest Freshness, BG Worker Health
+- 5 min: BG Worker API Health
+- 120 min: Nightscout Direct Connectivity
 
 **Firmware Heartbeat Monitor:**
 - Heartbeat URL is configured in firmware `secrets.h` via `BGDISPLAY_CHECKLY_HEARTBEAT_URL`.
@@ -392,8 +383,8 @@ Example payload from `/api/monitor/status-check`:
 
 **Infisical Integration Details:**
 - **Project:** `bg-miniview` (Infisical Cloud)
-- **Environment:** `production`
-- **Secrets stored:** `CHECKLY_API_KEY`, `CHECKLY_ACCOUNT_ID`, `CHECKLY_MONITOR_KEY`, `WORKER_URL`, `NIGHTSCOUT_URL`, `ALERT_EMAIL`, `SLACK_WEBHOOK` (optional)
+- **Environment:** `dev`
+- **Secrets stored:** `CHECKLY_API_KEY`, `CHECKLY_ACCOUNT_ID`, `CHECKLY_MONITOR_KEY`, `WORKER_URL`, `NIGHTSCOUT_URL`, `NIGHTSCOUT_API_TOKEN`, `ALERT_EMAIL`, `SLACK_WEBHOOK` (optional)
 - **Auth:** Service token in `INFISICAL_TOKEN` environment variable
 - **Setup guide:** See [INFISICAL_SETUP.md](apps/cloudflare/scripts/INFISICAL_SETUP.md)
 
@@ -409,7 +400,150 @@ Example payload from `/api/monitor/status-check`:
 - **"Infisical CLI not found":** Install: `scoop install infisical` or `npm install -g @infisical/cli`
 - **"API key invalid":** Verify Checkly API key (from Account Settings → API Keys)
 - **"Worker not responding":** Check worker URL and ensure it's deployed
+- **"Nightscout check URL malformed":** Re-run `apps/cloudflare/scripts/setup_checkly.ps1` (or `scripts/project_infisical_ops.ps1 -SetupCheckly`) so the check is recreated with URL + query parameter structure.
+- **"HeaderList must be an array" from Checkly API:** pull latest scripts and re-run setup; the script now forces header arrays and retries transient API/network failures automatically.
 - **"Monitor creation failed":** Review Checkly API quota (Hobby: 10 monitors)
+
+## On-Device Security — Infisical Enhancement Options
+
+With Infisical already managing backend secrets and Checkly monitoring, you have 4 escalating options for enhancing firmware security posture:
+
+### Option 1: Automated Firmware Secrets Provisioning ⚡
+
+**What:** Create `firmware_secrets_sync.ps1` script that pulls firmware bootstrap values from Infisical and auto-generates `secrets.h`.
+
+**Flow:**
+```powershell
+# Pull from Infisical, generate firmware/src/secrets.h
+.\firmware_secrets_sync.ps1
+# Device key, worker URL, timezone, heartbeat URL all auto-populated
+```
+
+**Benefits:**
+- No manual `secrets.h` editing (copy-paste eliminated)
+- Single source of truth across all projects
+- Pre-build integration: devs never see plaintext secrets locally
+- Faster provisioning for new devices
+
+**Implementation:**
+- Reads: `BGDISPLAY_DEFAULT_DEVICE_KEY`, `BGDISPLAY_DEFAULT_WORKER_URL`, `BGDISPLAY_DEFAULT_TIMEZONE`, `BGDISPLAY_CHECKLY_HEARTBEAT_URL`, `BGDISPLAY_CHECKLY_HEARTBEAT_SEC` from Infisical
+- Writes: `firmware/src/secrets.h` with macro definitions
+- Integrates: Can be run as pre-build hook in PlatformIO or CI/CD
+
+**Effort:** ~30 minutes
+
+---
+
+### Option 2: Device Key Lifecycle Management 📋
+
+**What:** Assign unique device keys per-device (keyed by chip ID), store them in Infisical, enable self-enrollment and key rotation.
+
+**Flow:**
+1. **Provisioning:** Generate unique key, store in Infisical under `bg_device_<chip_id>_*` namespace
+2. **Device Boot:** Device sends chip ID to `/api/enroll` (unsigned) → worker returns device key → firmware caches in NVS
+3. **Key Rotation:** Admin can rotate key in Infisical; device detects mismatch, fetches new key
+4. **Audit Trail:** All key generations and rotations logged in Infisical event stream
+
+**Benefits:**
+- Each physical device has a unique, trackable identity
+- Easy key revocation (stolen/lost device)
+- Audit trail for compliance / incident response
+- Device self-enrollment (no pre-flashing secrets required)
+- Supports multi-device deployments
+
+**Implementation:**
+- New Infisical resource: Device records (chip ID → key mapping + metadata)
+- New worker endpoint: `POST /api/enroll` (chip ID → key lookup)
+- Firmware change: Check NVS for key; if missing, request from `/api/enroll`
+- Optional: Device provisioning CLI tool to pre-create records
+
+**Effort:** ~2 hours
+
+---
+
+### Option 3: Unified Device Provisioning Pipeline 🔧
+
+**What:** Single orchestration script that handles hardware security, firmware secrets, build, and deployment.
+
+**Flow:**
+```powershell
+# One command — hardware + firmware + deploy + verify
+.\provision_device.ps1 -DevicePort COM6 -DeviceChipId ABC12345
+
+# Steps:
+# 1. Hardware: burn flash encryption + secure boot fuses (eFuses)
+# 2. Firmware: pull secrets from Infisical → generate secrets.h
+# 3. Build: pio run (compiles with injected secrets)
+# 4. Flash: pio run -t upload (upload to device)
+# 5. Verify: ping /api/ping (confirm device enrolled & responsive)
+```
+
+**Benefits:**
+- Single command replaces entire manual setup flow
+- Repeatable, auditable, error-proof
+- Combines hardware + firmware + cloud provisioning
+- Guards against partial/incomplete setups
+- Can be run in CI/CD for production builds
+
+**Implementation:**
+- Orchestrator script that chains: `secure_provision.ps1` → `firmware_secrets_sync.ps1` → PlatformIO build → PlatformIO flash → health check
+- Optional: Auto-generate device records in Infisical before flash
+- Telemetry: log all steps to audit trail
+
+**Effort:** ~4 hours
+
+---
+
+### Option 4: Per-Device Secret Isolation (Advanced) 🏢
+
+**What:** Each device gets its own Infisical namespace with device-specific overrides for all firmware settings.
+
+**Flow:**
+1. **Infisical Layout:**
+   ```
+   bg-miniview/
+     dev/                             # Shared defaults
+       BGDISPLAY_DEFAULT_DEVICE_KEY
+       BGDISPLAY_DEFAULT_TIMEZONE
+       ...
+     devices/
+       bg_device_A1B2C3D4/            # Device-specific overrides
+         BGDISPLAY_WORKER_URL         # e.g., custom regional worker
+         BGDISPLAY_TIMEZONE           # e.g., different timezone per device
+         config_overrides             # custom DND, alert levels, etc.
+```
+
+2. **Provisioning:** Device pulls from both `dev/` (defaults) and `devices/<chip_id>/` (overrides)
+
+3. **Multi-Device Management:** Admin can configure per-device settings without touching global config
+
+**Benefits:**
+- True multi-device support with independent configuration
+- Regional/per-user customization (e.g., office device vs. home device)
+- Settings drift detection (compare device config vs. stored config)
+- Role-based access (e.g., parent can manage child's settings)
+- Device grouping / tagging (e.g., "all office devices")
+
+**Implementation:**
+- Infisical schema: Device resource type with parent/child hierarchy
+- Worker endpoint: `GET /api/config?include_device_overrides=true`
+- Admin UI: Device management panel (assign devices, customize per-device settings)
+- Firmware: Merge device-specific + global config on pull
+
+**Effort:** ~6 hours
+
+---
+
+## Prioritization Guide
+
+| Option | Speed | Control | Production | Multi-Device | Recommended For |
+|--------|-------|---------|-----------|--------------|-----------------|
+| **1** | ⚡⚡⚡ | ⭐⭐ | ⭐⭐ | No | Quick security lift, single device |
+| **2** | ⚡⚡ | ⭐⭐⭐ | ⭐⭐⭐ | Yes | Key lifecycle & audit trail |
+| **3** | ⚡ | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ | Yes | Production deployment flow |
+| **4** | ❌ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | Yes | Enterprise/multi-user setup |
+
+**Recommended path:** Start with **Option 1** (30 min, quick win) → **Option 2** (2 hours, production-grade) → **Option 3** (4 hours, CI/CD ready) as needed.
 
 ## Config Field Notes
 

@@ -170,25 +170,96 @@ function Invoke-Checkly {
     [string]$Body = ""
   )
 
-  $baseArgs = @("-sS", "--max-time", "30", "-X", $Method, "https://api.checklyhq.com/v1$Path", "-H", "Authorization: Bearer $ChecklyApiKey")
+  $baseArgs = @(
+    "-sS",
+    "--fail-with-body",
+    "--connect-timeout", "10",
+    "--max-time", "45",
+    "--retry", "5",
+    "--retry-all-errors",
+    "--retry-delay", "2",
+    "--retry-max-time", "90",
+    "-X", $Method,
+    "https://api.checklyhq.com/v1$Path",
+    "-H", "Authorization: Bearer $ChecklyApiKey",
+    "-H", "Accept: application/json"
+  )
   if ($ChecklyAccountId) {
     $baseArgs += @("-H", "x-checkly-account: $ChecklyAccountId")
   }
   if ($Body) {
     $baseArgs += @("-H", "Content-Type: application/json", "--data-binary", "@$Body")
   }
-  return curl.exe @baseArgs
+
+  $prevNativeErrorPref = $false
+  $hadNativeErrorPref = $false
+  if (Get-Variable -Name PSNativeCommandUseErrorActionPreference -Scope Global -ErrorAction SilentlyContinue) {
+    $hadNativeErrorPref = $true
+    $prevNativeErrorPref = $Global:PSNativeCommandUseErrorActionPreference
+    $Global:PSNativeCommandUseErrorActionPreference = $false
+  }
+
+  $prevErrorActionPreference = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    $response = & curl.exe @baseArgs 2>&1
+  } finally {
+    $ErrorActionPreference = $prevErrorActionPreference
+    if ($hadNativeErrorPref) {
+      $Global:PSNativeCommandUseErrorActionPreference = $prevNativeErrorPref
+    }
+  }
+  if ($LASTEXITCODE -ne 0) {
+    $msg = ($response | Out-String).Trim()
+    if (-not $msg) {
+      $msg = "No response body from Checkly API."
+    }
+    throw "Checkly API call failed: $Method $Path`n$msg"
+  }
+
+  return ($response | Out-String).Trim()
+}
+
+function ConvertFrom-ChecklyJson {
+  param([string]$Raw)
+  try {
+    return ($Raw | ConvertFrom-Json)
+  } catch {
+    throw "Failed to parse Checkly JSON response.`n$Raw"
+  }
+}
+
+function Get-ChecklyList {
+  param([string]$Path)
+  $raw = Invoke-Checkly -Method "GET" -Path $Path
+  $parsed = ConvertFrom-ChecklyJson -Raw $raw
+  if ($parsed -is [System.Array]) {
+    return $parsed
+  }
+  if ($parsed -and $parsed.checks) {
+    return @($parsed.checks)
+  }
+  if ($parsed -and $parsed.items) {
+    return @($parsed.items)
+  }
+  if ($null -eq $parsed) {
+    return @()
+  }
+  return @($parsed)
 }
 
 function Get-MonitorHeaders {
   if ([string]::IsNullOrWhiteSpace($MonitorKey)) { return @() }
-  return @(
+  return ,@(
     @{ key = "X-Monitor-Key"; value = $MonitorKey }
   )
 }
 
 if (-not $ChecklyAccountId) {
-  $accounts = Invoke-Checkly -Method "GET" -Path "/accounts" | ConvertFrom-Json
+  $accounts = Get-ChecklyList -Path "/accounts"
+  if (-not $accounts -or -not $accounts[0] -or -not $accounts[0].id) {
+    throw "Unable to resolve Checkly account id from /accounts"
+  }
   $ChecklyAccountId = $accounts[0].id
 }
 
@@ -200,7 +271,11 @@ if ($FastStabilize) {
 }
 
 try {
-  $workerTest = curl.exe -sS --max-time 20 "$WorkerUrl/api/detect-timezone" | ConvertFrom-Json
+  $workerRaw = & curl.exe -sS --fail-with-body --connect-timeout 10 --max-time 20 "$WorkerUrl/api/detect-timezone" 2>&1
+  if ($LASTEXITCODE -ne 0) {
+    throw ($workerRaw | Out-String).Trim()
+  }
+  $workerTest = $workerRaw | ConvertFrom-Json
   if (-not $workerTest.detected) { throw "detect-timezone missing expected payload" }
   Write-Host "Worker responding" -ForegroundColor Green
 } catch {
@@ -208,7 +283,7 @@ try {
   exit 1
 }
 
-$existing = Invoke-Checkly -Method "GET" -Path "/checks?limit=100" | ConvertFrom-Json
+$existing = Get-ChecklyList -Path "/checks?limit=100"
 
 # Remove duplicate checks by name so stale definitions do not keep failing.
 $dupes = $existing | Group-Object name | Where-Object { $_.Count -gt 1 }
@@ -227,20 +302,12 @@ foreach ($dup in $dupes) {
 }
 
 if ($dupes.Count -gt 0) {
-  $existing = Invoke-Checkly -Method "GET" -Path "/checks?limit=100" | ConvertFrom-Json
+  $existing = Get-ChecklyList -Path "/checks?limit=100"
 }
 
 $normalFrequencies = @{
-  "BG Device Connectivity" = 5
-  "BG Config Reachability" = 60
-  "BG WebSocket Reachability" = 120
-  "BG Digest Reachability" = 120
-  "BG Command Reachability" = 180
-  "Dexcom Share Connectivity" = 180
-  "Nightscout Connectivity" = 120
-  "BG Daily Digest Freshness" = 360
-  "BG Hourly Pipeline Alive" = 180
-  "BG Worker Health" = 360
+  "BG Worker API Health" = 5
+  "Nightscout Direct Connectivity" = 120
 }
 
 function Get-CheckFrequency {
@@ -261,20 +328,33 @@ function Upsert-Check {
 
   $payloadJson = $Payload | ConvertTo-Json -Depth 20
   $tmp = [IO.Path]::GetTempFileName()
-  Set-Content -Path $tmp -Value $payloadJson -NoNewline
+  Set-Content -Path $tmp -Value $payloadJson -NoNewline -Encoding ascii
 
   $match = $existing | Where-Object { $_.name -eq $Name } | Select-Object -First 1
   if ($match) {
     $resp = Invoke-Checkly -Method "PUT" -Path "/checks/$($match.id)" -Body $tmp
     $parsed = $null
-    try { $parsed = $resp | ConvertFrom-Json } catch {}
+    try { $parsed = ConvertFrom-ChecklyJson -Raw $resp } catch {}
     $id = if ($parsed -and $parsed.id) { $parsed.id } else { $match.id }
     Write-Host "  Updated: $Name ($id)" -ForegroundColor Green
   } else {
     $resp = Invoke-Checkly -Method "POST" -Path "/checks" -Body $tmp
     $parsed = $null
-    try { $parsed = $resp | ConvertFrom-Json } catch {}
-    $id = if ($parsed -and $parsed.id) { $parsed.id } else { "unknown" }
+    try { $parsed = ConvertFrom-ChecklyJson -Raw $resp } catch {}
+    $id = "unknown"
+    if ($parsed -and $parsed.id) {
+      $id = $parsed.id
+    } elseif ($parsed -and $parsed.check -and $parsed.check.id) {
+      $id = $parsed.check.id
+    } else {
+      # Some API responses omit id; re-query by name before failing.
+      $refetched = Get-ChecklyList -Path "/checks?limit=100"
+      $created = $refetched | Where-Object { $_.name -eq $Name } | Sort-Object updated_at -Descending | Select-Object -First 1
+      if ($created -and $created.id) {
+        $id = $created.id
+        $script:existing = $refetched
+      }
+    }
     if ($id -eq "unknown") {
       Remove-Item $tmp -Force
       throw "Create failed for check '$Name' (no id in response)"
@@ -301,65 +381,68 @@ Write-Host "`nUpserting monitors..." -ForegroundColor Yellow
 $monitorHeaders = Get-MonitorHeaders
 $monitorUrl = "$WorkerUrl/api/monitor/status-check"
 
-Upsert-Check "BG Device Connectivity" ($common + @{
-  name = "BG Device Connectivity"
-  frequency = Get-CheckFrequency "BG Device Connectivity"
-  description = "Passes only when monitor endpoint reports device.online=true."
+# Consolidated monitor profile: one worker API check plus optional direct Nightscout check.
+$desiredCheckNames = @("BG Worker API Health")
+if ($NightscoutUrl) {
+  $desiredCheckNames += "Nightscout Direct Connectivity"
+}
+
+$legacyCheckNames = @(
+  "BG Device Connectivity",
+  "BG Config Reachability",
+  "BG WebSocket Reachability",
+  "BG Digest Reachability",
+  "BG Command Reachability",
+  "Dexcom Share Connectivity",
+  "Nightscout Connectivity",
+  "BG Daily Digest Freshness",
+  "BG Hourly Pipeline Alive",
+  "BG Worker Health",
+  "BG MiniView Health"
+)
+
+$toDelete = $existing | Where-Object { ($legacyCheckNames -contains $_.name) -and -not ($desiredCheckNames -contains $_.name) }
+foreach ($check in $toDelete) {
+  try {
+    Invoke-Checkly -Method "DELETE" -Path "/checks/$($check.id)" | Out-Null
+    Write-Host "  Removed legacy check: $($check.name) ($($check.id))" -ForegroundColor Yellow
+  } catch {
+    Write-Host "  Failed to remove legacy check: $($check.name) ($($check.id))" -ForegroundColor Red
+  }
+}
+
+if ($toDelete.Count -gt 0) {
+  $existing = Invoke-Checkly -Method "GET" -Path "/checks?limit=100" | ConvertFrom-Json
+}
+
+Upsert-Check "BG Worker API Health" ($common + @{
+  name = "BG Worker API Health"
+  frequency = Get-CheckFrequency "BG Worker API Health"
+  description = "Consolidated worker API monitor endpoint and auth-guard health check."
   request = @{
     method = "GET"; url = $monitorUrl; followRedirects = $true; skipSSL = $false; ipFamily = "IPv4"; body = ""; bodyType = "NONE"; headers = $monitorHeaders; queryParameters = @();
     assertions = @(
       @{ source = "STATUS_CODE"; comparison = "EQUALS"; target = "200"; property = ""; regex = "" },
-      @{ source = "JSON_BODY"; comparison = "EQUALS"; target = "true"; property = "$.device.online"; regex = "" }
+      @{ source = "JSON_BODY"; comparison = "EQUALS"; target = "true"; property = "$.ok"; regex = "" },
+      @{ source = "JSON_BODY"; comparison = "EQUALS"; target = "true"; property = "$.protectedRoutes.configAuthGuard"; regex = "" },
+      @{ source = "JSON_BODY"; comparison = "EQUALS"; target = "true"; property = "$.protectedRoutes.wsAuthGuard"; regex = "" },
+      @{ source = "JSON_BODY"; comparison = "EQUALS"; target = "true"; property = "$.protectedRoutes.digestAuthGuard"; regex = "" }
     )
   }
 })
 
-Upsert-Check "BG Config Reachability" ($common + @{
-  name = "BG Config Reachability"; frequency = Get-CheckFrequency "BG Config Reachability"; description = "Passes only when protected config route is guarded correctly.";
-  request = @{ method = "GET"; url = $monitorUrl; followRedirects = $true; skipSSL = $false; ipFamily = "IPv4"; body = ""; bodyType = "NONE"; headers = $monitorHeaders; queryParameters = @(); assertions = @(@{ source = "JSON_BODY"; comparison = "EQUALS"; target = "true"; property = "$.protectedRoutes.configAuthGuard"; regex = "" }) }
-})
-
-Upsert-Check "BG WebSocket Reachability" ($common + @{
-  name = "BG WebSocket Reachability"; frequency = Get-CheckFrequency "BG WebSocket Reachability"; description = "Passes only when protected websocket route is guarded correctly.";
-  request = @{ method = "GET"; url = $monitorUrl; followRedirects = $true; skipSSL = $false; ipFamily = "IPv4"; body = ""; bodyType = "NONE"; headers = $monitorHeaders; queryParameters = @(); assertions = @(@{ source = "JSON_BODY"; comparison = "EQUALS"; target = "true"; property = "$.protectedRoutes.wsAuthGuard"; regex = "" }) }
-})
-
-Upsert-Check "BG Digest Reachability" ($common + @{
-  name = "BG Digest Reachability"; frequency = Get-CheckFrequency "BG Digest Reachability"; description = "Passes only when protected digest route is guarded correctly.";
-  request = @{ method = "GET"; url = $monitorUrl; followRedirects = $true; skipSSL = $false; ipFamily = "IPv4"; body = ""; bodyType = "NONE"; headers = $monitorHeaders; queryParameters = @(); assertions = @(@{ source = "JSON_BODY"; comparison = "EQUALS"; target = "true"; property = "$.protectedRoutes.digestAuthGuard"; regex = "" }) }
-})
-
-Upsert-Check "BG Command Reachability" ($common + @{
-  name = "BG Command Reachability"; frequency = Get-CheckFrequency "BG Command Reachability"; description = "Passes only when protected command route is guarded correctly.";
-  request = @{ method = "GET"; url = $monitorUrl; followRedirects = $true; skipSSL = $false; ipFamily = "IPv4"; body = ""; bodyType = "NONE"; headers = $monitorHeaders; queryParameters = @(); assertions = @(@{ source = "JSON_BODY"; comparison = "EQUALS"; target = "true"; property = "$.protectedRoutes.commandAuthGuard"; regex = "" }) }
-})
-
-Upsert-Check "Dexcom Share Connectivity" ($common + @{
-  name = "Dexcom Share Connectivity"; frequency = Get-CheckFrequency "Dexcom Share Connectivity"; description = "Passes when Dexcom host is reachable from worker monitor probe.";
-  request = @{ method = "GET"; url = $monitorUrl; followRedirects = $true; skipSSL = $false; ipFamily = "IPv4"; body = ""; bodyType = "NONE"; headers = $monitorHeaders; queryParameters = @(); assertions = @(@{ source = "JSON_BODY"; comparison = "EQUALS"; target = "true"; property = "$.upstream.dexcomRootReachable"; regex = "" }) }
-})
-
 if ($NightscoutUrl) {
-  Upsert-Check "Nightscout Connectivity" ($common + @{
-    name = "Nightscout Connectivity"; frequency = Get-CheckFrequency "Nightscout Connectivity"; description = "Nightscout endpoint availability check.";
-    request = @{ method = "GET"; url = $monitorUrl; followRedirects = $true; skipSSL = $false; ipFamily = "IPv4"; body = ""; bodyType = "NONE"; headers = $monitorHeaders; queryParameters = @(); assertions = @(@{ source = "JSON_BODY"; comparison = "EQUALS"; target = "true"; property = "$.upstream.nightscoutReachable"; regex = "" }) }
+  $nightscoutBase = $NightscoutUrl.TrimEnd('/')
+  $nightscoutStatusUrl = "$nightscoutBase/api/v1/status.json"
+  $nightscoutQueryParameters = @()
+  if ($NightscoutApiToken) {
+    $nightscoutQueryParameters = @(@{ key = "token"; value = $NightscoutApiToken })
+  }
+  Upsert-Check "Nightscout Direct Connectivity" ($common + @{
+    name = "Nightscout Direct Connectivity"; frequency = Get-CheckFrequency "Nightscout Direct Connectivity"; description = "Direct Nightscout status endpoint availability check.";
+    request = @{ method = "GET"; url = $nightscoutStatusUrl; followRedirects = $true; skipSSL = $false; ipFamily = "IPv4"; body = ""; bodyType = "NONE"; headers = @(); queryParameters = $nightscoutQueryParameters; assertions = @(@{ source = "STATUS_CODE"; comparison = "EQUALS"; target = "200"; property = ""; regex = "" }) }
   })
 }
-
-Upsert-Check "BG Daily Digest Freshness" ($common + @{
-  name = "BG Daily Digest Freshness"; frequency = Get-CheckFrequency "BG Daily Digest Freshness"; description = "Daily digest freshness signal.";
-  request = @{ method = "GET"; url = $monitorUrl; followRedirects = $true; skipSSL = $false; ipFamily = "IPv4"; body = ""; bodyType = "NONE"; headers = $monitorHeaders; queryParameters = @(); assertions = @(@{ source = "JSON_BODY"; comparison = "EQUALS"; target = "true"; property = "$.digest.digestIsFresh"; regex = "" }) }
-})
-
-Upsert-Check "BG Hourly Pipeline Alive" ($common + @{
-  name = "BG Hourly Pipeline Alive"; frequency = Get-CheckFrequency "BG Hourly Pipeline Alive"; description = "Hourly pipeline signal based on status endpoint availability.";
-  request = @{ method = "GET"; url = $monitorUrl; followRedirects = $true; skipSSL = $false; ipFamily = "IPv4"; body = ""; bodyType = "NONE"; headers = $monitorHeaders; queryParameters = @(); assertions = @(@{ source = "STATUS_CODE"; comparison = "EQUALS"; target = "200"; property = ""; regex = "" }) }
-})
-
-Upsert-Check "BG Worker Health" ($common + @{
-  name = "BG Worker Health"; frequency = Get-CheckFrequency "BG Worker Health"; description = "Basic worker endpoint health.";
-  request = @{ method = "GET"; url = "$WorkerUrl/api/detect-timezone"; followRedirects = $true; skipSSL = $false; ipFamily = "IPv4"; body = ""; bodyType = "NONE"; headers = @(); queryParameters = @(); assertions = @(@{ source = "STATUS_CODE"; comparison = "EQUALS"; target = "200"; property = ""; regex = "" }) }
-})
 
 Write-Host "`nDone. Checkly monitors are up to date." -ForegroundColor Green
 Write-Host "https://app.checklyhq.com/checks" -ForegroundColor Cyan

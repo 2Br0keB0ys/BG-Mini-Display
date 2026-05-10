@@ -36,14 +36,6 @@
 #define BGDISPLAY_DEFAULT_TIMEZONE "US/Central"
 #endif
 
-#ifndef BGDISPLAY_CHECKLY_HEARTBEAT_URL
-#define BGDISPLAY_CHECKLY_HEARTBEAT_URL ""
-#endif
-
-#ifndef BGDISPLAY_CHECKLY_HEARTBEAT_SEC
-#define BGDISPLAY_CHECKLY_HEARTBEAT_SEC 60
-#endif
-
 Preferences  prefs;
 AppConfig    appConfig;
 BGReading    lastReading;
@@ -58,7 +50,6 @@ unsigned long lastTimeDraw    = 0;
 unsigned long bootTime        = millis();
 unsigned long lastNoSourceWarn = 0;
 unsigned long lastHeartbeatMs = 0;
-unsigned long lastChecklyHeartbeatMs = 0;
 
 static const bool kVerboseDiagLogs = false;
 
@@ -114,7 +105,6 @@ void factoryResetToInitialSetup(AppConfig&, Preferences&);
 void logConfigDiagnostics(const char* stage, const AppConfig& cfg);
 void logRuntimeSnapshot(const char* stage, const AppConfig& cfg, const BGReading& reading);
 void logHeartbeat(const AppConfig& cfg, const BGReading& reading);
-void pingChecklyHeartbeat();
 
 String toHex(const uint8_t* data, size_t len) {
   static const char* hex = "0123456789abcdef";
@@ -396,36 +386,12 @@ void setup() {
     if (strlen(gDigestText)) {
       sdLogfEx("AI", "DIGEST", "boot_ok len:%u", (unsigned)strlen(gDigestText));
     }
-
-    // Push status once on boot so backend/device connectivity updates immediately.
-    if (pushStatus(appConfig)) {
-      lastStatusPush = millis();
-      sdLog("SYS", "Initial status pushed");
-    }
   }
 }
 
 void loop() {
   M5.update();
   unsigned long now = millis();
-  bool wifiConnectedNow = (WiFi.status() == WL_CONNECTED);
-  static bool wifiWasConnected = (WiFi.status() == WL_CONNECTED);
-
-  // Fast recovery path after a link drop: refresh time/config and push status now.
-  if (wifiConnectedNow && !wifiWasConnected) {
-    sdLog("NET", "WiFi link restored");
-    syncTime(appConfig.timezone);
-    pullCloudflareConfig(appConfig, prefs);
-    if (pushStatus(appConfig)) {
-      lastStatusPush = now;
-      sdLog("SYS", "Status pushed after reconnect");
-    }
-    lastConfigPing = now;
-    lastCommandPoll = now;
-    lastBGPoll = now;
-    lastLogUpload = now;
-  }
-  wifiWasConnected = wifiConnectedNow;
 
   wsTick(appConfig, prefs);
 
@@ -588,14 +554,6 @@ void loop() {
     logHeartbeat(appConfig, lastReading);
   }
 
-  // Checkly heartbeat ping for external device liveness monitoring.
-  unsigned long checklyIntervalMs = (unsigned long)BGDISPLAY_CHECKLY_HEARTBEAT_SEC * 1000UL;
-  if (checklyIntervalMs < 10000UL) checklyIntervalMs = 10000UL;
-  if (WiFi.status() == WL_CONNECTED && now - lastChecklyHeartbeatMs > checklyIntervalMs) {
-    lastChecklyHeartbeatMs = now;
-    pingChecklyHeartbeat();
-  }
-
   // Status push every 5 min
   if (WiFi.status()==WL_CONNECTED && now - lastStatusPush > 300000UL) {
     lastStatusPush = now;
@@ -678,27 +636,6 @@ void checkDailyAutoReboot() {
   Serial.println("Daily auto reboot at 3AM");
   delay(300);
   ESP.restart();
-}
-
-void pingChecklyHeartbeat() {
-  const char* heartbeatUrl = BGDISPLAY_CHECKLY_HEARTBEAT_URL;
-  if (!heartbeatUrl || !heartbeatUrl[0]) return;
-
-  HTTPClient http;
-  http.begin(String(heartbeatUrl));
-  http.setTimeout(4000);
-  http.addHeader("User-Agent", String("BGMiniView/") + FIRMWARE_VERSION);
-  int code = http.GET();
-  http.end();
-
-  if (code < 200 || code >= 300) {
-    if (code < 0) {
-      String err = HTTPClient::errorToString(code);
-      sdLogfEx("ERR", "CHKLY", "heartbeat_http:%d (%s)", code, err.c_str());
-    } else {
-      sdLogfEx("ERR", "CHKLY", "heartbeat_http:%d", code);
-    }
-  }
 }
 
 // ─── Smart Config Ping ────────────────────────────────────────────────────────
@@ -1029,13 +966,9 @@ void pullCloudflareConfig(AppConfig& cfg, Preferences& p) {
 bool pushStatus(AppConfig& cfg) {
   if (!strlen(cfg.workerUrl)) return false;
   if (!hasValidClock()) return false;
-  String path = "/api/status";
-  String base = normalizeWorkerBase(cfg.workerUrl);
-  String defaultBase = getDefaultWorkerBase();
-  bool usedDefaultBase = false;
-
   HTTPClient http;
-  http.begin(base + path);
+  String path = "/api/status";
+  http.begin(String(cfg.workerUrl)+path);
   http.addHeader("Content-Type","application/json");
   http.addHeader("X-Device-Key", cfg.deviceKey);
   StaticJsonDocument<512> doc;
@@ -1077,38 +1010,16 @@ bool pushStatus(AppConfig& cfg) {
       }
     }
   String body; serializeJson(doc, body);
-  addSignedHeaders(http, "POST", path, body, cfg);
+    addSignedHeaders(http, "POST", path, body, cfg);
   int code = http.POST(body);
-  http.end();
-
-  if ((code < 0 || code >= 500) && defaultBase.length() > 0 && base != defaultBase) {
-    sdLogEx("ERR", "STATUS", "push_primary_failed_try_default");
-    HTTPClient retry;
-    retry.begin(defaultBase + path);
-    retry.addHeader("Content-Type", "application/json");
-    retry.addHeader("X-Device-Key", cfg.deviceKey);
-    addSignedHeaders(retry, "POST", path, body, cfg);
-    int retryCode = retry.POST(body);
-    retry.end();
-    if (retryCode >= 200 && retryCode < 300) {
-      code = retryCode;
-      usedDefaultBase = true;
-    }
-  }
-
   if (code < 200 || code >= 300) {
     sdLogfEx("ERR", "STATUS", "push_fail http:%d", code);
     logHttpFailure("Status push", code);
+    http.end();
     return false;
   }
-
-  if (usedDefaultBase) {
-    strlcpy(cfg.workerUrl, defaultBase.c_str(), sizeof(cfg.workerUrl));
-    saveConfig(prefs, cfg);
-    sdLogEx("CFG", "STATUS", "worker_url_healed_default");
-  }
-
   sdLogfEx("SYS", "STATUS", "push_ok bg:%d src:%d cfgV:%d", lastReading.value, (int)lastReading.source, cfg.lastConfigVersion);
+  http.end();
   return true;
 }
 
@@ -1186,8 +1097,7 @@ void pollCloudflareCommand(AppConfig& cfg, Preferences& p) {
   if (!strcmp(cmdType, "upload-logs")) {
     sdLog("CMD", "Executing command: upload-logs");
     setDisplayBanner(dispState, "Uploading logs...", CLR_MUTED);
-    // Use high limits to pull the full SD card history across all rotation files.
-    bool ok = uploadSdLogs(cfg, cmdId, 1500, 180000);
+    bool ok = uploadSdLogs(cfg, cmdId);
     setDisplayBanner(dispState, ok ? "Logs uploaded" : "Log upload failed", ok ? CLR_GREEN : CLR_RED);
     ackCloudflareCommand(cfg, cmdId, ok, ok ? "logs uploaded" : "log upload failed");
     return;

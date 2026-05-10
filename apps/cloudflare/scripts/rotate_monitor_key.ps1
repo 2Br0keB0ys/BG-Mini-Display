@@ -19,6 +19,8 @@ param(
   [Parameter(Mandatory = $false)]
   [string]$NightscoutUrl = "",
   [Parameter(Mandatory = $false)]
+  [string]$NightscoutApiToken = "",
+  [Parameter(Mandatory = $false)]
   [string]$NewMonitorKey = "",
   [Parameter(Mandatory = $false)]
   [switch]$SkipWorkerDeploy
@@ -92,6 +94,8 @@ if ($infisicalEnabled -and $infisicalAvailable) {
     if (-not $ChecklyAccountId -and $secretMap.ContainsKey("CHECKLY_ACCOUNT_ID")) { $ChecklyAccountId = $secretMap["CHECKLY_ACCOUNT_ID"] }
     if (-not $WorkerUrl -and $secretMap.ContainsKey("WORKER_URL")) { $WorkerUrl = $secretMap["WORKER_URL"] }
     if (-not $NightscoutUrl -and $secretMap.ContainsKey("NIGHTSCOUT_URL")) { $NightscoutUrl = $secretMap["NIGHTSCOUT_URL"] }
+    if (-not $NightscoutApiToken -and $secretMap.ContainsKey("NIGHTSCOUT_API_TOKEN")) { $NightscoutApiToken = $secretMap["NIGHTSCOUT_API_TOKEN"] }
+    if (-not $NightscoutApiToken -and $secretMap.ContainsKey("NIGHTSCOUT_APITOKEN")) { $NightscoutApiToken = $secretMap["NIGHTSCOUT_APITOKEN"] }
   } catch {
     Write-Host "Infisical export failed: $($_.Exception.Message)" -ForegroundColor Red
   }
@@ -155,6 +159,7 @@ $setupArgs = @{
 }
 if ($ChecklyAccountId) { $setupArgs.ChecklyAccountId = $ChecklyAccountId }
 if ($NightscoutUrl) { $setupArgs.NightscoutUrl = $NightscoutUrl }
+if ($NightscoutApiToken) { $setupArgs.NightscoutApiToken = $NightscoutApiToken }
 
 & $setupChecklyPath @setupArgs
 
