@@ -22,8 +22,6 @@ Add these secrets (click **+ Add Secret** for each):
 | `WORKER_URL` | `https://bgdisplay.your-domain.workers.dev` | Cloudflare Worker URL | ✅ Yes |
 | `NIGHTSCOUT_URL` | `https://your-ns.herokuapp.com` | Nightscout instance URL | ⚠️ Optional |
 | `NIGHTSCOUT_API_TOKEN` | Nightscout bearer token | Optional auth for private Nightscout endpoint checks | ⚠️ Optional |
-| `ALERT_EMAIL` | `you@example.com` | Alert email(s), comma-separated | ⚠️ Optional |
-| `SLACK_WEBHOOK` | `https://hooks.slack.com/services/...` | Slack webhook URL | ⚠️ Optional |
 | `CLOUDFLARE_API_TOKEN` | Cloudflare API token | Recommended for deploy automation | ✅ Recommended |
 | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account id | Optional for deploy context | ⚠️ Optional |
 | `BGDISPLAY_DEFAULT_DEVICE_KEY` | `bg_ro_...` | Firmware bootstrap device key used in `secrets.h` | ✅ Recommended |

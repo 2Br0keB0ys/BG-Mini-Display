@@ -11,10 +11,6 @@ param(
   [Parameter(Mandatory = $false)]
   [switch]$DeployPages,
   [Parameter(Mandatory = $false)]
-  [switch]$SetupCheckly,
-  [Parameter(Mandatory = $false)]
-  [switch]$RotateMonitorKey,
-  [Parameter(Mandatory = $false)]
   [switch]$SyncFirmwareSecrets,
   [Parameter(Mandatory = $false)]
   [switch]$SyncDeviceConfig,
@@ -24,26 +20,11 @@ param(
   [switch]$BuildFirmware,
 
   [Parameter(Mandatory = $false)]
-  [switch]$FastStabilize,
-  [Parameter(Mandatory = $false)]
-  [switch]$SkipWorkerDeployOnRotate,
-  [Parameter(Mandatory = $false)]
-  [string]$NewMonitorKey = "",
-
-  [Parameter(Mandatory = $false)]
-  [string]$ChecklyApiKey = "",
-  [Parameter(Mandatory = $false)]
-  [string]$ChecklyAccountId = "",
-  [Parameter(Mandatory = $false)]
-  [string]$MonitorKey = "",
-  [Parameter(Mandatory = $false)]
   [string]$WorkerUrl = "",
   [Parameter(Mandatory = $false)]
   [string]$NightscoutUrl = "",
   [Parameter(Mandatory = $false)]
   [string]$NightscoutApiToken = "",
-  [Parameter(Mandatory = $false)]
-  [string]$AlertEmail = "",
   [Parameter(Mandatory = $false)]
   [string]$CloudflareApiToken = "",
   [Parameter(Mandatory = $false)]
@@ -51,11 +32,7 @@ param(
   [Parameter(Mandatory = $false)]
   [string]$DeviceBootstrapKey = "",
   [Parameter(Mandatory = $false)]
-  [string]$Timezone = "",
-  [Parameter(Mandatory = $false)]
-  [string]$ChecklyHeartbeatUrl = "",
-  [Parameter(Mandatory = $false)]
-  [int]$ChecklyHeartbeatSec = 60
+  [string]$Timezone = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -72,12 +49,6 @@ function Normalize-Url {
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Resolve-Path (Join-Path $scriptDir "..")
 $cloudflareDir = Join-Path $repoRoot "apps\cloudflare"
-$cloudflareScriptsDir = Join-Path $cloudflareDir "scripts"
-$setupChecklyPath = Join-Path $cloudflareScriptsDir "setup_checkly.ps1"
-$rotateMonitorPath = Join-Path $cloudflareScriptsDir "rotate_monitor_key.ps1"
-
-if (-not (Test-Path $setupChecklyPath)) { throw "Missing $setupChecklyPath" }
-if (-not (Test-Path $rotateMonitorPath)) { throw "Missing $rotateMonitorPath" }
 
 $infisicalEnabled = -not $SkipInfisical
 $infisicalCliPath = "C:\Users\zaneb\AppData\Roaming\npm\infisical.cmd"
@@ -116,14 +87,10 @@ if ($infisicalEnabled -and $infisicalAvailable) {
     }
   }
 
-  if (-not $ChecklyApiKey -and $secretMap.ContainsKey("CHECKLY_API_KEY")) { $ChecklyApiKey = $secretMap["CHECKLY_API_KEY"] }
-  if (-not $ChecklyAccountId -and $secretMap.ContainsKey("CHECKLY_ACCOUNT_ID")) { $ChecklyAccountId = $secretMap["CHECKLY_ACCOUNT_ID"] }
-  if (-not $MonitorKey -and $secretMap.ContainsKey("CHECKLY_MONITOR_KEY")) { $MonitorKey = $secretMap["CHECKLY_MONITOR_KEY"] }
   if (-not $WorkerUrl -and $secretMap.ContainsKey("WORKER_URL")) { $WorkerUrl = $secretMap["WORKER_URL"] }
   if (-not $NightscoutUrl -and $secretMap.ContainsKey("NIGHTSCOUT_URL")) { $NightscoutUrl = $secretMap["NIGHTSCOUT_URL"] }
   if (-not $NightscoutApiToken -and $secretMap.ContainsKey("NIGHTSCOUT_API_TOKEN")) { $NightscoutApiToken = $secretMap["NIGHTSCOUT_API_TOKEN"] }
   if (-not $NightscoutApiToken -and $secretMap.ContainsKey("NIGHTSCOUT_APITOKEN")) { $NightscoutApiToken = $secretMap["NIGHTSCOUT_APITOKEN"] }
-  if (-not $AlertEmail -and $secretMap.ContainsKey("ALERT_EMAIL")) { $AlertEmail = $secretMap["ALERT_EMAIL"] }
   if (-not $CloudflareApiToken -and $secretMap.ContainsKey("CLOUDFLARE_API_TOKEN")) { $CloudflareApiToken = $secretMap["CLOUDFLARE_API_TOKEN"] }
   if (-not $CloudflareAccountId -and $secretMap.ContainsKey("CLOUDFLARE_ACCOUNT_ID")) { $CloudflareAccountId = $secretMap["CLOUDFLARE_ACCOUNT_ID"] }
 
@@ -132,14 +99,6 @@ if ($infisicalEnabled -and $infisicalAvailable) {
   if (-not $DeviceBootstrapKey -and $secretMap.ContainsKey("DEVICE_BOOTSTRAP_KEY")) { $DeviceBootstrapKey = $secretMap["DEVICE_BOOTSTRAP_KEY"] }
   if (-not $Timezone -and $secretMap.ContainsKey("BGDISPLAY_DEFAULT_TIMEZONE")) { $Timezone = $secretMap["BGDISPLAY_DEFAULT_TIMEZONE"] }
   if (-not $Timezone -and $secretMap.ContainsKey("TIMEZONE")) { $Timezone = $secretMap["TIMEZONE"] }
-  if (-not $ChecklyHeartbeatUrl -and $secretMap.ContainsKey("BGDISPLAY_CHECKLY_HEARTBEAT_URL")) { $ChecklyHeartbeatUrl = $secretMap["BGDISPLAY_CHECKLY_HEARTBEAT_URL"] }
-  if (-not $ChecklyHeartbeatUrl -and $secretMap.ContainsKey("CHECKLY_HEARTBEAT_URL")) { $ChecklyHeartbeatUrl = $secretMap["CHECKLY_HEARTBEAT_URL"] }
-  if ($ChecklyHeartbeatSec -eq 60 -and $secretMap.ContainsKey("BGDISPLAY_CHECKLY_HEARTBEAT_SEC")) {
-    $parsedSec = 60
-    if ([int]::TryParse([string]$secretMap["BGDISPLAY_CHECKLY_HEARTBEAT_SEC"], [ref]$parsedSec)) {
-      $ChecklyHeartbeatSec = $parsedSec
-    }
-  }
 }
 
 $WorkerUrl = Normalize-Url $WorkerUrl
@@ -148,27 +107,18 @@ $NightscoutUrl = Normalize-Url $NightscoutUrl
 if ($CloudflareApiToken) { $env:CLOUDFLARE_API_TOKEN = $CloudflareApiToken }
 if ($CloudflareAccountId) { $env:CLOUDFLARE_ACCOUNT_ID = $CloudflareAccountId }
 
-if (-not ($DeployWorker -or $DeployPages -or $SetupCheckly -or $RotateMonitorKey -or $SyncFirmwareSecrets -or $SyncDeviceConfig -or $BuildFirmware)) {
+if (-not ($DeployWorker -or $DeployPages -or $SyncFirmwareSecrets -or $SyncDeviceConfig -or $BuildFirmware)) {
   Write-Host "No actions selected. Available actions:" -ForegroundColor Yellow
-  Write-Host "  -DeployWorker -DeployPages -SetupCheckly -RotateMonitorKey -SyncFirmwareSecrets -SyncDeviceConfig -BuildFirmware" -ForegroundColor Yellow
+  Write-Host "  -DeployWorker -DeployPages -SyncFirmwareSecrets -SyncDeviceConfig -BuildFirmware" -ForegroundColor Yellow
   exit 1
 }
 
-if (($SetupCheckly -or $RotateMonitorKey -or $SyncFirmwareSecrets -or $SyncDeviceConfig) -and -not $WorkerUrl) {
+if (($SyncFirmwareSecrets -or $SyncDeviceConfig) -and -not $WorkerUrl) {
   throw "WorkerUrl is required for selected action(s)."
 }
 
 if ($SyncDeviceConfig -and -not $AdminSessionToken) {
   throw "SyncDeviceConfig requires -AdminSessionToken. Obtain it via GET $WorkerUrl/api/admin/session after authenticating with Cloudflare Access."
-}
-
-if ($SetupCheckly) {
-  if (-not $ChecklyApiKey) { throw "SetupCheckly requires ChecklyApiKey." }
-  if (-not $MonitorKey) { throw "SetupCheckly requires MonitorKey." }
-}
-
-if ($RotateMonitorKey) {
-  if (-not $ChecklyApiKey) { throw "RotateMonitorKey requires ChecklyApiKey." }
 }
 
 if ($SyncFirmwareSecrets) {
@@ -180,7 +130,7 @@ if ($SyncFirmwareSecrets) {
 
 Write-Host "Project Infisical Ops" -ForegroundColor Cyan
 Write-Host "Repo: $repoRoot" -ForegroundColor Gray
-Write-Host "Actions: worker=$DeployWorker pages=$DeployPages setupCheckly=$SetupCheckly rotateKey=$RotateMonitorKey syncFirmware=$SyncFirmwareSecrets syncDeviceConfig=$SyncDeviceConfig buildFirmware=$BuildFirmware" -ForegroundColor Gray
+Write-Host "Actions: worker=$DeployWorker pages=$DeployPages syncFirmware=$SyncFirmwareSecrets syncDeviceConfig=$SyncDeviceConfig buildFirmware=$BuildFirmware" -ForegroundColor Gray
 
 if ($DeployWorker) {
   Write-Host "Deploying worker..." -ForegroundColor Cyan
@@ -196,51 +146,16 @@ if ($DeployPages) {
   Pop-Location
 }
 
-if ($SetupCheckly) {
-  Write-Host "Applying Checkly monitor definitions..." -ForegroundColor Cyan
-  $setupArgs = @{
-    SkipInfisical = $true
-    ChecklyApiKey = $ChecklyApiKey
-    WorkerUrl = $WorkerUrl
-    MonitorKey = $MonitorKey
-  }
-  if ($ChecklyAccountId) { $setupArgs.ChecklyAccountId = $ChecklyAccountId }
-  if ($NightscoutUrl) { $setupArgs.NightscoutUrl = $NightscoutUrl }
-  if ($NightscoutApiToken) { $setupArgs.NightscoutApiToken = $NightscoutApiToken }
-  if ($AlertEmail) { $setupArgs.AlertEmail = $AlertEmail }
-  if ($FastStabilize) { $setupArgs.FastStabilize = $true }
-
-  & $setupChecklyPath @setupArgs
-}
-
-if ($RotateMonitorKey) {
-  Write-Host "Rotating monitor key..." -ForegroundColor Cyan
-  $rotateArgs = @{
-    SkipInfisical = $true
-    ChecklyApiKey = $ChecklyApiKey
-    WorkerUrl = $WorkerUrl
-  }
-  if ($ChecklyAccountId) { $rotateArgs.ChecklyAccountId = $ChecklyAccountId }
-  if ($NightscoutUrl) { $rotateArgs.NightscoutUrl = $NightscoutUrl }
-  if ($NightscoutApiToken) { $rotateArgs.NightscoutApiToken = $NightscoutApiToken }
-  if ($NewMonitorKey) { $rotateArgs.NewMonitorKey = $NewMonitorKey }
-  if ($SkipWorkerDeployOnRotate) { $rotateArgs.SkipWorkerDeploy = $true }
-
-  & $rotateMonitorPath @rotateArgs
-}
-
 if ($SyncFirmwareSecrets) {
   Write-Host "Syncing firmware secrets.h..." -ForegroundColor Cyan
   $firmwareSyncScript = Join-Path $repoRoot "firmware\scripts\firmware_secrets_sync.ps1"
   if (-not (Test-Path $firmwareSyncScript)) { throw "Missing $firmwareSyncScript" }
   $syncArgs = @{
-    SkipInfisical       = $true
-    DeviceBootstrapKey  = $DeviceBootstrapKey
-    WorkerUrl           = $WorkerUrl
-    Timezone            = $Timezone
-    ChecklyHeartbeatSec = $ChecklyHeartbeatSec
+    SkipInfisical      = $true
+    DeviceBootstrapKey = $DeviceBootstrapKey
+    WorkerUrl          = $WorkerUrl
+    Timezone           = $Timezone
   }
-  if ($ChecklyHeartbeatUrl) { $syncArgs.ChecklyHeartbeatUrl = $ChecklyHeartbeatUrl }
   & $firmwareSyncScript @syncArgs
 }
 
@@ -255,9 +170,7 @@ if ($BuildFirmware) {
       $syncArgs.SkipInfisical      = $true
       $syncArgs.DeviceBootstrapKey = $DeviceBootstrapKey
       $syncArgs.WorkerUrl          = $WorkerUrl
-      if ($Timezone)           { $syncArgs.Timezone            = $Timezone }
-      if ($ChecklyHeartbeatUrl){ $syncArgs.ChecklyHeartbeatUrl = $ChecklyHeartbeatUrl }
-      $syncArgs.ChecklyHeartbeatSec = $ChecklyHeartbeatSec
+      if ($Timezone) { $syncArgs.Timezone = $Timezone }
       Write-Host "  Syncing secrets.h..." -ForegroundColor Gray
       & $firmwareSyncScript @syncArgs
     } elseif ($infisicalEnabled -and $infisicalAvailable) {

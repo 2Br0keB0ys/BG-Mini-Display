@@ -13,11 +13,6 @@ param(
   [Parameter(Mandatory = $false)]
   [string]$Timezone = "",
   [Parameter(Mandatory = $false)]
-  [string]$ChecklyHeartbeatUrl = "",
-  [Parameter(Mandatory = $false)]
-  [int]$ChecklyHeartbeatSec = 60,
-
-  [Parameter(Mandatory = $false)]
   [string]$OutFile = ""
 )
 
@@ -57,18 +52,6 @@ if (-not $SkipInfisical -and $infisicalAvailable) {
   if (-not $WorkerUrl         -and $secretMap.ContainsKey("WORKER_URL"))                     { $WorkerUrl          = $secretMap["WORKER_URL"] }
   if (-not $Timezone          -and $secretMap.ContainsKey("BGDISPLAY_DEFAULT_TIMEZONE"))     { $Timezone           = $secretMap["BGDISPLAY_DEFAULT_TIMEZONE"] }
   if (-not $Timezone          -and $secretMap.ContainsKey("TIMEZONE"))                       { $Timezone           = $secretMap["TIMEZONE"] }
-  if (-not $ChecklyHeartbeatUrl -and $secretMap.ContainsKey("BGDISPLAY_CHECKLY_HEARTBEAT_URL")) {
-    $ChecklyHeartbeatUrl = $secretMap["BGDISPLAY_CHECKLY_HEARTBEAT_URL"]
-  }
-  if (-not $ChecklyHeartbeatUrl -and $secretMap.ContainsKey("CHECKLY_HEARTBEAT_URL")) {
-    $ChecklyHeartbeatUrl = $secretMap["CHECKLY_HEARTBEAT_URL"]
-  }
-  if ($ChecklyHeartbeatSec -eq 60 -and $secretMap.ContainsKey("BGDISPLAY_CHECKLY_HEARTBEAT_SEC")) {
-    $parsedSec = 60
-    if ([int]::TryParse([string]$secretMap["BGDISPLAY_CHECKLY_HEARTBEAT_SEC"], [ref]$parsedSec)) {
-      $ChecklyHeartbeatSec = $parsedSec
-    }
-  }
 } elseif (-not $SkipInfisical -and -not $infisicalAvailable) {
   Write-Host "Infisical CLI not found at $infisicalCliPath - using explicit parameters only." -ForegroundColor Yellow
 }
@@ -83,10 +66,9 @@ if (-not $Timezone) { $Timezone = "US/Central" }
 
 $WorkerUrl = $WorkerUrl.Trim().TrimEnd('/')
 
-$escapedWorker    = $WorkerUrl.Replace('"', '')
-$escapedDevice    = $DeviceBootstrapKey.Replace('"', '')
-$escapedTimezone  = $Timezone.Replace('"', '')
-$escapedHeartbeat = ($ChecklyHeartbeatUrl -replace '"', '')
+$escapedWorker   = $WorkerUrl.Replace('"', '')
+$escapedDevice   = $DeviceBootstrapKey.Replace('"', '')
+$escapedTimezone = $Timezone.Replace('"', '')
 
 $lines = @(
   "#pragma once",
@@ -95,9 +77,7 @@ $lines = @(
   "// Re-run the script to update from Infisical.",
   "#define BGDISPLAY_DEFAULT_WORKER_URL `"$escapedWorker`"",
   "#define BGDISPLAY_DEFAULT_DEVICE_KEY `"$escapedDevice`"",
-  "#define BGDISPLAY_DEFAULT_TIMEZONE `"$escapedTimezone`"",
-  "#define BGDISPLAY_CHECKLY_HEARTBEAT_URL `"$escapedHeartbeat`"",
-  "#define BGDISPLAY_CHECKLY_HEARTBEAT_SEC $ChecklyHeartbeatSec"
+  "#define BGDISPLAY_DEFAULT_TIMEZONE `"$escapedTimezone`""
 )
 Set-Content -Path $OutFile -Value $lines -Encoding ascii
 Write-Host "secrets.h updated: $OutFile" -ForegroundColor Green
