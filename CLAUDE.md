@@ -44,6 +44,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs PlatformIO firmware build and w
 ### Archived Components
 - NAS MCP automation lives under `archive/apps/nas-control-mcp/`.
 - n8n JSON templates and n8n-as-code sync artifacts live under `archive/n8n/`.
+- Checkly monitoring scripts live under `archive/checkly/` (Checkly removed 2026-05-10).
 
 ## Architecture
 
@@ -80,14 +81,13 @@ The main sketch is `bgdisplay.ino`. All modules are header-only files included b
 - **Credential handling:** Glooko endpoint/token are stored in cloud config and never sent to firmware `/api/config` payloads.
 - **Daily auto-reboot:** At 3:00 AM local time, once per calendar day, after device has been up 10+ min.
 - **Power button:** Single click → immediate config sync (DND wake). Hold once → arms factory reset; hold again within 10s → confirms factory reset.
-- **Factory reset:** Clears all NVS except `workerUrl`, `deviceKey`, and `timezone` (cloud identity preserved so device can pull config again after WiFi re-setup).
-- **First-flash bootstrap:** Worker URL and device key come from `secrets.h` macros (`BGDISPLAY_DEFAULT_WORKER_URL`, `BGDISPLAY_DEFAULT_DEVICE_KEY`). Copy `secrets.example.h` to `secrets.h` and fill in before flashing. After WiFi connect, `enrollDevice()` in `bgdisplay.ino` calls `POST /api/enroll` — on success the device saves a unique per-chip key to NVS and uses it for all subsequent requests.
+- **Factory reset:** Clears all NVS except `workerUrl`, `deviceKey`, and `timezone` (cloud identity preserved so device can pull config again after WiFi re-setup). **Factory reset does NOT trigger re-enrollment** because `deviceKey` is preserved — see NVS erase procedure in the Infisical section to force re-enrollment.
+- **First-flash bootstrap:** `secrets.h` is generated from Infisical via `firmware/scripts/firmware_secrets_sync.ps1` — do not edit by hand. Macros: `BGDISPLAY_DEFAULT_WORKER_URL`, `BGDISPLAY_DEFAULT_DEVICE_KEY`, `BGDISPLAY_DEFAULT_TIMEZONE`. After WiFi connect, `enrollDevice()` in `bgdisplay.ino` calls `POST /api/enroll` only if the NVS key equals the bootstrap key — on success the device saves a unique per-chip key to NVS and uses it for all subsequent requests.
 - **NVS encryption:** Chip ID acts as hardware root-of-trust. Same key used for SD logs (different salt).
 - **Stack:** `ARDUINO_LOOP_STACK_SIZE=16384` in root `platformio.ini` (prevents overflow crash).
 - **Timezone support:** US/Central, US/Eastern, US/Mountain, US/Pacific (mapped to POSIX strings). NTP: NIST primary → public pool fallback.
 - **AI Daily & Hourly Digests:** Generated on Worker via Cloudflare Workers AI; pushed to Pushover only (device display removed in v4.0.1-S). See **AI Architecture** section below.
 - **WebSocket reconnect:** `ws_sync.h` uses 8 s reconnect interval. WS event handler is flag-only (sets `_wsTriggerPull`); the actual config pull happens in `wsTick()` after `_wsClient.loop()` returns to avoid re-entrancy.
-- **Checkly heartbeat (device-side):** Firmware can send direct heartbeat pings to Checkly using `BGDISPLAY_CHECKLY_HEARTBEAT_URL` and `BGDISPLAY_CHECKLY_HEARTBEAT_SEC` in `secrets.h` (defaults in `secrets.example.h`).
 
 ### Cloudflare Worker (`apps/cloudflare/src/worker.js`)
 
@@ -272,11 +272,18 @@ DND times displayed and stored in 12-hour format in the UI, converted to 24-hour
 | Script | Purpose |
 |--------|---------|
 | `secure_provision.ps1` | ESP32 hardware security provisioning — burns flash encryption key + secure boot V1 key into eFuses, disables JTAG/download-mode decrypt. Dry-run by default; requires `-Apply` flag to make irreversible changes. Keys stored in `~/.bgdisplay-keys/`. **One-time operation per device — cannot be undone.** |
-| `firmware_secrets_sync.ps1` | Generates `firmware/src/secrets.h` from Infisical (if authenticated) or explicit parameters. Pass `-SkipInfisical` to use params only. Throws if `DeviceBootstrapKey` or `WorkerUrl` are missing. |
-| `provision_device.ps1` | End-to-end device provisioning: (1) eFuse read, (2) optional fuse burn, (3) chip ID detection via esptool MAC read, (4) secrets.h sync, (5) PlatformIO build, (6) flash, (7) worker verify. Use `-SkipSecretsSync` when Infisical is not authenticated. Use `-WorkerUrl` to enable the verify step without Infisical. **Must be saved as ASCII** — Unicode chars (em-dashes, box-drawing) in PS 5.1 cause CP1252 mis-decoding that prematurely closes string literals. |
+| `firmware_secrets_sync.ps1` | Generates `firmware/src/secrets.h` from Infisical or explicit parameters. Pass `-InfisicalProjectId` + `-InfisicalEnv` to pull from Infisical; pass `-SkipInfisical` with explicit `-DeviceBootstrapKey`/`-WorkerUrl`/`-Timezone` to bypass. Throws if `DeviceBootstrapKey` or `WorkerUrl` are missing. |
+| `provision_device.ps1` | End-to-end device provisioning: (1) eFuse read, (2) optional fuse burn, (3) chip ID detection via esptool MAC read, (4) secrets.h sync, (5) PlatformIO build, (6) flash, (7) worker verify. Use `-SkipSecretsSync` when `secrets.h` is already current. Pass `-UseInfisical -InfisicalProjectId <id>` to pull secrets from Infisical during sync. **Must be saved as ASCII** — Unicode chars (em-dashes, box-drawing) in PS 5.1 cause CP1252 mis-decoding that prematurely closes string literals. |
 
 **Enrollment flow (automatic on first WiFi connect):**
-After flashing, the device calls `POST /api/enroll` (with its chip ID and bootstrap device key) during `enrollDevice()` in `bgdisplay.ino`. The worker generates a new unique key for this chip ID, stores it in `BGDISPLAY_AUTH` under `device_registry:<chipId>`, and returns the new key. The firmware saves the new key to NVS. Verify enrollment in the admin UI → Advanced tools → Enrolled devices.
+After flashing, the device calls `POST /api/enroll` (with its chip ID and bootstrap device key) during `enrollDevice()` in `bgdisplay.ino` — **only if the key currently in NVS equals `BGDISPLAY_DEFAULT_DEVICE_KEY`**. The worker validates against the stored recovery key hash, generates a unique per-chip key, stores it in `BGDISPLAY_AUTH` under `device_registry:<chipId>`, and returns the new key. The firmware saves it to NVS. Verify enrollment in the admin UI → Advanced tools → Enrolled devices.
+
+**Force re-enrollment after reflash (NVS erase):** Reflashing does not erase NVS. If NVS already has a per-chip key, the device skips enrollment. To reset: erase the NVS partition with esptool, then also revoke the old registry entry in admin UI before the device connects — the worker returns 409 if a registry entry exists with a non-matching key hash.
+```powershell
+$py = "$env:USERPROFILE\.platformio\penv\Scripts\python.exe"
+$es = "$env:USERPROFILE\.platformio\packages\tool-esptoolpy\esptool.py"
+& $py $es --chip esp32 --port COM6 erase_region 0x9000 0x7000
+```
 
 **This device:** MAC `84:1f:e8:82:ed:e8` · Chip ID `0000e8ed82e81f84` · Flashed 2026-05-10
 
@@ -291,281 +298,77 @@ After flashing, the device calls `POST /api/enroll` (with its chip ID and bootst
 
 1. Set Worker secrets: `wrangler secret put KV_ENCRYPT_KEY` (required for Pushover creds encryption)
 2. Deploy worker: `npm run deploy:worker` (creates Durable Object class on first deploy via migration tag `v1`)
-3. Flash firmware using `firmware/scripts/provision_device.ps1 -Port COM6 -SkipSecretsSync -WorkerUrl <url>` (or `pio run -t upload` directly). Script detects chip ID, builds, flashes, and verifies.
-4. On first boot with no saved WiFi → AP mode (`BG_MiniView_XXXX` network) — form only collects WiFi SSID + password
-5. Device connects to WiFi → calls `POST /api/enroll` with its chip ID + bootstrap key → receives unique per-chip key → saves to NVS
-6. Device pulls full config from `/api/config`, opens WebSocket to `/api/ws`, fetches AI digest from `/api/digest`
-7. Verify enrollment in admin UI → Advanced tools → Enrolled devices (shows chip ID, online status, enrollment date)
-8. All future config changes via `https://setup.2brokeboys.uk` (Cloudflare Pages UI) — config saves trigger instant WS push to device
+3. Sync `secrets.h` from Infisical: `firmware/scripts/firmware_secrets_sync.ps1 -InfisicalProjectId 8eaddd1f-66e5-43cc-abe6-1e84100ebd9d -InfisicalEnv prod`
+4. Flash firmware: `firmware/scripts/provision_device.ps1 -Port COM6 -SkipSecretsSync -WorkerUrl <url>`. Script detects chip ID, builds, flashes, and verifies.
+5. On first boot with no saved WiFi → AP mode (`BG_MiniView_XXXX` network) — form only collects WiFi SSID + password
+6. Device connects to WiFi → calls `POST /api/enroll` with its chip ID + bootstrap key → receives unique per-chip key → saves to NVS
+7. Device pulls full config from `/api/config`, opens WebSocket to `/api/ws`, fetches AI digest from `/api/digest`
+8. Verify enrollment in admin UI → Advanced tools → Enrolled devices (shows chip ID, online status, enrollment date)
+9. All future config changes via `https://setup.2brokeboys.uk` (Cloudflare Pages UI) — config saves trigger instant WS push to device
 
-## Monitoring — Checkly Integration + Infisical Secrets
+## Secrets Management — Infisical
 
-**Overview:** Checkly monitors critical endpoints, third-party integrations, digest freshness, and direct device liveness. The Hobby plan includes 10 monitors. Integrates with **Infisical** for secure secrets management (Checkly API key, worker URL, Nightscout URL, monitor key, etc.).
+All critical secrets are stored in Infisical Cloud and pulled automatically by provisioning scripts.
 
-### Quick Start (with Infisical)
+**Project:**
+- **Name:** `bg-miniview` · **Slug:** `secrets-tnq8`
+- **Project ID:** `8eaddd1f-66e5-43cc-abe6-1e84100ebd9d`
+- **Environments:** `dev`, `staging`, `prod` (all three kept in sync)
+- **Auth:** Service token persisted in Windows user env as `INFISICAL_TOKEN`
+- **CLI:** `C:\Users\zaneb\AppData\Roaming\npm\infisical.cmd`
 
+**Secrets stored:**
+
+| Key | Description |
+|-----|-------------|
+| `BGDISPLAY_DEFAULT_DEVICE_KEY` | Bootstrap/recovery key (`bg_ro_...`) — flashed into firmware via `secrets.h`; must match the Recovery Key set in admin UI → Security |
+| `BGDISPLAY_DEFAULT_TIMEZONE` | Firmware bootstrap timezone (`US/Central`) |
+| `WORKER_URL` | Cloudflare Worker URL |
+| `CLOUDFLARE_API_TOKEN` | Cloudflare API token for deploy automation |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account ID |
+| `NIGHTSCOUT_URL` | Nightscout instance URL (optional) |
+| `NIGHTSCOUT_API_TOKEN` | Nightscout bearer token (optional) |
+
+**Syncing `secrets.h` from Infisical:**
 ```powershell
-# 1. Setup Infisical secrets (one-time)
-# Follow: apps/cloudflare/scripts/INFISICAL_SETUP.md
-
-# 2. Run setup script (auto-pulls from Infisical)
-cd apps\cloudflare
-.\scripts\setup_checkly.ps1
+firmware/scripts/firmware_secrets_sync.ps1 -InfisicalProjectId 8eaddd1f-66e5-43cc-abe6-1e84100ebd9d -InfisicalEnv prod
 ```
 
-### Quick Start (Manual)
-
+**Project-wide ops (`scripts/project_infisical_ops.ps1`):**
 ```powershell
-# Or pass secrets as parameters
-.\setup_checkly.ps1 -ChecklyApiKey "YOUR_KEY" `
-                    -WorkerUrl "https://bgdisplay.your-domain.workers.dev" `
-                    -NightscoutUrl "https://your-ns.herokuapp.com" `
-                    -AlertEmail "you@example.com" `
-                    -MonitorKey "ckm_..."
+.\project_infisical_ops.ps1 -DeployWorker -SyncFirmwareSecrets -InfisicalProjectId 8eaddd1f-66e5-43cc-abe6-1e84100ebd9d
+# Available actions: -DeployWorker -DeployPages -SyncFirmwareSecrets -SyncDeviceConfig -BuildFirmware
 ```
 
-### Monitor Key Rotation
+**Bootstrap key facts:**
+- Format: `bg_ro_` + 32 lowercase alphanumeric chars (matches `generateKey()` in `worker.js`)
+- Static — does not rotate. Per-device operational keys (in NVS/KV) rotate every 7 days automatically.
+- The bootstrap key in `secrets.h` must match the Recovery Key set in admin UI → Security. Both are sourced from `BGDISPLAY_DEFAULT_DEVICE_KEY` in Infisical.
+- Current key tail: `...a13g` (full value in Infisical `prod` environment)
 
+**Bootstrap key rotation procedure:**
+1. Generate new key: `bg_ro_` + 32 chars from `[a-z0-9]`
+2. Store in Infisical all 3 envs: `infisical secrets set "BGDISPLAY_DEFAULT_DEVICE_KEY=<key>" --env=prod ...`
+3. Run `firmware_secrets_sync.ps1` to update `secrets.h`
+4. Set new key as Recovery Key in admin UI → Security
+5. Revoke old device registry entry in admin UI → Enrolled Devices
+6. Erase device NVS (see below) and reflash
+
+**Force re-enrollment after reflash (NVS erase):**
+
+Factory reset preserves `deviceKey` in NVS — it will **not** trigger re-enrollment. To force the device to use the bootstrap key from `secrets.h`:
 ```powershell
-cd apps\cloudflare
-.\scripts\rotate_monitor_key.ps1
+$py = "$env:USERPROFILE\.platformio\penv\Scripts\python.exe"
+$es = "$env:USERPROFILE\.platformio\packages\tool-esptoolpy\esptool.py"
+& $py $es --chip esp32 --port COM6 erase_region 0x9000 0x7000
 ```
-
-### Project-Wide Infisical Ops
-
-```powershell
-cd scripts
-.\project_infisical_ops.ps1 -DeployWorker -SetupCheckly -SyncFirmwareSecrets
-```
-
-Use this orchestrator to run full-project actions from one place:
-- Deploy Worker / Pages
-- Apply Checkly monitor definitions
-- Rotate monitor key
-- Sync `firmware/src/secrets.h` from Infisical values
-
-**Monitoring Endpoints:**
-- `/api/monitor/status-check` (requires `X-Monitor-Key`) - canonical endpoint for production Checkly API checks. Includes protected-route auth guard signals and upstream reachability signals.
-- `/api/status-check` (no auth required) - legacy/public connectivity telemetry.
-
-Example payload from `/api/monitor/status-check`:
-```json
-{
-  "ok": true,
-  "timestamp": 1715206800000,
-  "workerVersion": "3.0.0",
-  "device": {
-    "online": true,
-    "lastSeenSeconds": 45,
-    "lastContactPath": "/api/config",
-    "ip": "12.34.56.*** (masked)"
-  },
-  "digest": {
-    "hasDailyDigest": true,
-    "digestGeneratedHoursAgo": 2,
-    "digestIsFresh": true,
-    "digestDate": "2026-05-08"
-  },
-  "protectedRoutes": {
-    "configAuthGuard": true,
-    "wsAuthGuard": true,
-    "digestAuthGuard": true,
-    "commandAuthGuard": true
-  },
-  "upstream": {
-    "dexcomRootReachable": true,
-    "nightscoutReachable": true
-  },
-  "config": {
-    "version": 42
-  }
-}
-```
-
-**Current Checkly Allocation (Consolidated):**
-1. **BG Worker API Health** — single comprehensive check against `/api/monitor/status-check` using `X-Monitor-Key`, with assertions for endpoint health (`ok=true`) and protected-route guards. Device liveness is tracked separately via heartbeat to avoid false failures when the device is intentionally offline.
-2. **Nightscout Direct Connectivity** — direct check against `NIGHTSCOUT_URL/api/v1/status.json` using `NIGHTSCOUT_API_TOKEN` (when provided) as a query parameter so Nightscout can be validated independently of worker-side probes.
-
-This leaves additional monitor capacity available on the Hobby plan while preserving independent Nightscout visibility.
-
-**Current Frequency Baseline:**
-- 5 min: BG Worker API Health
-- 120 min: Nightscout Direct Connectivity
-
-**Firmware Heartbeat Monitor:**
-- Heartbeat URL is configured in firmware `secrets.h` via `BGDISPLAY_CHECKLY_HEARTBEAT_URL`.
-- Cadence is `BGDISPLAY_CHECKLY_HEARTBEAT_SEC` (default 60s).
-- Checkly Heartbeat period/grace should be aligned to this cadence.
-
-**Alert Configuration:** After auto-setup, manually configure in Checkly UI:
-- **Frequency:** 5 min intervals (fits Hobby API run limits)
-- **Timeout:** 10 sec, 2 retries
-- **Regions:** US East (single region, conserves runs)
-- **Alerts:** Email + Slack (configure under Settings → Integrations)
-
-**Infisical Integration Details:**
-- **Project:** `bg-miniview` (Infisical Cloud)
-- **Environment:** `dev`
-- **Secrets stored:** `CHECKLY_API_KEY`, `CHECKLY_ACCOUNT_ID`, `CHECKLY_MONITOR_KEY`, `WORKER_URL`, `NIGHTSCOUT_URL`, `NIGHTSCOUT_API_TOKEN`, `ALERT_EMAIL`, `SLACK_WEBHOOK` (optional)
-- **Auth:** Service token in `INFISICAL_TOKEN` environment variable
-- **Setup guide:** See [INFISICAL_SETUP.md](apps/cloudflare/scripts/INFISICAL_SETUP.md)
-
-**Next Steps:**
-1. *(Optional)* Set up Infisical project: Follow [INFISICAL_SETUP.md](apps/cloudflare/scripts/INFISICAL_SETUP.md)
-2. Run setup script: `.\setup_checkly.ps1` (Infisical-first) or with manual params
-3. Visit `https://app.checklyhq.com/checks` to review monitors
-4. Enable Slack/Email alerts under Integrations
-5. Monitor dashboard: `https://app.checklyhq.com/dashboard`
+Revoke the old registry entry in admin UI first — the worker returns 409 if an entry exists with a non-matching key hash.
 
 **Troubleshooting:**
-- **"INFISICAL_TOKEN not set":** Run: `[Environment]::SetEnvironmentVariable("INFISICAL_TOKEN", "st_...", "User")`
-- **"Infisical CLI not found":** Install: `scoop install infisical` or `npm install -g @infisical/cli`
-- **"API key invalid":** Verify Checkly API key (from Account Settings → API Keys)
-- **"Worker not responding":** Check worker URL and ensure it's deployed
-- **"Nightscout check URL malformed":** Re-run `apps/cloudflare/scripts/setup_checkly.ps1` (or `scripts/project_infisical_ops.ps1 -SetupCheckly`) so the check is recreated with URL + query parameter structure.
-- **"HeaderList must be an array" from Checkly API:** pull latest scripts and re-run setup; the script now forces header arrays and retries transient API/network failures automatically.
-- **"Monitor creation failed":** Review Checkly API quota (Hobby: 10 monitors)
-
-## On-Device Security — Infisical Enhancement Options
-
-With Infisical already managing backend secrets and Checkly monitoring, you have 4 escalating options for enhancing firmware security posture:
-
-### Option 1: Automated Firmware Secrets Provisioning ⚡
-
-**What:** Create `firmware_secrets_sync.ps1` script that pulls firmware bootstrap values from Infisical and auto-generates `secrets.h`.
-
-**Flow:**
-```powershell
-# Pull from Infisical, generate firmware/src/secrets.h
-.\firmware_secrets_sync.ps1
-# Device key, worker URL, timezone, heartbeat URL all auto-populated
-```
-
-**Benefits:**
-- No manual `secrets.h` editing (copy-paste eliminated)
-- Single source of truth across all projects
-- Pre-build integration: devs never see plaintext secrets locally
-- Faster provisioning for new devices
-
-**Implementation:**
-- Reads: `BGDISPLAY_DEFAULT_DEVICE_KEY`, `BGDISPLAY_DEFAULT_WORKER_URL`, `BGDISPLAY_DEFAULT_TIMEZONE`, `BGDISPLAY_CHECKLY_HEARTBEAT_URL`, `BGDISPLAY_CHECKLY_HEARTBEAT_SEC` from Infisical
-- Writes: `firmware/src/secrets.h` with macro definitions
-- Integrates: Can be run as pre-build hook in PlatformIO or CI/CD
-
-**Effort:** ~30 minutes
-
----
-
-### Option 2: Device Key Lifecycle Management 📋
-
-**What:** Assign unique device keys per-device (keyed by chip ID), store them in Infisical, enable self-enrollment and key rotation.
-
-**Flow:**
-1. **Provisioning:** Generate unique key, store in Infisical under `bg_device_<chip_id>_*` namespace
-2. **Device Boot:** Device sends chip ID to `/api/enroll` (unsigned) → worker returns device key → firmware caches in NVS
-3. **Key Rotation:** Admin can rotate key in Infisical; device detects mismatch, fetches new key
-4. **Audit Trail:** All key generations and rotations logged in Infisical event stream
-
-**Benefits:**
-- Each physical device has a unique, trackable identity
-- Easy key revocation (stolen/lost device)
-- Audit trail for compliance / incident response
-- Device self-enrollment (no pre-flashing secrets required)
-- Supports multi-device deployments
-
-**Implementation:**
-- New Infisical resource: Device records (chip ID → key mapping + metadata)
-- New worker endpoint: `POST /api/enroll` (chip ID → key lookup)
-- Firmware change: Check NVS for key; if missing, request from `/api/enroll`
-- Optional: Device provisioning CLI tool to pre-create records
-
-**Effort:** ~2 hours
-
----
-
-### Option 3: Unified Device Provisioning Pipeline 🔧
-
-**What:** Single orchestration script that handles hardware security, firmware secrets, build, and deployment.
-
-**Flow:**
-```powershell
-# One command — hardware + firmware + deploy + verify
-.\provision_device.ps1 -DevicePort COM6 -DeviceChipId ABC12345
-
-# Steps:
-# 1. Hardware: burn flash encryption + secure boot fuses (eFuses)
-# 2. Firmware: pull secrets from Infisical → generate secrets.h
-# 3. Build: pio run (compiles with injected secrets)
-# 4. Flash: pio run -t upload (upload to device)
-# 5. Verify: ping /api/ping (confirm device enrolled & responsive)
-```
-
-**Benefits:**
-- Single command replaces entire manual setup flow
-- Repeatable, auditable, error-proof
-- Combines hardware + firmware + cloud provisioning
-- Guards against partial/incomplete setups
-- Can be run in CI/CD for production builds
-
-**Implementation:**
-- Orchestrator script that chains: `secure_provision.ps1` → `firmware_secrets_sync.ps1` → PlatformIO build → PlatformIO flash → health check
-- Optional: Auto-generate device records in Infisical before flash
-- Telemetry: log all steps to audit trail
-
-**Effort:** ~4 hours
-
----
-
-### Option 4: Per-Device Secret Isolation (Advanced) 🏢
-
-**What:** Each device gets its own Infisical namespace with device-specific overrides for all firmware settings.
-
-**Flow:**
-1. **Infisical Layout:**
-   ```
-   bg-miniview/
-     dev/                             # Shared defaults
-       BGDISPLAY_DEFAULT_DEVICE_KEY
-       BGDISPLAY_DEFAULT_TIMEZONE
-       ...
-     devices/
-       bg_device_A1B2C3D4/            # Device-specific overrides
-         BGDISPLAY_WORKER_URL         # e.g., custom regional worker
-         BGDISPLAY_TIMEZONE           # e.g., different timezone per device
-         config_overrides             # custom DND, alert levels, etc.
-```
-
-2. **Provisioning:** Device pulls from both `dev/` (defaults) and `devices/<chip_id>/` (overrides)
-
-3. **Multi-Device Management:** Admin can configure per-device settings without touching global config
-
-**Benefits:**
-- True multi-device support with independent configuration
-- Regional/per-user customization (e.g., office device vs. home device)
-- Settings drift detection (compare device config vs. stored config)
-- Role-based access (e.g., parent can manage child's settings)
-- Device grouping / tagging (e.g., "all office devices")
-
-**Implementation:**
-- Infisical schema: Device resource type with parent/child hierarchy
-- Worker endpoint: `GET /api/config?include_device_overrides=true`
-- Admin UI: Device management panel (assign devices, customize per-device settings)
-- Firmware: Merge device-specific + global config on pull
-
-**Effort:** ~6 hours
-
----
-
-## Prioritization Guide
-
-| Option | Speed | Control | Production | Multi-Device | Recommended For |
-|--------|-------|---------|-----------|--------------|-----------------|
-| **1** | ⚡⚡⚡ | ⭐⭐ | ⭐⭐ | No | Quick security lift, single device |
-| **2** | ⚡⚡ | ⭐⭐⭐ | ⭐⭐⭐ | Yes | Key lifecycle & audit trail |
-| **3** | ⚡ | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ | Yes | Production deployment flow |
-| **4** | ❌ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | Yes | Enterprise/multi-user setup |
-
-**Recommended path:** Start with **Option 1** (30 min, quick win) → **Option 2** (2 hours, production-grade) → **Option 3** (4 hours, CI/CD ready) as needed.
+- **"INFISICAL_TOKEN not set":** `[Environment]::SetEnvironmentVariable("INFISICAL_TOKEN", "st_...", "User")`
+- **"Infisical CLI not found":** `npm install -g @infisical/cli`
+- **Service token can't delete secrets:** Delete manually from Infisical UI — service tokens have create/update but not delete permissions
+- **Device not enrolling after reflash:** NVS still has old key — erase NVS partition and revoke old registry entry in admin UI
 
 ## Config Field Notes
 
