@@ -157,6 +157,52 @@ String makeNonce() {
   return String(buf);
 }
 
+String getChipIdHex() {
+  uint64_t mac = ESP.getEfuseMac();
+  char buf[17];
+  snprintf(buf, sizeof(buf), "%016llx", mac);
+  return String(buf);
+}
+
+bool enrollDevice(AppConfig& cfg, Preferences& p) {
+  if (!strlen(cfg.workerUrl) || !strlen(cfg.deviceKey)) return false;
+  String chipId = getChipIdHex();
+  String body = "{\"chipId\":\"" + chipId + "\"}";
+  String path = "/api/enroll";
+  HTTPClient http;
+  http.begin(String(cfg.workerUrl) + path);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("X-Device-Key", cfg.deviceKey);
+  http.addHeader("X-Device-Id", chipId);
+  addSignedHeaders(http, "POST", path, body, cfg);
+  int code = http.POST(body);
+  if (code == 200) {
+    String resp = http.getString();
+    http.end();
+    StaticJsonDocument<256> doc;
+    if (deserializeJson(doc, resp) == DeserializationError::Ok && doc.containsKey("key")) {
+      strlcpy(cfg.deviceKey, doc["key"].as<const char*>(), 64);
+      saveConfig(p, cfg);
+      sdLog("SEC", "Device enrolled; unique key saved");
+      Serial.println("[enroll] Device enrolled successfully");
+      return true;
+    }
+  } else if (code == 409) {
+    // Already enrolled under a different key — use current key as-is
+    sdLog("SEC", "Device already enrolled");
+    Serial.println("[enroll] Already enrolled, continuing with current key");
+    http.end();
+    return true;
+  } else {
+    char msg[64];
+    snprintf(msg, sizeof(msg), "Enroll failed: HTTP %d", code);
+    sdLogError(msg);
+    Serial.printf("[enroll] Failed: HTTP %d\n", code);
+  }
+  http.end();
+  return false;
+}
+
 void addSignedHeaders(HTTPClient& http, const char* method, const String& pathWithQuery, const String& body, AppConfig& cfg) {
   String keyHash = sha256HexStr(String(cfg.deviceKey));
   String bodyHash = sha256HexStr(body);
@@ -165,6 +211,7 @@ void addSignedHeaders(HTTPClient& http, const char* method, const String& pathWi
   String canonical = String(method) + "\n" + pathWithQuery + "\n" + String(ts) + "\n" + nonce + "\n" + bodyHash;
   String sig = hmacSha256Hex(keyHash, canonical);
 
+  http.addHeader("X-Device-Id", getChipIdHex());
   http.addHeader("X-Sig-Ts", String(ts));
   http.addHeader("X-Sig-Nonce", nonce);
   http.addHeader("X-Sig-Body", bodyHash);
@@ -355,6 +402,10 @@ void setup() {
     syncTime(appConfig.timezone);
     logRuntimeSnapshot("time-sync", appConfig, lastReading);
     sdLogWifi(appConfig.wifiSSID, WiFi.RSSI());
+    // Enroll on first boot with factory-default key so each device gets a unique key
+    if (strcmp(appConfig.deviceKey, BGDISPLAY_DEFAULT_DEVICE_KEY) == 0) {
+      enrollDevice(appConfig, prefs);
+    }
     pullCloudflareConfig(appConfig, prefs);
     logConfigDiagnostics("after-config-pull", appConfig);
     wsInit(appConfig);

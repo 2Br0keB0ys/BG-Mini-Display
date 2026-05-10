@@ -356,6 +356,7 @@ let gDirty = false;
 function markDirty() { gDirty = true; }
 window.addEventListener('beforeunload', e => { if (gDirty) { e.preventDefault(); e.returnValue = ''; } });
 let MAINT = null;
+let DEVICES_DATA = null;
 let gAdvancedOpen = false;
 
 // ── API ──────────────────────────────────────────────────────────────────────
@@ -709,6 +710,51 @@ async function loadMaintenance(){
   catch(e){ MAINT = null; }
 }
 
+async function fetchDevices(){
+  try{ DEVICES_DATA = await apiGet('/api/admin/devices'); }
+  catch(e){ DEVICES_DATA = null; }
+}
+
+async function revokeDevice(chipId){
+  if(!confirm(`Revoke device ${chipId.slice(-8)}? The device will lose access until re-enrolled.`)) return;
+  try{
+    await apiDelete(`/api/admin/devices/${chipId}`);
+    await fetchDevices();
+    render();
+    toast('✓ Device revoked');
+  }catch(e){ toast('❌ Revoke failed'); }
+}
+
+async function saveDeviceConfig(chipId){
+  const tzEl=document.getElementById(`dtz-${chipId}`);
+  const pollEl=document.getElementById(`dpoll-${chipId}`);
+  const staleEl=document.getElementById(`dstale-${chipId}`);
+  const patch={};
+  if(tzEl&&tzEl.value) patch.timezone=tzEl.value;
+  if(pollEl&&pollEl.value) patch.poll_interval_min=Number(pollEl.value);
+  if(staleEl&&staleEl.value) patch.stale_data_warn_min=Number(staleEl.value);
+  try{
+    await apiPost(`/api/admin/device-config/${chipId}`,patch);
+    await fetchDevices();
+    render();
+    toast('✓ Device config saved');
+  }catch(e){ toast('❌ Save failed'); }
+}
+
+async function clearDeviceConfig(chipId){
+  try{
+    await apiDelete(`/api/admin/device-config/${chipId}`);
+    await fetchDevices();
+    render();
+    toast('✓ Device overrides cleared');
+  }catch(e){ toast('❌ Clear failed'); }
+}
+
+function toggleDevicePanel(chipId){
+  const el=document.getElementById(`dpanel-${chipId}`);
+  if(el) el.style.display=el.style.display==='none'?'block':'none';
+}
+
 async function generateDigestNow(){
   const btn=document.getElementById('digest-gen-btn');
   if(btn){ btn.textContent='Generating...'; btn.disabled=true; }
@@ -766,7 +812,7 @@ function toggleSection(id){
 function sectionOpen(id){ return localStorage.getItem('section-'+id)==='1'; }
 
 function expandAll(){
-  const sectionIds=['digest','wifi','ns','pump','alerts','display','pushover','alerts_cloud','system','control','diag','insights','security','backup','maint','logs'];
+  const sectionIds=['digest','wifi','ns','pump','alerts','display','pushover','alerts_cloud','system','control','diag','insights','security','backup','maint','logs','devices'];
   sectionIds.forEach(id=>{
     const body=document.getElementById('body-'+id);
     const head=document.getElementById('head-'+id);
@@ -781,7 +827,7 @@ function expandAll(){
 }
 
 function collapseAll(){
-  const sectionIds=['digest','wifi','ns','pump','alerts','display','pushover','alerts_cloud','system','control','diag','insights','security','backup','maint','logs'];
+  const sectionIds=['digest','wifi','ns','pump','alerts','display','pushover','alerts_cloud','system','control','diag','insights','security','backup','maint','logs','devices'];
   sectionIds.forEach(id=>{
     const body=document.getElementById('body-'+id);
     const head=document.getElementById('head-'+id);
@@ -1090,6 +1136,40 @@ function render(){
     `<div class="vrow"><span class="label">Dexcom pass age</span><span>${MAINT?.dexcomPassAgeDays==null?'—':MAINT.dexcomPassAgeDays+'d'}</span></div>`+
     `<div class="vrow"><span class="label">Rotation reminders</span><span>${(m.reminders||[]).length?`${m.reminders.length} pending`:'none'}</span></div>`;
 
+  // Enrolled devices section
+  const devList = DEVICES_DATA?.devices || [];
+  const devicesContent = devList.length === 0
+    ? `<div style="padding:16px;font-size:13px;color:var(--muted)">No enrolled devices. Flash firmware with the default key — the device will self-enroll on first boot.</div>`
+    : devList.map(d => {
+        const enrolledAt = d.enrolledAt ? new Date(d.enrolledAt).toLocaleString([],{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',hour12:true}) : '—';
+        const lastSeen = d.lastSeen ? fmtTs(d.lastSeen) : '—';
+        const cfgBadge = d.hasPerDeviceConfig ? badge('Custom','amber') : badge('Default','green');
+        const panelId = `dpanel-${d.chipId}`;
+        const panel = `<div id="${panelId}" style="display:none;padding:12px 16px;border-top:1px solid rgba(255,255,255,.07)">
+          <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Per-device config overrides</div>
+          ${field('Timezone override','Leave blank to use global timezone.',`<input type="text" id="dtz-${d.chipId}" class="wide" placeholder="e.g. US/Central" value="${d.perDeviceConfig?.timezone||''}">`)  }
+          ${field('Poll interval','Minutes between BG checks.',sel(`dpoll-${d.chipId}`,[[1,'1 min'],[5,'5 min'],[10,'10 min']],d.perDeviceConfig?.poll_interval_min||''))}
+          ${field('Stale warning','Minutes before stale reading banner shows.',sel(`dstale-${d.chipId}`,[[5,'5 min'],[10,'10 min'],[15,'15 min'],[20,'20 min']],d.perDeviceConfig?.stale_data_warn_min||''))}
+          <div style="display:flex;gap:8px;padding-top:4px">
+            <button class="btn primary" onclick="saveDeviceConfig('${d.chipId}')">Save overrides</button>
+            <button class="btn" onclick="clearDeviceConfig('${d.chipId}')">Clear overrides</button>
+          </div>
+        </div>`;
+        return `<div style="border:1px solid rgba(255,255,255,.07);border-radius:8px;margin:8px 16px;overflow:hidden">
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 14px">
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13px;font-weight:600;font-family:var(--mono)">${d.chipId.slice(-8)}</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:2px">Enrolled ${enrolledAt} · Last seen ${lastSeen} · Key: <code>…${d.keyTail||'????'}</code></div>
+            </div>
+            ${cfgBadge}
+            <button class="btn" onclick="toggleDevicePanel('${d.chipId}')">Configure</button>
+            <button class="btn danger" onclick="revokeDevice('${d.chipId}')">Revoke</button>
+          </div>
+          ${panel}
+        </div>`;
+      }).join('')+
+    `<div style="padding:12px 16px"><button class="btn" onclick="fetchDevices().then(()=>render())">Refresh</button></div>`;
+
   const connectionLabel = m.status?.connection || 'Unknown';
   const sourceLabel = c.dexcom_user ? 'Dexcom primary' : (c.nightscout_url ? 'Nightscout only' : 'Source not set');
   const lastSeenLabel = fmtTs(m.status?.lastSeen);
@@ -1130,6 +1210,7 @@ function render(){
         ${section('diag','icon-diag',diagIcon,'Diagnostics','Connectivity and service checks',diagContent)}
         ${section('insights','icon-diag',diagIcon,'Cloud insights','Telemetry trends and worker-side metrics',cloudInsightsContent)}
         ${section('security','icon-security',secIcon,'Security','Access control, keys, and protection policies',secContent)}
+        ${section('devices','icon-security',secIcon,'Enrolled devices','Per-device keys and config overrides',devicesContent)}
         ${section('backup','icon-backup',backupIcon,'Backup and restore','Export, import, and automatic snapshots',backupContent)}
         ${section('maint','icon-system',sysIcon,'Maintenance center','Automation, rotations, and source health',maintContent)}
         ${section('logs','icon-diag',diagIcon,'Log explorer','Search and inspect uploaded SD logs',logExplorerContent)}
@@ -1192,6 +1273,7 @@ async function init(){
     await loadConfig();
     await loadMetrics();
     await loadMaintenance();
+    await fetchDevices();
     render();
   }catch(e){
     document.getElementById('app').innerHTML=`<div style="text-align:center;padding:3rem;color:var(--red)">Could not reach Worker at <code>${WORKER_URL}</code><br><small style="color:var(--muted);margin-top:8px;display:block">Check that wrangler is deployed and the URL is correct.</small></div>`;
