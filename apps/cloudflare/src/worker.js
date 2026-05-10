@@ -5,7 +5,7 @@
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, X-Device-Key, X-Command-Id, X-Log-Lines, X-Admin-Session, CF-Access-Jwt-Assertion",
+  "Access-Control-Allow-Headers": "Content-Type, X-Device-Key, X-Device-Id, X-Command-Id, X-Log-Lines, X-Admin-Session, CF-Access-Jwt-Assertion",
 };
 
 const KEY_ROTATE_MS      = 7 * 24 * 60 * 60 * 1000;
@@ -1842,6 +1842,15 @@ async function promoteKey(env, auth) {
   await appendChangeLog(env, "API key auto-rotated — device confirmed");
 }
 
+// ─── Device Registry ──────────────────────────────────────────────────────────
+
+async function updateDeviceRegistry(env, chipId, patch) {
+  if (!chipId || !/^[0-9a-f]{8,16}$/i.test(chipId)) return;
+  const existing = await env.BGDISPLAY_AUTH.get(`device_registry:${chipId}`, { type: "json" });
+  if (!existing) return;
+  await env.BGDISPLAY_AUTH.put(`device_registry:${chipId}`, JSON.stringify({ ...existing, ...patch }));
+}
+
 // ─── Device Status Update ─────────────────────────────────────────────────────
 
 async function updateDeviceStatus(env, ip, body, config) {
@@ -1985,6 +1994,13 @@ export default {
         await env.BGDISPLAY_CONFIG.put("config", JSON.stringify(config));
         await appendChangeLog(env, `Timezone auto-detected: ${deviceConfig.timezone} (from geo IP)`);
       }
+      // Apply per-device config overrides if device sends X-Device-Id
+      const configChipId = request.headers.get("X-Device-Id") || "";
+      if (configChipId && /^[0-9a-f]{8,16}$/i.test(configChipId)) {
+        const perDevice = await env.BGDISPLAY_CONFIG.get(`device_config:${configChipId.toLowerCase()}`, { type: "json" });
+        if (perDevice) Object.assign(deviceConfig, perDevice);
+        await updateDeviceRegistry(env, configChipId.toLowerCase(), { lastSeen: Date.now(), lastSeenPath: "/api/config" });
+      }
       const resp = { config: deviceConfig, config_version: version, ts: Date.now() };
       if (pendingKey) { resp.newKey = pendingKey; resp.rotateNow = true; }
       return json(resp);
@@ -2001,6 +2017,56 @@ export default {
       if (auth.pendingKeyHash && keyHash === auth.pendingKeyHash) { await promoteKey(env, auth); return json({ ok: true }); }
       if (isDeviceKeyValid(auth, keyHash)) return json({ ok: true });
       return json({ error: "Key mismatch" }, 401);
+    }
+
+    // ── POST /api/enroll ─────────────────────────────────────────────────────
+    if (path === "/api/enroll" && method === "POST") {
+      if (!(await checkRateLimit(env, `enroll:${ip}`, 5))) {
+        return json({ error: "Rate limit exceeded" }, 429);
+      }
+      const deviceKey = request.headers.get("X-Device-Key");
+      if (!deviceKey) return json({ error: "Missing key" }, 401);
+      const lockStatus = await checkLockout(env, ip);
+      if (lockStatus.locked) return json({ error: "Locked", until: lockStatus.until }, 403);
+      const keyHash = await sha256(deviceKey);
+      if (!isDeviceKeyValid(auth, keyHash)) {
+        await recordFailedAuth(env, ip, config.lockout_attempts || 5, config.lockout_duration_min || 15);
+        await incrementFailedAuthCount(env);
+        return json({ error: "Invalid key" }, 401);
+      }
+      const rawBody = await request.text();
+      const sig = await verifyDeviceSignature(request, env, keyHash, rawBody);
+      if (!sig.ok) return json({ error: sig.error }, 401);
+      let body = {};
+      try { body = rawBody ? JSON.parse(rawBody) : {}; } catch { return json({ error: "Invalid JSON" }, 400); }
+      const chipId = (typeof body.chipId === "string" ? body.chipId : "").toLowerCase().trim();
+      if (!chipId || !/^[0-9a-f]{8,16}$/.test(chipId)) {
+        return json({ error: "Invalid chipId — expected 8–16 hex chars" }, 400);
+      }
+      const existing = await env.BGDISPLAY_AUTH.get(`device_registry:${chipId}`, { type: "json" });
+      if (existing && existing.keyHash !== keyHash) {
+        return json({ error: "Already enrolled", hint: "Use admin to revoke and re-enroll this device." }, 409);
+      }
+      const newKey = generateKey();
+      const newKeyHash = await sha256(newKey);
+      await env.BGDISPLAY_AUTH.put(`device_registry:${chipId}`, JSON.stringify({
+        chipId,
+        keyHash: newKeyHash,
+        keyTail: newKeyHash.slice(-4),
+        enrolledAt: Date.now(),
+        enrolledFrom: "api",
+        previousKeyHash: keyHash,
+        lastSeen: Date.now(),
+        lastSeenPath: "/api/enroll",
+      }));
+      auth.keyHash = newKeyHash;
+      auth.lastRotated = Date.now();
+      auth.lastRotatedReason = "enrollment";
+      delete auth.pendingKey; delete auth.pendingKeyHash; delete auth.pendingKeyExpiry;
+      await env.BGDISPLAY_CONFIG.put("auth", JSON.stringify(auth));
+      await clearFailedAuth(env, ip);
+      await appendChangeLog(env, `Device enrolled: chip ...${chipId.slice(-4)}`);
+      return json({ ok: true, key: newKey, chipId });
     }
 
     // ── POST /api/status ─────────────────────────────────────────────────────
@@ -2021,6 +2087,8 @@ export default {
       let parsed = {};
       try { parsed = rawBody ? JSON.parse(rawBody) : {}; } catch { return json({ error: "Invalid JSON" }, 400); }
       await updateDeviceStatus(env, ip, parsed, config);
+      const chipId = request.headers.get("X-Device-Id") || "";
+      if (chipId) await updateDeviceRegistry(env, chipId, { lastSeen: Date.now(), lastSeenPath: "/api/status" });
       return json({ ok: true });
     }
 
@@ -2388,6 +2456,105 @@ export default {
       await env.BGDISPLAY_CONFIG.put("auth", JSON.stringify(auth));
       await appendChangeLog(env, "Recovery firmware key cleared");
       await appendWorkerEvent(env, { type: "recovery-key-clear" });
+      return json({ ok: true });
+    }
+
+    // ── GET /api/admin/devices ────────────────────────────────────────────────
+    if (path === "/api/admin/devices" && method === "GET") {
+      const list = await env.BGDISPLAY_AUTH.list({ prefix: "device_registry:" });
+      const devices = [];
+      for (const key of list.keys) {
+        const rec = await env.BGDISPLAY_AUTH.get(key.name, { type: "json" });
+        if (rec) {
+          const hasPerDeviceConfig = !!(await env.BGDISPLAY_CONFIG.get(`device_config:${rec.chipId}`));
+          devices.push({
+            chipId: rec.chipId,
+            keyTail: rec.keyTail || rec.keyHash?.slice(-4) || "????",
+            enrolledAt: rec.enrolledAt,
+            enrolledFrom: rec.enrolledFrom,
+            lastSeen: rec.lastSeen,
+            lastSeenPath: rec.lastSeenPath,
+            hasPerDeviceConfig,
+          });
+        }
+      }
+      return json({ devices });
+    }
+
+    // ── DELETE /api/admin/devices/:chipId ─────────────────────────────────────
+    if (path.startsWith("/api/admin/devices/") && method === "DELETE") {
+      if (!(await checkRateLimit(env, `admin-write:${ip}`, config.admin_write_rate_limit_per_min || 15))) {
+        return json({ error: "Admin write rate limit exceeded" }, 429);
+      }
+      const chipId = path.slice("/api/admin/devices/".length).trim();
+      if (!chipId || !/^[0-9a-f]{8,16}$/i.test(chipId)) return json({ error: "Invalid chipId" }, 400);
+      const rec = await env.BGDISPLAY_AUTH.get(`device_registry:${chipId}`, { type: "json" });
+      if (!rec) return json({ error: "Device not found" }, 404);
+      await env.BGDISPLAY_AUTH.delete(`device_registry:${chipId}`);
+      // Restore previous key hash so device can re-authenticate with its old key after factory reset
+      if (rec.keyHash === auth.keyHash && rec.previousKeyHash) {
+        auth.keyHash = rec.previousKeyHash;
+        auth.lastRotated = Date.now();
+        auth.lastRotatedReason = "enrollment-revoked";
+        await env.BGDISPLAY_CONFIG.put("auth", JSON.stringify(auth));
+      }
+      await appendChangeLog(env, `Device enrollment revoked: chip ...${chipId.slice(-4)}`);
+      return json({ ok: true });
+    }
+
+    // ── GET /api/admin/device-config/:chipId ─────────────────────────────────
+    if (path.startsWith("/api/admin/device-config/") && method === "GET") {
+      const chipId = path.slice("/api/admin/device-config/".length).trim().toLowerCase();
+      if (!chipId || !/^[0-9a-f]{8,16}$/.test(chipId)) return json({ error: "Invalid chipId" }, 400);
+      const overrides = await env.BGDISPLAY_CONFIG.get(`device_config:${chipId}`, { type: "json" }) || {};
+      return json({ chipId, overrides });
+    }
+
+    // ── POST /api/admin/device-config/:chipId ────────────────────────────────
+    if (path.startsWith("/api/admin/device-config/") && method === "POST") {
+      if (!(await checkRateLimit(env, `admin-write:${ip}`, config.admin_write_rate_limit_per_min || 15))) {
+        return json({ error: "Admin write rate limit exceeded" }, 429);
+      }
+      const chipId = path.slice("/api/admin/device-config/".length).trim().toLowerCase();
+      if (!chipId || !/^[0-9a-f]{8,16}$/.test(chipId)) return json({ error: "Invalid chipId" }, 400);
+      const body = await request.json().catch(() => null);
+      if (!body || typeof body !== "object") return json({ error: "Invalid JSON" }, 400);
+      // Only allow known config field keys — strip unknown fields
+      const globalCfg = normalizeConfig(null);
+      const allowed = new Set(Object.keys(globalCfg));
+      const overrides = Object.fromEntries(Object.entries(body).filter(([k]) => allowed.has(k)));
+      if (Object.keys(overrides).length === 0) {
+        await env.BGDISPLAY_CONFIG.delete(`device_config:${chipId}`);
+      } else {
+        await env.BGDISPLAY_CONFIG.put(`device_config:${chipId}`, JSON.stringify(overrides));
+      }
+      await appendChangeLog(env, `Per-device config updated: chip ...${chipId.slice(-4)}`);
+      // Broadcast so device pulls updated config
+      if (env.CONFIG_SYNC) {
+        ctx.waitUntil((async () => {
+          try {
+            const version = await getConfigVersion(env);
+            const stub = env.CONFIG_SYNC.get(env.CONFIG_SYNC.idFromName("global"));
+            await stub.fetch(new Request("https://do.internal/broadcast", {
+              method: "POST",
+              body: JSON.stringify({ type: "config-changed", version, ts: Date.now() }),
+              headers: { "Content-Type": "application/json" },
+            }));
+          } catch {}
+        })());
+      }
+      return json({ ok: true, chipId, overrideCount: Object.keys(overrides).length });
+    }
+
+    // ── DELETE /api/admin/device-config/:chipId ───────────────────────────────
+    if (path.startsWith("/api/admin/device-config/") && method === "DELETE") {
+      if (!(await checkRateLimit(env, `admin-write:${ip}`, config.admin_write_rate_limit_per_min || 15))) {
+        return json({ error: "Admin write rate limit exceeded" }, 429);
+      }
+      const chipId = path.slice("/api/admin/device-config/".length).trim().toLowerCase();
+      if (!chipId || !/^[0-9a-f]{8,16}$/.test(chipId)) return json({ error: "Invalid chipId" }, 400);
+      await env.BGDISPLAY_CONFIG.delete(`device_config:${chipId}`);
+      await appendChangeLog(env, `Per-device config cleared: chip ...${chipId.slice(-4)}`);
       return json({ ok: true });
     }
 
