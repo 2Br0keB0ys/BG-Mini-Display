@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { ensureSession, apiGet, apiPost } from './api';
 import { fmtTs, to12h, to24h, validateConfig, DAYS } from './helpers';
 import { WORKER_URL } from './constants';
@@ -76,6 +76,16 @@ function collectConfig(form) {
   return c;
 }
 
+// ── Nav sections ─────────────────────────────────────────────────────────────
+const NAV_SECTIONS = [
+  { id: 'sec-wifi',    label: 'Network',             icon: <svg className="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12.55a11 11 0 0114.08 0"/><path d="M1.42 9a16 16 0 0121.16 0"/><path d="M8.53 16.11a6 6 0 016.95 0"/><circle cx="12" cy="20" r="1" fill="currentColor"/></svg> },
+  { id: 'sec-sources', label: 'Glucose sources',     icon: <svg className="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"/></svg> },
+  { id: 'sec-targets', label: 'Targets & alerts',    icon: <svg className="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg> },
+  { id: 'sec-display', label: 'Display & schedule',  icon: <svg className="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg> },
+  { id: 'sec-notifs',  label: 'Notifications',       icon: <svg className="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg> },
+  { id: 'sec-pump',    label: 'Insulin profile',     icon: <svg className="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="5" y="3" width="14" height="18" rx="2"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="9" y1="12" x2="15" y2="12"/><circle cx="12" cy="17" r="1" fill="currentColor"/></svg> },
+];
+
 export default function App() {
   const [config, setConfig] = useState({});
   const [meta, setMeta] = useState({});
@@ -88,6 +98,8 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [toast, setToast] = useState({ msg: '', show: false });
+  const [activeSection, setActiveSection] = useState('sec-wifi');
+  const observerRef = useRef(null);
 
   // Unload guard
   useEffect(() => {
@@ -95,6 +107,19 @@ export default function App() {
     window.addEventListener('beforeunload', h);
     return () => window.removeEventListener('beforeunload', h);
   }, [dirty]);
+
+  // IntersectionObserver for sidebar active state
+  useEffect(() => {
+    if (observerRef.current) observerRef.current.disconnect();
+    observerRef.current = new IntersectionObserver(entries => {
+      entries.forEach(e => { if (e.isIntersecting) setActiveSection(e.target.id); });
+    }, { rootMargin: '-35% 0px -55% 0px', threshold: 0 });
+    NAV_SECTIONS.forEach(({ id }) => {
+      const el = document.getElementById(id);
+      if (el) observerRef.current.observe(el);
+    });
+    return () => observerRef.current?.disconnect();
+  });
 
   const showToast = useCallback((msg, ms = 2800) => {
     setToast({ msg, show: true });
@@ -114,11 +139,11 @@ export default function App() {
   }
 
   async function loadMetrics() {
-    try { const d = await apiGet('/api/admin/metrics'); setMetrics(d || null); } catch { setMetrics(null); }
+    try { const d = await apiGet('/api/admin/metrics'); setMetrics(d || null); } catch(e) { setMetrics(null); }
   }
 
   async function loadMaintenance() {
-    try { const d = await apiGet('/api/admin/maintenance'); setMaint(d); } catch { setMaint(null); }
+    try { const d = await apiGet('/api/admin/maintenance'); setMaint(d); } catch(e) { setMaint(null); }
   }
 
   async function init() {
@@ -138,17 +163,17 @@ export default function App() {
   async function saveConfig() {
     const updates = collectConfig(formData);
     const errors = validateConfig(updates);
-    if (errors.length) { showToast('❌ ' + errors[0]); return; }
+    if (errors.length) { showToast('✕ ' + errors[0]); return; }
     setSaving(true);
     try {
       const prevSsid = config.wifi_ssid || '';
       const wifiChanged = (typeof updates.wifi_ssid === 'string' && updates.wifi_ssid !== prevSsid) || !!updates.wifi_pass || formData.wifi_open;
       await apiPost('/api/admin/config', updates);
       setDirty(false);
-      showToast(wifiChanged ? '✓ Saved. Wi-Fi updated — device will reboot.' : '✓ Saved. Device will sync automatically.', 4000);
+      showToast(wifiChanged ? '✓ Saved — device will reboot to reconnect.' : '✓ Saved — device will sync automatically.', 4000);
       await loadConfig();
       await loadMetrics();
-    } catch { showToast('❌ Error saving — check Worker'); }
+    } catch(e) { showToast('✕ Error saving — check Worker'); }
     finally { setSaving(false); }
   }
 
@@ -157,12 +182,12 @@ export default function App() {
       await apiPost('/api/admin/command', { type });
       showToast(`✓ ${type} command queued`);
       await loadConfig();
-    } catch { showToast('❌ Failed to queue command'); }
+    } catch(e) { showToast('✕ Failed to queue command'); }
   }
 
   const offlineMin = Math.max(5, Number(config.alert_offline_min || 15));
   const online = meta.status?.lastSeen && (Date.now() - meta.status.lastSeen < offlineMin * 60000);
-  const sourceLabel = config.dexcom_user ? 'Dexcom primary' : (config.nightscout_url ? 'Nightscout only' : 'Not set');
+  const sourceLabel = config.dexcom_user ? 'Dexcom + Nightscout' : (config.nightscout_url ? 'Nightscout only' : 'Not configured');
 
   if (loading) {
     return (
@@ -175,8 +200,8 @@ export default function App() {
   if (loadError) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 8, padding: '2rem', textAlign: 'center' }}>
-        <div style={{ color: 'var(--red)', fontSize: 14 }}>Could not reach Worker at <code>{WORKER_URL}</code></div>
-        <div style={{ color: 'var(--muted)', fontSize: 12 }}>Check that wrangler is deployed and the URL is correct.</div>
+        <div style={{ color: 'var(--red)', fontSize: 14 }}>Could not reach Worker at <code style={{ fontFamily: 'var(--mono)', fontSize: 12 }}>{WORKER_URL}</code></div>
+        <div style={{ color: 'var(--muted)', fontSize: 12 }}>Check that the Worker is deployed and the URL is correct.</div>
       </div>
     );
   }
@@ -185,44 +210,67 @@ export default function App() {
     <>
       <Header meta={meta} online={online} saving={saving} onSave={saveConfig} />
 
-      <main className="page">
-        {/* Hero row */}
-        <div className="hero-wrap">
-          <div className="hero">
-            <h2>Device settings</h2>
-            <p>All settings in one view. Technical controls are in Advanced tools.</p>
-            <div className="hero-chips">
-              <span className="chip">Dexcom primary · Nightscout fallback</span>
-              <span className="chip">Config v{meta.config_version || 0}</span>
-              <button className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => setAdvancedOpen(true)}>Advanced tools</button>
-            </div>
-          </div>
-          <div className="status-grid">
-            {[
-              ['Status', online ? 'Online' : 'Offline'],
-              ['Connection', meta.status?.connection || '—'],
-              ['Last seen', fmtTs(meta.status?.lastSeen)],
-              ['Data source', sourceLabel],
-            ].map(([k, v]) => (
-              <div key={k} className="status-tile">
-                <div className="tile-k">{k}</div>
-                <div className="tile-v">{v}</div>
-              </div>
-            ))}
-          </div>
-        </div>
+      {/* Mobile nav tabs */}
+      <nav className="mobnav">
+        {NAV_SECTIONS.map(s => (
+          <a key={s.id} href={`#${s.id}`} className={activeSection === s.id ? 'active' : ''}>{s.label}</a>
+        ))}
+      </nav>
 
-        {/* Main sections */}
-        <div className="sections-grid">
-          <DigestSection form={formData} onChange={onFormChange} meta={meta} showToast={showToast} />
-          <WiFiSection form={formData} onChange={onFormChange} />
-          <SourcesSection form={formData} onChange={onFormChange} />
-          <TargetsSection form={formData} onChange={onFormChange} />
-          <DisplaySection form={formData} onChange={onFormChange} showToast={showToast} />
-          <PhoneAlertsSection form={formData} onChange={onFormChange} meta={meta} />
-          <PumpSection form={formData} onChange={onFormChange} />
+      <div className="shell">
+        {/* Sidebar */}
+        <nav className="sidenav">
+          <div className="nav-label">Device setup</div>
+          {NAV_SECTIONS.map(s => (
+            <a
+              key={s.id}
+              className={`nav-item${activeSection === s.id ? ' active' : ''}`}
+              href={`#${s.id}`}
+            >
+              {s.icon}
+              {s.label}
+            </a>
+          ))}
+          <div className="nav-sep" />
+          <button className="nav-adv" onClick={() => setAdvancedOpen(true)}>
+            <svg className="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="3"/><path d="M19.07 4.93l-1.41 1.41M4.93 4.93l1.41 1.41M4.93 19.07l1.41-1.41M19.07 19.07l-1.41-1.41M21 12h-2M3 12H1M12 3V1M12 23v-2"/>
+            </svg>
+            Advanced tools
+          </button>
+        </nav>
+
+        {/* Main content */}
+        <div className="main-wrap">
+          <main className="page">
+            {/* Status strip */}
+            <div className="stat-strip">
+              {[
+                ['Device', online ? 'Online' : 'Offline', online ? 'var(--green)' : 'var(--red)'],
+                ['Connection', meta.status?.connection || '—', null],
+                ['Last seen', fmtTs(meta.status?.lastSeen), null],
+                ['Data source', sourceLabel, null],
+              ].map(([k, v, clr]) => (
+                <div key={k} className="stat-tile">
+                  <div className="tile-k">{k}</div>
+                  <div className="tile-v" style={clr ? { color: clr } : {}}>{v}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Sections with anchor IDs */}
+            <div id="sec-wifi"><WiFiSection form={formData} onChange={onFormChange} /></div>
+            <div id="sec-sources"><SourcesSection form={formData} onChange={onFormChange} /></div>
+            <div id="sec-targets"><TargetsSection form={formData} onChange={onFormChange} /></div>
+            <div id="sec-display"><DisplaySection form={formData} onChange={onFormChange} showToast={showToast} /></div>
+            <div id="sec-notifs">
+              <PhoneAlertsSection form={formData} onChange={onFormChange} meta={meta} />
+              <DigestSection form={formData} onChange={onFormChange} meta={meta} showToast={showToast} />
+            </div>
+            <div id="sec-pump"><PumpSection form={formData} onChange={onFormChange} /></div>
+          </main>
         </div>
-      </main>
+      </div>
 
       <AdvancedDrawer
         open={advancedOpen}

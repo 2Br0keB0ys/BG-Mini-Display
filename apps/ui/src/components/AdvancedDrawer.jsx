@@ -2,7 +2,8 @@ import { useEffect } from 'react';
 import { DeviceActions, AlertTuning } from '../sections/adv/Operations';
 import { Diagnostics, CloudInsights } from '../sections/adv/Diagnostics';
 import SecuritySection from '../sections/adv/Security';
-import { BackupSection, MaintenanceSection, LogsSection } from '../sections/adv/DataAdmin';
+import { BackupSection, MaintenanceSection } from '../sections/adv/DataAdmin';
+import { DeviceRegistrySection } from '../sections/adv/DeviceRegistry';
 
 export default function AdvancedDrawer({ open, onClose, form, onChange, onSave, saving, meta, metrics, maint, showToast, onCommand, onConfigReload }) {
   useEffect(() => {
@@ -36,9 +37,9 @@ export default function AdvancedDrawer({ open, onClose, form, onChange, onSave, 
           <Diagnostics meta={meta} showToast={showToast} />
           <CloudInsights metrics={metrics} />
           <SecuritySection form={form} onChange={onChange} meta={meta} showToast={showToast} onConfigReload={onConfigReload} />
+          <DeviceRegistrySection showToast={showToast} />
           <BackupSection form={form} onChange={onChange} showToast={showToast} />
           <MaintenanceSection meta={meta} maint={maint} />
-          <LogsSection showToast={showToast} />
         </div>
       </aside>
     </>

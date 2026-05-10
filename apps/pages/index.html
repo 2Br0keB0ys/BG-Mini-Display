@@ -1,1251 +1,1064 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>BG MiniView — Settings</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap');
-
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth;scroll-padding-top:72px}
+
 :root{
-  --bg:#070b12;
-  --bg-soft:#0c1320;
-  --surface:#111a2a;
-  --surface-2:#162338;
-  --border:rgba(255,255,255,0.11);
-  --border-mid:rgba(255,255,255,0.2);
-  --text:#ecf3ff;
-  --muted:#99a8bf;
-  --faint:#6e7d95;
-  --accent:#ff7a48;
-  --accent-2:#ffb648;
-  --accent-bg:rgba(255,122,72,.17);
-  --green:#52e4a4;
-  --green-bg:rgba(82,228,164,.16);
-  --amber:#ffd166;
-  --amber-bg:rgba(255,209,102,.14);
-  --red:#ff8e8e;
-  --red-bg:rgba(255,142,142,.15);
-  --blue:#6cb4ff;
-  --blue-bg:rgba(108,180,255,.14);
-  --r:10px;
-  --rl:15px;
-  --mono:'Courier New',monospace;
+  --bg:#070a12;
+  --sb:#090d18;
+  --s1:#0e1521;
+  --s2:#131d2e;
+  --s3:#192438;
+  --border:rgba(255,255,255,.07);
+  --border-md:rgba(255,255,255,.13);
+  --border-hi:rgba(255,255,255,.22);
+  --text:#dde6f5;
+  --text2:#7b91b0;
+  --text3:#435570;
+  --accent:#f97316;
+  --accent-hi:#fb923c;
+  --accent-bg:rgba(249,115,22,.11);
+  --accent-bd:rgba(249,115,22,.32);
+  --green:#0ecf84;
+  --green-bg:rgba(14,207,132,.1);
+  --green-bd:rgba(14,207,132,.28);
+  --red:#f56565;
+  --red-bg:rgba(245,101,101,.1);
+  --red-bd:rgba(245,101,101,.28);
+  --amber:#f5c518;
+  --amber-bg:rgba(245,197,24,.1);
+  --amber-bd:rgba(245,197,24,.28);
+  --blue:#60a5fa;
+  --blue-bg:rgba(96,165,250,.1);
+  --blue-bd:rgba(96,165,250,.28);
+  --r:8px;--rl:12px;
+  --mono:'SF Mono','Cascadia Code','Consolas',monospace;
+  --sbw:212px;--tbh:56px;
 }
+
 body{
-  font-family:'Manrope','Segoe UI',sans-serif;
-  background:
-    radial-gradient(900px 480px at -4% -12%,rgba(255,183,76,.18),transparent 60%),
-    radial-gradient(980px 620px at 100% -10%,rgba(76,166,255,.2),transparent 55%),
-    linear-gradient(180deg,var(--bg) 0%,#05070d 100%);
-  color:var(--text);
-  font-size:14px;
-  line-height:1.5;
-  min-height:100vh;
+  font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  background:var(--bg);color:var(--text);
+  font-size:14px;line-height:1.5;min-height:100vh;
+  -webkit-font-smoothing:antialiased;
 }
 
-/* Header */
-.header{
-  background:linear-gradient(180deg,rgba(10,16,28,.86),rgba(10,16,28,.74));
-  backdrop-filter:blur(14px);
+/* ── Topbar ─────────────────────────────────── */
+.topbar{
+  position:fixed;top:0;left:0;right:0;
+  height:var(--tbh);z-index:100;
+  display:flex;align-items:center;gap:10px;padding:0 1.1rem;
+  background:rgba(7,10,18,.9);
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
   border-bottom:1px solid var(--border);
-  position:sticky;
-  top:0;
-  z-index:100;
-  padding:0 1.2rem;
 }
-.header-inner{
-  max-width:1320px;
-  margin:0 auto;
-  display:flex;
-  align-items:center;
-  gap:12px;
-  min-height:72px;
+.brand{display:flex;align-items:center;gap:9px;flex-shrink:0;text-decoration:none}
+.brand-icon{
+  width:28px;height:28px;border-radius:7px;flex-shrink:0;
+  background:linear-gradient(135deg,#f97316,#fb923c 52%,#fbbf24);
+  display:flex;align-items:center;justify-content:center;
 }
-.logo{
-  width:38px;
-  height:38px;
-  border-radius:12px;
-  background:linear-gradient(145deg,#ff8b57,#ff5b4a 52%,#ffb648);
-  box-shadow:0 12px 22px rgba(255,91,74,.25);
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  flex-shrink:0;
-}
-.logo svg{width:19px;height:19px;fill:white}
-.header h1{
-  font-family:'Space Grotesk','Manrope',sans-serif;
-  font-size:17px;
-  font-weight:700;
-  letter-spacing:.02em;
-}
-.header-meta{font-size:11px;color:var(--muted);margin-top:1px}
+.brand-icon svg{width:14px;height:14px;fill:#fff}
+.brand-name{font-size:14px;font-weight:700;letter-spacing:-.01em;color:var(--text);white-space:nowrap}
+.brand-version{font-size:11px;color:var(--text2);margin-left:3px;font-weight:400}
+#configMeta{font-size:12px;color:var(--text2);flex:1;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .status-pill{
-  margin-left:auto;
-  display:flex;
-  align-items:center;
-  gap:6px;
-  font-size:12px;
-  padding:6px 12px;
-  border-radius:99px;
-  white-space:nowrap;
-  flex-shrink:0;
-  border:1px solid transparent;
-  font-weight:700;
+  display:flex;align-items:center;gap:6px;
+  font-size:12px;font-weight:600;padding:4px 11px;
+  border-radius:99px;white-space:nowrap;flex-shrink:0;border:1px solid transparent;
 }
-.status-pill.online{color:var(--green);background:var(--green-bg);border-color:rgba(82,228,164,.38)}
-.status-pill.offline{color:var(--red);background:var(--red-bg);border-color:rgba(255,142,142,.35)}
-.dot{width:6px;height:6px;border-radius:50%;background:currentColor}
-.save-bar{margin-left:8px}
+.status-pill.online{color:var(--green);background:var(--green-bg);border-color:var(--green-bd)}
+.status-pill.offline{color:var(--red);background:var(--red-bg);border-color:var(--red-bd)}
+.dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
 .save-btn{
-  padding:10px 18px;
-  background:linear-gradient(140deg,var(--accent),var(--accent-2));
-  color:#22150f;
-  border:1px solid rgba(255,255,255,.15);
-  border-radius:12px;
-  font-size:13px;
-  font-weight:800;
-  cursor:pointer;
-  transition:transform .16s,filter .16s,box-shadow .16s;
-  box-shadow:0 8px 18px rgba(255,122,72,.3);
+  padding:7px 16px;background:var(--accent);color:#fff;
+  border:none;border-radius:var(--r);font-size:13px;font-weight:600;
+  cursor:pointer;transition:opacity .15s,transform .1s;
+  white-space:nowrap;flex-shrink:0;font-family:inherit;
 }
-.save-btn:hover{transform:translateY(-1px);filter:brightness(1.06)}
-.save-btn:disabled{opacity:.75;cursor:not-allowed;transform:none}
+.save-btn:hover{opacity:.85;transform:translateY(-1px)}
+.save-btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
 
-/* Layout */
-.page{max-width:1320px;margin:0 auto;padding:1.25rem 1.2rem 2.1rem}
-.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem;align-items:start}
-.grid.full{grid-template-columns:1fr}
+/* ── Layout shell ───────────────────────────── */
+.shell{display:flex;padding-top:var(--tbh);min-height:100vh}
 
-.hero-wrap{
-  display:grid;
-  grid-template-columns:1.3fr .7fr;
-  gap:1rem;
-  margin-bottom:.95rem;
+/* ── Sidebar ────────────────────────────────── */
+.sidenav{
+  width:var(--sbw);flex-shrink:0;
+  position:fixed;top:var(--tbh);left:0;bottom:0;
+  background:var(--sb);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;
+  padding:.6rem 0 1rem;overflow-y:auto;
 }
-.hero{
-  border:1px solid var(--border);
-  border-radius:16px;
-  padding:1rem 1.05rem;
-  background:linear-gradient(145deg,rgba(22,35,56,.95),rgba(17,26,42,.92));
-  box-shadow:0 14px 28px rgba(0,0,0,.28);
+.nav-label{
+  font-size:10px;font-weight:600;color:var(--text3);
+  text-transform:uppercase;letter-spacing:.08em;
+  padding:10px 14px 4px;
 }
-.hero h2{
-  font-family:'Space Grotesk','Manrope',sans-serif;
-  font-size:15px;
-  letter-spacing:.01em;
+.nav-item{
+  display:flex;align-items:center;gap:9px;
+  padding:7px 10px 7px 13px;border-radius:6px;
+  margin:1px 5px;font-size:13px;font-weight:500;
+  color:var(--text2);text-decoration:none;
+  transition:background .1s,color .1s;
+  cursor:pointer;border:none;background:none;
+  width:calc(100% - 10px);text-align:left;font-family:inherit;
 }
-.hero p{margin-top:4px;font-size:12px;color:var(--muted)}
-.hero-actions{display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap}
-.toolbar-chip{
-  font-size:11px;
-  color:var(--muted);
-  border:1px solid var(--border);
-  border-radius:999px;
-  padding:4px 9px;
-  background:rgba(255,255,255,.03);
+.nav-item:hover{background:var(--s1);color:var(--text)}
+.nav-item.active{background:var(--s2);color:var(--text)}
+.nav-item .ni{width:15px;height:15px;flex-shrink:0;opacity:.65}
+.nav-item.active .ni{opacity:1}
+.nav-sep{height:1px;background:var(--border);margin:.5rem .7rem}
+.nav-adv{
+  margin:.25rem 5px 0;
+  padding:8px 10px 8px 13px;border-radius:6px;
+  font-size:13px;font-weight:500;color:var(--accent);
+  cursor:pointer;border:1px solid var(--accent-bd);background:var(--accent-bg);
+  display:flex;align-items:center;gap:9px;
+  transition:opacity .12s;font-family:inherit;
+  width:calc(100% - 10px);
+}
+.nav-adv .ni{width:15px;height:15px;flex-shrink:0}
+.nav-adv:hover{opacity:.8}
+
+/* ── Main content ───────────────────────────── */
+.main{
+  flex:1;min-width:0;margin-left:var(--sbw);
+  padding:1.6rem 1.6rem 3rem;
+}
+.main-inner{max-width:680px}
+
+/* ── Stat strip ─────────────────────────────── */
+.stat-strip{
+  display:grid;grid-template-columns:repeat(4,1fr);
+  gap:.55rem;margin-bottom:1.5rem;
+}
+.stat-tile{
+  background:var(--s1);border:1px solid var(--border);
+  border-radius:var(--rl);padding:.8rem 1rem;
+}
+.stat-tile .k{font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em}
+.stat-tile .v{font-size:13px;font-weight:600;margin-top:5px;line-height:1.25;word-break:break-word}
+
+/* ── Cards ──────────────────────────────────── */
+.card{
+  background:var(--s1);border:1px solid var(--border);
+  border-radius:var(--rl);margin-bottom:.85rem;overflow:hidden;
+}
+.card-hdr{
+  display:flex;align-items:center;gap:11px;
+  padding:.85rem 1.1rem;border-bottom:1px solid var(--border);
+}
+.card-icon{
+  width:28px;height:28px;border-radius:7px;
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
+}
+.card-icon svg{width:13px;height:13px}
+.card-title{font-size:13px;font-weight:600;letter-spacing:-.01em}
+.card-sub{font-size:11px;color:var(--text2);margin-top:1px}
+
+/* card icon colors */
+.ci-wifi{background:rgba(96,165,250,.12)}.ci-wifi svg{stroke:var(--blue);fill:none}
+.ci-gluc{background:rgba(249,115,22,.12)}.ci-gluc svg{stroke:var(--accent);fill:none}
+.ci-tgt{background:rgba(14,207,132,.12)}.ci-tgt svg{stroke:var(--green);fill:none}
+.ci-disp{background:rgba(167,139,250,.12)}.ci-disp svg{stroke:#a78bfa;fill:none}
+.ci-notif{background:rgba(245,197,24,.12)}.ci-notif svg{stroke:var(--amber);fill:none}
+.ci-pump{background:rgba(249,115,22,.12)}.ci-pump svg{stroke:var(--accent-hi);fill:none}
+.ci-ctrl{background:rgba(255,255,255,.06)}.ci-ctrl svg{stroke:var(--text2);fill:none}
+.ci-sec{background:rgba(245,101,101,.12)}.ci-sec svg{stroke:var(--red);fill:none}
+.ci-bkp{background:rgba(14,207,132,.12)}.ci-bkp svg{stroke:var(--green);fill:none}
+.ci-diag{background:rgba(96,165,250,.12)}.ci-diag svg{stroke:var(--blue);fill:none}
+.ci-ai{background:rgba(249,115,22,.12)}.ci-ai svg{stroke:var(--accent-hi);fill:none}
+
+/* card inner section heading */
+.card-section-lbl{
+  font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;
+  color:var(--text3);padding:8px 16px 5px;border-bottom:1px solid var(--border);
+  background:rgba(255,255,255,.018);
 }
 
-.quick-grid{
-  display:grid;
-  grid-template-columns:repeat(2,minmax(0,1fr));
-  gap:.7rem;
+/* ── Rows ───────────────────────────────────── */
+.row{
+  display:flex;align-items:center;gap:16px;
+  padding:10px 16px;border-bottom:1px solid var(--border);
+  min-height:48px;
 }
-.quick-tile{
-  border:1px solid var(--border);
-  border-radius:13px;
-  padding:.75rem;
-  background:linear-gradient(150deg,rgba(20,32,50,.95),rgba(12,20,33,.95));
+.row:last-child{border-bottom:none}
+.row-lbl{flex:1;min-width:0}
+.row-name{font-size:13px;font-weight:500}
+.row-desc{font-size:11px;color:var(--text2);margin-top:2px;line-height:1.4}
+.row-ctrl{display:flex;align-items:center;gap:8px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end}
+.subrow{padding-left:32px;background:rgba(255,255,255,.015)}
+.subrow .row-name{font-size:12px;color:var(--text2)}
+.tip{
+  padding:8px 16px;font-size:11.5px;color:var(--text2);
+  line-height:1.5;border-bottom:1px solid var(--border);
+  background:rgba(255,255,255,.02);
 }
-.quick-tile .k{font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.08em;font-weight:700}
-.quick-tile .v{font-size:13px;font-weight:700;margin-top:5px}
-.stack{display:flex;flex-direction:column;gap:.75rem}
-.flow-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:.75rem;align-items:start}
+.tip strong{color:var(--text)}.tip b{color:var(--amber)}
+.vrow{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:9px 16px;font-size:12.5px;border-bottom:1px solid var(--border);
+}
+.vrow:last-child{border-bottom:none}
+.vrow .lbl{color:var(--text2)}
+.diag-row{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:9px 16px;font-size:13px;border-bottom:1px solid var(--border);
+}
+.diag-row:last-child{border-bottom:none}
+.chg-row{
+  display:flex;justify-content:space-between;padding:5px 16px;
+  font-size:11.5px;color:var(--text2);border-bottom:1px solid rgba(255,255,255,.04);gap:12px;
+}
+.chg-row:last-child{border-bottom:none}
 
-/* Section */
-.section{
-  background:rgba(14,22,36,.85);
-  border:1px solid rgba(255,255,255,.08);
-  border-radius:13px;
-  overflow:hidden;
-  box-shadow:0 2px 10px rgba(0,0,0,.18);
-}
-.section-head{
-  display:flex;
-  align-items:center;
-  gap:9px;
-  padding:9px 13px;
-  cursor:default;
-  user-select:none;
-  border-bottom:1px solid rgba(255,255,255,.07);
-}
-.section-head:hover{background:transparent}
-.section-head.open{border-bottom-color:rgba(255,255,255,.07)}
-.section-icon{width:24px;height:24px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0;border:1px solid rgba(255,255,255,.1)}
-.section-icon svg{width:11px;height:11px}
-.section-title{font-family:'Space Grotesk','Manrope',sans-serif;font-size:11.5px;font-weight:700;flex:1;letter-spacing:.01em;text-transform:uppercase;color:var(--muted)}
-.section-sub{font-size:10px;color:var(--faint);margin-top:1px}
-.chevron{display:none}
-.section-body{display:none}
-.section-body.open{display:block}
-
-/* Field */
-.field{padding:10px 13px;border:none;border-bottom:1px solid rgba(255,255,255,.055);background:none;margin:0;display:flex;flex-direction:row;align-items:center;gap:12px}
-.field:last-child{border-bottom:none}
-.field-label{flex:1;min-width:0}
-.field-label .name{font-size:12.5px;font-weight:700}
-.field-label .desc{font-size:10.5px;color:var(--muted);margin-top:2px;line-height:1.35}
-.field-control{display:flex;justify-content:flex-end;align-items:center;gap:8px;flex-wrap:wrap;flex-shrink:0}
-.subfield{padding:8px 13px 8px 30px;margin:0;display:flex;align-items:center;gap:12px;border:none;border-bottom:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.012)}
-.subfield:last-child{border-bottom:none}
-.subfield .field-label .name{font-size:11px;font-weight:700;color:var(--muted)}
-
-/* Inputs */
+/* ── Inputs ─────────────────────────────────── */
 input[type=text],input[type=password],input[type=url],input[type=number],select{
-  font-size:13px;
-  padding:9px 12px;
-  border-radius:11px;
-  border:1px solid var(--border-mid);
-  background:linear-gradient(180deg,rgba(27,40,61,.95),rgba(22,34,53,.95));
-  color:var(--text);
-  outline:none;
-  transition:border .14s,box-shadow .14s,transform .14s;
+  font-family:inherit;font-size:13px;padding:7px 11px;
+  border-radius:var(--r);border:1px solid var(--border-md);
+  background:var(--s2);color:var(--text);outline:none;
+  transition:border-color .14s,box-shadow .14s;
+  -webkit-appearance:none;appearance:none;
 }
-input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(255,122,72,.18)}
-input[type=number]{width:82px}
-select{min-width:120px}
-.wide{width:220px}
-input[type=text].wide,input[type=password].wide,input[type=url].wide{width:220px}
+input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(249,115,22,.14)}
+input[type=number]{width:78px}
+select{
+  min-width:120px;cursor:pointer;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%237b91b0'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 10px center;padding-right:30px;
+}
+.w-wide{width:210px}
+input.w-wide{width:210px}
+input[type=text]:disabled,input[type=password]:disabled{opacity:.45;cursor:not-allowed}
 
-/* Toggle */
-.toggle{position:relative;width:40px;height:22px;flex-shrink:0}
+/* ── Toggle ─────────────────────────────────── */
+.toggle{position:relative;width:36px;height:20px;flex-shrink:0}
 .toggle input{opacity:0;width:0;height:0}
-.track{position:absolute;inset:0;background:#46566f;border-radius:99px;cursor:pointer;transition:background .2s}
-.track::before{content:'';position:absolute;width:16px;height:16px;left:3px;top:3px;background:#f5f8ff;border-radius:50%;transition:transform .2s;box-shadow:0 1px 2px rgba(0,0,0,.25)}
-.toggle input:checked+.track{background:linear-gradient(120deg,var(--accent),var(--accent-2))}
-.toggle input:checked+.track::before{transform:translateX(18px)}
+.track{
+  position:absolute;inset:0;background:rgba(255,255,255,.12);
+  border-radius:99px;cursor:pointer;transition:background .18s;
+}
+.track::before{
+  content:'';position:absolute;width:14px;height:14px;
+  left:3px;top:3px;background:#fff;border-radius:50%;
+  transition:transform .18s;box-shadow:0 1px 3px rgba(0,0,0,.3);
+}
+.toggle input:checked+.track{background:var(--accent)}
+.toggle input:checked+.track::before{transform:translateX(16px)}
 
-/* Radio */
-.radio-group{display:flex;gap:7px;flex-wrap:wrap}
-.radio-opt{display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;padding:5px 10px;border-radius:10px;border:1px solid var(--border-mid);background:var(--surface-2);transition:all .15s}
-.radio-opt:has(input:checked){border-color:var(--accent);background:var(--accent-bg);color:#ffd8c7}
+/* ── Choice pills ───────────────────────────── */
+.choices{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end}
+.cpill{
+  padding:5px 11px;border:1px solid var(--border-md);border-radius:99px;
+  background:transparent;color:var(--text2);
+  font-size:12px;font-weight:500;cursor:pointer;
+  transition:all .1s;font-family:inherit;white-space:nowrap;
+}
+.cpill:hover{background:var(--s2);color:var(--text)}
+.cpill.on{background:var(--accent-bg);color:var(--accent-hi);border-color:var(--accent-bd);font-weight:600}
+
+/* ── Radio group ────────────────────────────── */
+.radio-group{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.radio-opt{
+  display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;
+  padding:5px 10px;border-radius:7px;border:1px solid var(--border-md);
+  background:var(--s2);transition:all .1s;
+}
+.radio-opt:has(input:checked){border-color:var(--accent);background:var(--accent-bg);color:#ffd0b0}
 .radio-opt input{accent-color:var(--accent)}
 
-/* Badges */
-.badge{font-size:11px;padding:3px 8px;border-radius:99px;font-weight:700;white-space:nowrap}
+/* ── Badges ─────────────────────────────────── */
+.badge{font-size:11px;font-weight:600;padding:3px 8px;border-radius:99px;white-space:nowrap}
 .badge.green{background:var(--green-bg);color:var(--green)}
 .badge.amber{background:var(--amber-bg);color:var(--amber)}
 .badge.red{background:var(--red-bg);color:var(--red)}
 .badge.blue{background:var(--blue-bg);color:var(--blue)}
 
-/* Buttons */
-.btn{font-size:12px;padding:7px 12px;border-radius:10px;border:1px solid var(--border-mid);background:var(--surface-2);color:var(--text);cursor:pointer;transition:background .15s,transform .15s,border-color .15s;white-space:nowrap}
-.btn:hover{background:#21324c;transform:translateY(-1px)}
-.btn.danger{color:var(--red);border-color:rgba(255,142,142,.45)}
+/* ── Buttons ────────────────────────────────── */
+.btn{
+  font-family:inherit;font-size:12px;font-weight:500;padding:6px 12px;
+  border-radius:var(--r);border:1px solid var(--border-md);
+  background:var(--s2);color:var(--text);cursor:pointer;
+  transition:background .1s,border-color .1s;white-space:nowrap;
+}
+.btn:hover{background:var(--s3);border-color:var(--border-hi)}
+.btn.danger{color:var(--red);border-color:var(--red-bd)}
 .btn.danger:hover{background:var(--red-bg)}
-.btn.full{width:100%;padding:10px;margin-top:6px;text-align:center}
-.btn.ghost{background:transparent;border-color:var(--border)}
-.btn.primary{
-  background:linear-gradient(140deg,var(--accent),var(--accent-2));
-  color:#25170f;
-  border-color:rgba(255,255,255,.15);
-  font-weight:800;
+.btn.primary{background:var(--accent);color:#fff;border-color:transparent;font-weight:600}
+.btn.primary:hover{opacity:.85}
+.btn.full{width:100%;padding:9px;margin-top:.5rem;display:block;text-align:center}
+.btn-row{display:flex;gap:8px;flex-wrap:wrap;padding:10px 16px;border-top:1px solid var(--border)}
+
+/* ── Misc ───────────────────────────────────── */
+.kv{font-family:var(--mono);font-size:11.5px;background:var(--s2);padding:3px 8px;border-radius:6px;color:var(--text2);border:1px solid var(--border-md)}
+.thr-row{display:flex;align-items:center;gap:7px}
+.thr-row input{width:72px}
+.thr-row span{font-size:12px;color:var(--text2)}
+.time-range{display:flex;align-items:center;gap:7px}
+.time-range span{font-size:12px;color:var(--text2)}
+.rotate-meta{font-size:11px;color:var(--text2);text-align:right;margin-top:2px}
+
+/* ── Advanced drawer ────────────────────────── */
+.overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:200;
+  opacity:0;pointer-events:none;transition:opacity .22s;
 }
-
-/* Misc */
-.key-display{font-family:var(--mono);font-size:11px;background:var(--surface-2);padding:3px 8px;border-radius:var(--r);color:var(--muted);border:1px solid var(--border)}
-.rotate-block{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
-.rotate-meta{font-size:11px;color:var(--muted);text-align:right}
-.diag-row{display:flex;justify-content:space-between;align-items:center;padding:9px 13px;font-size:12px;border-bottom:1px solid rgba(255,255,255,.055)}
-.diag-row:last-child{border-bottom:none}
-.vrow{display:flex;justify-content:space-between;align-items:center;padding:9px 13px;font-size:12px;color:var(--muted);border-bottom:1px solid rgba(255,255,255,.055)}
-.vrow:last-child{border-bottom:none}
-.vrow .label{color:var(--text)}
-.log-row{display:flex;justify-content:space-between;padding:4px 13px;font-size:11px;color:var(--muted);border-bottom:1px solid rgba(255,255,255,.04)}
-.log-row:last-child{border-bottom:none}
-.thr-row{display:flex;align-items:center;gap:6px}
-.thr-row input{width:68px}
-.thr-row span{font-size:11px;color:var(--muted)}
-.toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:#0c1628;color:white;padding:9px 18px;border-radius:var(--rl);font-size:13px;z-index:999;opacity:0;transition:opacity .3s;pointer-events:none;border:1px solid var(--border)}
-.toast.show{opacity:1}
-.time-range{display:flex;align-items:center;gap:6px}
-.time-range span{font-size:12px;color:var(--muted)}
-.top-actions{display:flex;gap:8px;flex-wrap:wrap}
-.segmented{display:inline-flex;gap:4px;padding:4px;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:12px}
-.seg-btn{padding:6px 10px;font-size:12px;font-weight:700;border:1px solid transparent;border-radius:9px;background:transparent;color:var(--muted);cursor:pointer;transition:all .14s}
-.seg-btn.active{background:var(--surface-2);color:var(--text);border-color:var(--border-mid)}
-.helper-tip{margin:0;padding:8px 13px;border-radius:0;border:none;border-bottom:1px solid rgba(255,255,255,.055);background:rgba(255,200,80,.03);font-size:10.5px;line-height:1.45;color:var(--muted)}
-.helper-tip b{color:var(--text);font-weight:700}
-.helper-tip strong{color:#ffd9bf;font-weight:700}
-.task-nav{display:flex;gap:8px;flex-wrap:wrap}
-.task-btn{padding:7px 11px;border-radius:10px;border:1px solid var(--border);background:rgba(255,255,255,.03);color:var(--muted);font-size:12px;font-weight:700;cursor:pointer;transition:all .14s}
-.task-btn.active{background:var(--surface-2);color:var(--text);border-color:var(--border-mid)}
-.choice-group{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}
-.choice-pill{padding:7px 10px;border:1px solid var(--border-mid);border-radius:999px;background:rgba(255,255,255,.03);color:var(--muted);font-size:12px;font-weight:700;cursor:pointer;transition:all .14s}
-.choice-pill:hover{background:rgba(255,255,255,.07);color:var(--text)}
-.choice-pill.active{background:linear-gradient(140deg,var(--accent),var(--accent-2));color:#2a1a11;border-color:rgba(255,255,255,.2)}
-.advanced-overlay{position:fixed;inset:0;background:rgba(3,6,12,.58);z-index:220;opacity:0;pointer-events:none;transition:opacity .2s}
-.advanced-overlay.show{opacity:1;pointer-events:auto}
-.advanced-drawer{position:fixed;top:0;right:0;width:min(760px,96vw);height:100vh;background:linear-gradient(180deg,#0d1524,#0b111c);border-left:1px solid var(--border);z-index:221;transform:translateX(101%);transition:transform .25s ease;overflow:auto;padding:1rem .9rem 1.4rem;box-shadow:-24px 0 42px rgba(0,0,0,.36)}
-.advanced-drawer.show{transform:translateX(0)}
-.drawer-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem;padding:0 .2rem}
-.drawer-title{font-family:'Space Grotesk','Manrope',sans-serif;font-size:15px;font-weight:700}
-.drawer-sub{font-size:11px;color:var(--muted);margin-top:2px}
-.drawer-chip-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:.75rem;padding:0 .2rem}
-.drawer-actions{display:flex;gap:8px;align-items:center}
-
-/* Section icon colors */
-.icon-wifi{background:rgba(85,160,255,.14)}.icon-wifi svg{stroke:#8bc3ff;fill:none}
-.icon-dex{background:rgba(255,107,180,.14)}.icon-dex svg{fill:#ff8fc6}
-.icon-alert{background:rgba(255,209,102,.14)}.icon-alert svg{stroke:#ffd67f;fill:none}
-.icon-display{background:rgba(182,146,255,.14)}.icon-display svg{stroke:#d8bcff;fill:none}
-.icon-security{background:rgba(255,142,142,.14)}.icon-security svg{stroke:#ffb6b6;fill:none}
-.icon-backup{background:rgba(82,228,164,.14)}.icon-backup svg{stroke:#9ff0cc;fill:none}
-.icon-diag{background:rgba(108,180,255,.14)}.icon-diag svg{stroke:#9ccaff;fill:none}
-.icon-system{background:rgba(255,255,255,.08)}.icon-system svg{stroke:#c2cee0;fill:none}
-.icon-ai{background:rgba(255,122,72,.16)}.icon-ai svg{stroke:#ffc39a;fill:none}
-.icon-pushover{background:rgba(255,234,173,.12)}.icon-pushover svg{stroke:#ffe7a9;fill:none}
-
-@keyframes fadeSlide{
-  from{opacity:.45;transform:translateY(-2px)}
-  to{opacity:1;transform:translateY(0)}
+.overlay.show{opacity:1;pointer-events:auto}
+.drawer{
+  position:fixed;top:0;right:0;width:min(780px,95vw);height:100vh;
+  background:var(--s1);border-left:1px solid var(--border-md);
+  z-index:201;transform:translateX(102%);transition:transform .26s ease;
+  overflow-y:auto;display:flex;flex-direction:column;
 }
-
-@media(max-width:980px){
-  .hero-wrap{grid-template-columns:1fr}
+.drawer.show{transform:translateX(0)}
+.drawer-hdr{
+  position:sticky;top:0;background:var(--s1);border-bottom:1px solid var(--border);
+  padding:.85rem 1.1rem;display:flex;justify-content:space-between;align-items:center;
+  gap:12px;z-index:1;
 }
-@media(max-width:760px){
-  .grid{grid-template-columns:1fr}
-  .flow-grid{grid-template-columns:1fr}
-  .header{padding:0 .75rem}
-  .header-inner{min-height:68px;gap:8px}
-  .status-pill{display:none}
-  .page{padding:1rem .75rem 1.8rem}
-  .save-btn{padding:9px 14px}
-  .wide,input[type=text].wide,input[type=password].wide,input[type=url].wide{width:170px}
-  .quick-grid{grid-template-columns:1fr}
-}
+.drawer-title{font-size:14px;font-weight:700}
+.drawer-sub{font-size:11px;color:var(--text2);margin-top:2px}
+.drawer-actions{display:flex;gap:8px;align-items:center;flex-shrink:0}
+.drawer-body{padding:1rem 1.1rem 2rem;display:flex;flex-direction:column;gap:.7rem}
 
+/* ── Device cards ───────────────────────────── */
+.dev-card{border:1px solid var(--border);border-radius:var(--r);overflow:hidden;margin:.4rem 0}
+.dev-card-hdr{display:flex;align-items:center;gap:10px;padding:10px 14px}
+.dev-panel{display:none;padding:10px 14px 14px;border-top:1px solid var(--border);background:rgba(255,255,255,.015)}
+
+/* ── Toast ──────────────────────────────────── */
+.toast{
+  position:fixed;bottom:1.5rem;left:50%;
+  transform:translateX(-50%) translateY(6px);
+  background:var(--s3);color:var(--text);border:1px solid var(--border-md);
+  padding:9px 18px;border-radius:var(--rl);font-size:13px;
+  z-index:999;opacity:0;pointer-events:none;
+  transition:opacity .22s,transform .22s;white-space:nowrap;
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* ── Mobile nav strip ───────────────────────── */
+.mobnav{
+  display:none;position:sticky;top:var(--tbh);z-index:90;
+  background:rgba(7,10,18,.92);backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--border);
+  overflow-x:auto;white-space:nowrap;scrollbar-width:none;padding:.35rem .75rem;
+}
+.mobnav::-webkit-scrollbar{display:none}
+.mobnav a{
+  display:inline-block;padding:5px 12px;border-radius:99px;
+  font-size:12px;font-weight:500;color:var(--text2);text-decoration:none;
+  transition:all .1s;margin-right:4px;border:1px solid transparent;
+}
+.mobnav a.active{color:var(--text);background:var(--s2);border-color:var(--border-md)}
+.mobnav a:hover{color:var(--text)}
+
+/* ── Responsive ─────────────────────────────── */
+@media(max-width:900px){
+  .sidenav{display:none}
+  .mobnav{display:block}
+  .main{margin-left:0;padding:.85rem .85rem 3.5rem}
+  .main-inner{max-width:100%}
+  .stat-strip{grid-template-columns:repeat(2,1fr)}
+  #configMeta{display:none}
+  .w-wide{width:165px}
+  input.w-wide{width:165px}
+}
+@media(max-width:480px){
+  .save-btn{padding:6px 12px;font-size:12px}
+  .stat-strip{grid-template-columns:repeat(2,1fr)}
+  .brand-name{font-size:13px}
+}
 </style>
 </head>
 <body>
 
-<div class="header">
-  <div class="header-inner">
-    <div class="logo"><svg viewBox="0 0 24 24"><path d="M12 2a7 7 0 017 7c0 5-7 13-7 13S5 14 5 9a7 7 0 017-7zm0 4a3 3 0 100 6 3 3 0 000-6z"/></svg></div>
-    <div><h1>BG MiniView <span id="uiVersionBadge" style="font-size:11px;color:var(--muted);font-weight:500;letter-spacing:.01em;vertical-align:middle"></span></h1><div id="configMeta" class="header-meta">Last settings update: —</div></div>
-    <div id="statusPill" class="status-pill offline"><span class="dot"></span>Loading...</div>
-    <div class="save-bar"><button class="save-btn" onclick="saveConfig()">Save changes</button></div>
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-icon"><svg viewBox="0 0 24 24"><path d="M12 2a7 7 0 017 7c0 5-7 13-7 13S5 14 5 9a7 7 0 017-7zm0 4a3 3 0 100 6 3 3 0 000-6z"/></svg></div>
+    <span class="brand-name">BG MiniView<span id="uiVersionBadge" class="brand-version"></span></span>
   </div>
-</div>
+  <div id="configMeta"></div>
+  <div id="statusPill" class="status-pill offline"><span class="dot"></span>Loading…</div>
+  <button class="save-btn" onclick="saveConfig()">Save changes</button>
+</header>
 
-<div class="page" id="app"><p style="color:var(--muted);padding:2rem;text-align:center">Loading...</p></div>
+<nav class="mobnav" id="mobnav">
+  <a href="#sec-network">Network</a>
+  <a href="#sec-glucose">Glucose</a>
+  <a href="#sec-targets">Targets</a>
+  <a href="#sec-display">Display</a>
+  <a href="#sec-notifs">Notifications</a>
+  <a href="#sec-pump">Pump</a>
+</nav>
+
+<div class="shell">
+  <nav class="sidenav" id="sidenav">
+    <div class="nav-label">Device setup</div>
+    <a class="nav-item" data-sec="sec-network" href="#sec-network">
+      <svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0114.08 0"/><path d="M1.42 9a16 16 0 0121.16 0"/><path d="M8.53 16.11a6 6 0 016.95 0"/><circle cx="12" cy="20" r="1" fill="currentColor"/></svg>
+      Network
+    </a>
+    <a class="nav-item" data-sec="sec-glucose" href="#sec-glucose">
+      <svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"/></svg>
+      Glucose sources
+    </a>
+    <a class="nav-item" data-sec="sec-targets" href="#sec-targets">
+      <svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+      Targets &amp; alerts
+    </a>
+    <a class="nav-item" data-sec="sec-display" href="#sec-display">
+      <svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+      Display &amp; schedule
+    </a>
+    <a class="nav-item" data-sec="sec-notifs" href="#sec-notifs">
+      <svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+      Notifications
+    </a>
+    <a class="nav-item" data-sec="sec-pump" href="#sec-pump">
+      <svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="3" width="14" height="18" rx="2"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="9" y1="12" x2="15" y2="12"/><circle cx="12" cy="17" r="1" fill="currentColor"/></svg>
+      Insulin profile
+    </a>
+    <div class="nav-sep"></div>
+    <button class="nav-adv" onclick="toggleAdvancedDrawer(true)">
+      <svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93l-1.41 1.41M4.93 4.93l1.41 1.41M4.93 19.07l1.41-1.41M19.07 19.07l-1.41-1.41M21 12h-2M3 12H1M12 3V1M12 23v-2"/></svg>
+      Advanced tools
+    </button>
+  </nav>
+
+  <main id="app" class="main">
+    <div class="main-inner">
+      <p style="color:var(--text2);padding:2rem 0">Loading…</p>
+    </div>
+  </main>
+</div>
 
 <div class="toast" id="toast"></div>
 
 <script>
 const WORKER_URL = "https://bgdisplay-worker.zanebaize.workers.dev";
-const UI_VERSION = "1.2.0";
+const UI_VERSION = "2.0.0";
 (function(){ const el=document.getElementById('uiVersionBadge'); if(el) el.textContent='v'+UI_VERSION; })();
-let CONFIG = {}, META = {}, METRICS = null;
-let ADMIN_SESSION = "";
-let LOGS = { meta: null, preview: [], total: 0 };
-let gDirty = false;
-function markDirty() { gDirty = true; }
-window.addEventListener('beforeunload', e => { if (gDirty) { e.preventDefault(); e.returnValue = ''; } });
-let MAINT = null;
-let DEVICES_DATA = null;
-let gAdvancedOpen = false;
+
+let CONFIG={}, META={}, METRICS=null, MAINT=null, DEVICES_DATA=null;
+let ADMIN_SESSION='', gDirty=false, gAdvancedOpen=false;
+function markDirty(){ gDirty=true; }
+window.addEventListener('beforeunload',e=>{ if(gDirty){e.preventDefault();e.returnValue='';} });
 
 // ── API ──────────────────────────────────────────────────────────────────────
 async function apiGet(p){
-  const headers={};
-  if(ADMIN_SESSION) headers['X-Admin-Session']=ADMIN_SESSION;
-  const r=await fetch(WORKER_URL+p,{headers,cache:'no-store'});
-  if(!r.ok) throw new Error(r.status);
-  return r.json();
+  const h={}; if(ADMIN_SESSION) h['X-Admin-Session']=ADMIN_SESSION;
+  const r=await fetch(WORKER_URL+p,{headers:h,cache:'no-store'});
+  if(!r.ok) throw new Error(r.status); return r.json();
 }
 async function apiPost(p,d){
-  const headers={'Content-Type':'application/json'};
-  if(ADMIN_SESSION) headers['X-Admin-Session']=ADMIN_SESSION;
-  const r=await fetch(WORKER_URL+p,{method:'POST',headers,body:JSON.stringify(d),cache:'no-store'});
-  if(!r.ok) throw new Error(r.status);
-  return r.json();
+  const h={'Content-Type':'application/json'}; if(ADMIN_SESSION) h['X-Admin-Session']=ADMIN_SESSION;
+  const r=await fetch(WORKER_URL+p,{method:'POST',headers:h,body:JSON.stringify(d),cache:'no-store'});
+  if(!r.ok) throw new Error(r.status); return r.json();
 }
 async function apiDelete(p){
-  const headers={};
-  if(ADMIN_SESSION) headers['X-Admin-Session']=ADMIN_SESSION;
-  const r=await fetch(WORKER_URL+p,{method:'DELETE',headers,cache:'no-store'});
-  if(!r.ok) throw new Error(r.status);
-  return r.json();
+  const h={}; if(ADMIN_SESSION) h['X-Admin-Session']=ADMIN_SESSION;
+  const r=await fetch(WORKER_URL+p,{method:'DELETE',headers:h,cache:'no-store'});
+  if(!r.ok) throw new Error(r.status); return r.json();
 }
-
 async function ensureSession(){
   if(ADMIN_SESSION) return;
   const r=await fetch(WORKER_URL+'/api/admin/session');
   if(!r.ok) throw new Error('session');
-  const data=await r.json();
-  ADMIN_SESSION=data.token||'';
+  const d=await r.json(); ADMIN_SESSION=d.token||'';
 }
 
-// ── Toast ────────────────────────────────────────────────────────────────────
-function toast(msg,ms=2500){ const el=document.getElementById('toast'); el.textContent=msg; el.classList.add('show'); setTimeout(()=>el.classList.remove('show'),ms); }
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function toast(msg,ms=2800){
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.classList.add('show');
+  setTimeout(()=>el.classList.remove('show'),ms);
+}
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-function fmtTs(ts){ if(!ts) return '—'; const d=new Date(ts),now=new Date(),diff=Date.now()-ts; if(diff<60000) return 'Just now'; if(diff<3600000) return Math.floor(diff/60000)+' min ago'; if(d.toDateString()===now.toDateString()) return 'Today '+d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit',hour12:true}); return d.toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',hour12:true}); }
-function fmtCountdown(ms){ if(ms<=0) return 'Overdue'; const d=Math.floor(ms/86400000),h=Math.floor((ms%86400000)/3600000); return d>0?`${d}d ${h}h remaining`:`${h}h remaining`; }
-function rotateProgress(lastRotated){ const total=7*86400000,elapsed=Date.now()-(lastRotated||0),pct=Math.min(elapsed/total,1),r=15,circ=2*Math.PI*r,used=circ*pct,remain=circ-used,label=Math.max(0,7-Math.floor(elapsed/86400000))+'d',color=pct>0.85?'#E24B4A':pct>0.6?'#f59e0b':'#16a34a'; return{used,remain,label,color}; }
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function fmtTs(ts){
+  if(!ts) return '—';
+  const d=new Date(ts),now=new Date(),diff=Date.now()-ts;
+  if(diff<60000) return 'Just now';
+  if(diff<3600000) return Math.floor(diff/60000)+'m ago';
+  if(d.toDateString()===now.toDateString()) return 'Today '+d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit',hour12:true});
+  return d.toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',hour12:true});
+}
+function fmtCountdown(ms){
+  if(ms<=0) return 'Overdue';
+  const d=Math.floor(ms/86400000),h=Math.floor((ms%86400000)/3600000);
+  return d>0?`${d}d ${h}h`:`${h}h`;
+}
+function rotateProgress(lastRotated){
+  const total=7*86400000,elapsed=Date.now()-(lastRotated||0),pct=Math.min(elapsed/total,1);
+  const r=15,circ=2*Math.PI*r,used=circ*pct,remain=circ-used;
+  const label=Math.max(0,7-Math.floor(elapsed/86400000))+'d';
+  const color=pct>0.85?'#f56565':pct>0.6?'#f5c518':'#0ecf84';
+  return{used,remain,label,color};
+}
 function fmtUptime(s){ if(!s) return '—'; return `${Math.floor(s/86400)}d ${Math.floor((s%86400)/3600)}h`; }
-function to12h(hhmm){ const m=String(hhmm||'').trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/); if(!m) return hhmm||''; let h=parseInt(m[1],10); const min=m[2]; const ap=h>=12?'PM':'AM'; h=h%12; if(h===0) h=12; return `${h}:${min} ${ap}`; }
-function to24h(v,fallback='23:00'){ const s=String(v||'').trim(); const m12=s.match(/^(1[0-2]|0?[1-9]):([0-5]\d)\s*([AaPp][Mm])$/); if(m12){ let h=parseInt(m12[1],10)%12; if(m12[3].toUpperCase()==='PM') h+=12; return `${String(h).padStart(2,'0')}:${m12[2]}`; } const m24=s.match(/^([01]?\d|2[0-3]):([0-5]\d)$/); if(m24) return `${String(parseInt(m24[1],10)).padStart(2,'0')}:${m24[2]}`; return fallback; }
-
-const PUMP_CATALOG = [
-  {
-    brand: 'No pump',
-    models: [
-      { model: 'No pump', type: 'none', modes: ['No automation'] },
-    ],
-  },
-  {
-    brand: 'Tandem Diabetes Care',
-    models: [
-      { model: 't:slim X2', type: 'pump', modes: ['Control-IQ', 'Basal-IQ', 'Manual Mode'] },
-      { model: 't:slim Mobi', type: 'pump', modes: ['Control-IQ', 'Manual Mode'] },
-    ],
-  },
-  {
-    brand: 'Insulet (Omnipod)',
-    models: [
-      { model: 'Omnipod 5', type: 'patch-pump', modes: ['Automated Mode', 'Manual Mode'] },
-      { model: 'Omnipod DASH', type: 'patch-pump', modes: ['Manual Mode'] },
-      { model: 'Omnipod Eros', type: 'patch-pump', modes: ['Manual Mode'] },
-    ],
-  },
-  {
-    brand: 'Medtronic',
-    models: [
-      { model: 'MiniMed 780G', type: 'pump', modes: ['SmartGuard', 'Manual Mode'] },
-      { model: 'MiniMed 770G', type: 'pump', modes: ['Auto Mode', 'Manual Mode'] },
-      { model: 'MiniMed 670G', type: 'pump', modes: ['Auto Mode', 'Manual Mode'] },
-    ],
-  },
-  {
-    brand: 'Beta Bionics',
-    models: [
-      { model: 'iLet Bionic Pancreas', type: 'pump', modes: ['Bionic Mode'] },
-    ],
-  },
-  {
-    brand: 'Ypsomed',
-    models: [
-      { model: 'mylife YpsoPump', type: 'pump', modes: ['CamAPS FX Auto Mode', 'Manual Mode'] },
-    ],
-  },
-  {
-    brand: 'Roche',
-    models: [
-      { model: 'Accu-Chek Solo', type: 'patch-pump', modes: ['Manual Mode'] },
-    ],
-  },
-  {
-    brand: 'Other',
-    models: [
-      { model: 'Other', type: 'pump', modes: ['Manual Mode', 'Hybrid Closed Loop', 'Closed Loop'] },
-    ],
-  },
-];
-
-function findPumpBrand(brand){
-  return PUMP_CATALOG.find(b=>b.brand===brand) || PUMP_CATALOG[0];
+function to12h(hhmm){
+  const m=String(hhmm||'').trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+  if(!m) return hhmm||''; let h=parseInt(m[1],10); const min=m[2];
+  const ap=h>=12?'PM':'AM'; h=h%12; if(h===0) h=12; return `${h}:${min} ${ap}`;
 }
+function to24h(v,fallback='23:00'){
+  const s=String(v||'').trim();
+  const m12=s.match(/^(1[0-2]|0?[1-9]):([0-5]\d)\s*([AaPp][Mm])$/);
+  if(m12){ let h=parseInt(m12[1],10)%12; if(m12[3].toUpperCase()==='PM') h+=12; return `${String(h).padStart(2,'0')}:${m12[2]}`; }
+  const m24=s.match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+  if(m24) return `${String(parseInt(m24[1],10)).padStart(2,'0')}:${m24[2]}`;
+  return fallback;
+}
+
+// ── Pump catalog ──────────────────────────────────────────────────────────────
+const PUMP_CATALOG=[
+  {brand:'No pump',models:[{model:'No pump',type:'none',modes:['No automation']}]},
+  {brand:'Tandem Diabetes Care',models:[
+    {model:'t:slim X2',type:'pump',modes:['Control-IQ','Basal-IQ','Manual Mode']},
+    {model:'t:slim Mobi',type:'pump',modes:['Control-IQ','Manual Mode']},
+  ]},
+  {brand:'Insulet (Omnipod)',models:[
+    {model:'Omnipod 5',type:'patch-pump',modes:['Automated Mode','Manual Mode']},
+    {model:'Omnipod DASH',type:'patch-pump',modes:['Manual Mode']},
+    {model:'Omnipod Eros',type:'patch-pump',modes:['Manual Mode']},
+  ]},
+  {brand:'Medtronic',models:[
+    {model:'MiniMed 780G',type:'pump',modes:['SmartGuard','Manual Mode']},
+    {model:'MiniMed 770G',type:'pump',modes:['Auto Mode','Manual Mode']},
+    {model:'MiniMed 670G',type:'pump',modes:['Auto Mode','Manual Mode']},
+  ]},
+  {brand:'Beta Bionics',models:[{model:'iLet Bionic Pancreas',type:'pump',modes:['Bionic Mode']}]},
+  {brand:'Ypsomed',models:[{model:'mylife YpsoPump',type:'pump',modes:['CamAPS FX Auto Mode','Manual Mode']}]},
+  {brand:'Roche',models:[{model:'Accu-Chek Solo',type:'patch-pump',modes:['Manual Mode']}]},
+  {brand:'Other',models:[{model:'Other',type:'pump',modes:['Manual Mode','Hybrid Closed Loop','Closed Loop']}]},
+];
+function findPumpBrand(brand){ return PUMP_CATALOG.find(b=>b.brand===brand)||PUMP_CATALOG[0]; }
 
 function syncPumpProfileUi(){
-  const brandEl = document.getElementById('insulin_pump_brand');
-  const modelEl = document.getElementById('insulin_pump_model');
-  const modeEl = document.getElementById('insulin_pump_loop_mode');
-  const typeEl = document.getElementById('insulin_pump_type');
-  if(!brandEl || !modelEl || !modeEl || !typeEl) return;
-
-  const prevModel = modelEl.value;
-  const prevMode = modeEl.value;
-  const brand = findPumpBrand(brandEl.value);
-
-  modelEl.innerHTML = brand.models.map(m=>`<option value="${m.model}">${m.model}</option>`).join('');
-  const model = brand.models.find(m=>m.model===prevModel) || brand.models[0];
-  modelEl.value = model.model;
-
-  modeEl.innerHTML = model.modes.map(m=>`<option value="${m}">${m}</option>`).join('');
-  modeEl.value = model.modes.includes(prevMode) ? prevMode : model.modes[0];
-
-  typeEl.value = model.type;
+  const brandEl=document.getElementById('insulin_pump_brand');
+  const modelEl=document.getElementById('insulin_pump_model');
+  const modeEl=document.getElementById('insulin_pump_loop_mode');
+  const typeEl=document.getElementById('insulin_pump_type');
+  if(!brandEl||!modelEl||!modeEl||!typeEl) return;
+  const prevModel=modelEl.value,prevMode=modeEl.value;
+  const brand=findPumpBrand(brandEl.value);
+  modelEl.innerHTML=brand.models.map(m=>`<option value="${m.model}">${m.model}</option>`).join('');
+  const model=brand.models.find(m=>m.model===prevModel)||brand.models[0];
+  modelEl.value=model.model;
+  modeEl.innerHTML=model.modes.map(m=>`<option value="${m}">${m}</option>`).join('');
+  modeEl.value=model.modes.includes(prevMode)?prevMode:model.modes[0];
+  typeEl.value=model.type;
 }
 
-// ── Collect Config ────────────────────────────────────────────────────────────
+function syncWifiOpenUi(){
+  const openEl=document.getElementById('wifi_open');
+  const passEl=document.getElementById('wifi_pass');
+  if(!openEl||!passEl) return;
+  if(openEl.checked){ passEl.value=''; passEl.disabled=true; passEl.placeholder='No password (open network)'; }
+  else { passEl.disabled=false; passEl.placeholder='Enter new password'; }
+}
+
+// ── Form helpers ──────────────────────────────────────────────────────────────
 function get(id){
-  const el=document.getElementById(id);
-  if(!el) return undefined;
+  const el=document.getElementById(id); if(!el) return undefined;
   if(el.type==='checkbox') return el.checked;
   if(el.type==='number') return parseFloat(el.value);
-  if(el.type==='hidden' && (el.value==='true' || el.value==='false')) return el.value==='true';
+  if(el.type==='hidden'&&(el.value==='true'||el.value==='false')) return el.value==='true';
   return el.value;
 }
 function radio(name){ const el=document.querySelector(`input[name="${name}"]:checked`); return el?el.value:undefined; }
 
 function setChoice(id,val,btn){
-  const el=document.getElementById(id);
-  if(!el) return;
-  el.value=String(val);
-  markDirty();
-  const group = btn && btn.closest ? btn.closest('.choice-group') : null;
-  if(group){
-    group.querySelectorAll('.choice-pill').forEach(x=>x.classList.remove('active'));
-    btn.classList.add('active');
-  }
+  const el=document.getElementById(id); if(!el) return;
+  el.value=String(val); markDirty();
+  const group=btn?.closest?.('.choices');
+  if(group){ group.querySelectorAll('.cpill').forEach(x=>x.classList.remove('on')); btn.classList.add('on'); }
 }
-
 function segChoice(id,options,val){
-  const current = String(val ?? '');
-  return `<input type="hidden" id="${id}" value="${current}"><div class="choice-group">${options.map(([v,l])=>{
+  const current=String(val??'');
+  return `<input type="hidden" id="${id}" value="${current}"><div class="choices">${options.map(([v,l])=>{
     const sv=String(v);
-    return `<button type="button" class="choice-pill${sv===current?' active':''}" onclick="setChoice('${id}','${sv}',this)">${l}</button>`;
+    return `<button type="button" class="cpill${sv===current?' on':''}" onclick="setChoice('${id}','${sv}',this)">${l}</button>`;
   }).join('')}</div>`;
 }
 
+// ── Threshold presets ─────────────────────────────────────────────────────────
 function applyThresholdPreset(preset){
-  const presets={
-    standard:{urgent_low:55,low:70,high:180,urgent_high:250},
-    tighter:{urgent_low:60,low:75,high:160,urgent_high:220},
-    wider:{urgent_low:55,low:70,high:200,urgent_high:260}
-  };
-  const p=presets[preset];
-  if(!p) return;
-  ['urgent_low','low','high','urgent_high'].forEach(k=>{
-    const el=document.getElementById(k);
-    if(el) el.value=p[k];
-  });
-  markDirty();
-  toast('Threshold preset applied');
+  const presets={standard:{urgent_low:55,low:70,high:180,urgent_high:250},tighter:{urgent_low:60,low:75,high:160,urgent_high:220},wider:{urgent_low:55,low:70,high:200,urgent_high:260}};
+  const p=presets[preset]; if(!p) return;
+  ['urgent_low','low','high','urgent_high'].forEach(k=>{ const el=document.getElementById(k); if(el) el.value=p[k]; });
+  markDirty(); toast('Preset applied');
 }
 
+// ── Collect config ────────────────────────────────────────────────────────────
 function collectConfig(){
   const c={};
   const fields=['wifi_ssid','wifi_pass','nightscout_url','nightscout_secret','dexcom_user','dexcom_pass','dexcom_region',
-    'poll_interval_min','stale_data_warn_min','config_ping_min',
-    'bg_units','urgent_low','low','high','urgent_high',
+    'poll_interval_min','stale_data_warn_min','config_ping_min','bg_units','urgent_low','low','high','urgent_high',
     'insulin_pump_type','insulin_pump_brand','insulin_pump_model','insulin_pump_loop_mode','insulin_pump_notes',
     'show_last_reading_time','show_trend_arrow','brightness',
     'dnd_enabled','dnd_from','dnd_to','clock_24hr','timezone',
     'rate_limit_per_min','lockout_enabled','lockout_attempts','lockout_duration_min',
     'session_timeout_min','ip_allowlist_enabled','auto_backup',
     'alert_offline_enabled','alert_offline_min','alert_stale_min','alert_battery_low_pct','alert_cooldown_min',
-    'pushover_enabled','pushover_alert_cooldown_min',
-    'digest_pushover_enabled','digest_pushover_hour'];
+    'pushover_enabled','pushover_alert_cooldown_min','digest_pushover_enabled','digest_pushover_hour'];
   fields.forEach(f=>{ const v=get(f); if(v!==undefined&&v!=='') c[f]=v; });
   const bgAlert=radio('bg_alert_style'); if(bgAlert) c.bg_alert_style=bgAlert;
-
   const days=['sun','mon','tue','wed','thu','fri','sat'];
   const dndSchedule={};
   days.forEach(day=>{
-    const from=to24h(get(`dnd_${day}_from`)||'11:00 PM','23:00');
-    const to=to24h(get(`dnd_${day}_to`)||'6:00 AM','06:00');
-    dndSchedule[day]={from,to};
+    dndSchedule[day]={from:to24h(get(`dnd_${day}_from`)||'11:00 PM','23:00'),to:to24h(get(`dnd_${day}_to`)||'6:00 AM','06:00')};
   });
-  c.dnd_use_schedule=true;
-  c.dnd_schedule=dndSchedule;
-  c.dnd_from=dndSchedule.sun.from;
-  c.dnd_to=dndSchedule.sun.to;
-
-  const wifiOpen = !!get('wifi_open');
-  const wifiPass = get('wifi_pass');
-  if (wifiOpen) {
-    c.wifi_pass = '';
-  } else if (wifiPass === '') {
-    delete c.wifi_pass;
-  }
-
+  c.dnd_use_schedule=true; c.dnd_schedule=dndSchedule;
+  c.dnd_from=dndSchedule.sun.from; c.dnd_to=dndSchedule.sun.to;
+  const wifiOpen=!!get('wifi_open'),wifiPass=get('wifi_pass');
+  if(wifiOpen) c.wifi_pass=''; else if(wifiPass==='') delete c.wifi_pass;
   if(get('dexcom_pass')==='') delete c.dexcom_pass;
   const po_user=get('pushover_user_key'); if(po_user) c.pushover_user_key=po_user;
   const po_token=get('pushover_api_token'); if(po_token) c.pushover_api_token=po_token;
   return c;
 }
 
-// ── Actions ──────────────────────────────────────────────────────────────────
-function validateConfig(c) {
-  const errors = [];
-  const n = k => Number(c[k]);
-  if (c.urgent_low && c.low && n('urgent_low') >= n('low'))
-    errors.push(`Urgent low (${c.urgent_low}) must be less than Low (${c.low}).`);
-  if (c.low && c.high && n('low') >= n('high'))
-    errors.push(`Low threshold (${c.low}) must be less than High (${c.high}).`);
-  if (c.high && c.urgent_high && n('high') >= n('urgent_high'))
-    errors.push(`High threshold (${c.high}) must be less than Urgent high (${c.urgent_high}).`);
-  if (c.nightscout_url && !/^https?:\/\/.+/.test(c.nightscout_url))
-    errors.push('Nightscout URL must start with http:// or https://');
-  if (c.poll_interval_min !== undefined && (n('poll_interval_min') < 1 || n('poll_interval_min') > 240))
-    errors.push('Reading refresh interval must be between 1 and 240 minutes.');
+// ── Validate ──────────────────────────────────────────────────────────────────
+function validateConfig(c){
+  const errors=[],n=k=>Number(c[k]);
+  if(c.urgent_low&&c.low&&n('urgent_low')>=n('low')) errors.push(`Critical low (${c.urgent_low}) must be less than Low (${c.low}).`);
+  if(c.low&&c.high&&n('low')>=n('high')) errors.push(`Low (${c.low}) must be less than High (${c.high}).`);
+  if(c.high&&c.urgent_high&&n('high')>=n('urgent_high')) errors.push(`High (${c.high}) must be less than Critical high (${c.urgent_high}).`);
+  if(c.nightscout_url&&!/^https?:\/\/.+/.test(c.nightscout_url)) errors.push('Nightscout URL must start with https://');
+  if(c.poll_interval_min!==undefined&&(n('poll_interval_min')<1||n('poll_interval_min')>240)) errors.push('Refresh interval must be 1–240 minutes.');
   return errors;
 }
 
+// ── Save ──────────────────────────────────────────────────────────────────────
 async function saveConfig(){
   const buttons=[...document.querySelectorAll('.save-btn,[data-save-config="1"]')];
-  buttons.forEach(btn=>{ btn.dataset.prevText = btn.textContent; btn.textContent='Saving...'; btn.disabled=true; });
+  buttons.forEach(b=>{ b._t=b.textContent; b.textContent='Saving…'; b.disabled=true; });
   try{
     const updates=collectConfig();
-    const validationErrors = validateConfig(updates);
-    if (validationErrors.length) {
-      toast('❌ ' + validationErrors[0]);
-      return;
-    }
-    const prevSsid = CONFIG.wifi_ssid || '';
-    const wifiOpen = !!document.getElementById('wifi_open')?.checked;
-    const wifiPassTyped = (document.getElementById('wifi_pass')?.value || '') !== '';
-    const wifiSsidChanged = typeof updates.wifi_ssid === 'string' && updates.wifi_ssid !== prevSsid;
-    const wifiPassChanged = updates.wifi_pass === '' || wifiPassTyped;
-
+    const errs=validateConfig(updates);
+    if(errs.length){ toast('✕ '+errs[0]); return; }
+    const prevSsid=CONFIG.wifi_ssid||'';
+    const wifiOpen=!!document.getElementById('wifi_open')?.checked;
+    const wifiPassTyped=(document.getElementById('wifi_pass')?.value||'')!=='';
+    const wifiSsidChanged=typeof updates.wifi_ssid==='string'&&updates.wifi_ssid!==prevSsid;
+    const wifiPassChanged=updates.wifi_pass===''||wifiPassTyped;
     await apiPost('/api/admin/config',updates);
-    gDirty = false;
-    CONFIG={...CONFIG,...updates};
-    if (wifiSsidChanged || wifiPassChanged || wifiOpen) {
-      toast('✓ Saved. Wi-Fi was updated — device will reboot to reconnect.', 5000);
-    } else {
-      toast('✓ Saved. Device will sync automatically within a few seconds.', 4000);
-    }
-    await loadConfig();
-    await loadMetrics();
-    render();
-  }catch(e){
-    toast('❌ Error saving — check Worker');
-  } finally {
-    buttons.forEach(btn=>{ btn.textContent = btn.dataset.prevText || 'Save changes'; btn.disabled=false; delete btn.dataset.prevText; });
-  }
+    gDirty=false; CONFIG={...CONFIG,...updates};
+    toast(wifiSsidChanged||wifiPassChanged||wifiOpen?'✓ Saved — device will reboot to reconnect':'✓ Saved — device will sync automatically',4000);
+    await loadConfig(); await loadMetrics(); render();
+  }catch(e){ toast('✕ Could not save — check Worker'); }
+  finally{ buttons.forEach(b=>{ b.textContent=b._t||'Save changes'; b.disabled=false; }); }
 }
 
-async function clearLog(){
-  try{ await apiPost('/api/admin/clear-log',{}); META.changelog=[]; render(); toast('✓ Log cleared'); }
-  catch(e){ toast('Error'); }
-}
-
+// ── Actions ───────────────────────────────────────────────────────────────────
+async function clearLog(){ try{ await apiPost('/api/admin/clear-log',{}); META.changelog=[]; render(); toast('✓ History cleared'); }catch(e){ toast('Error'); } }
 function exportConfig(){ window.open(WORKER_URL+'/api/admin/export','_blank'); }
-
 function importConfig(){
   const input=document.createElement('input'); input.type='file'; input.accept='.json';
   input.onchange=async e=>{
     try{ const text=await e.target.files[0].text(); const data=JSON.parse(text); await apiPost('/api/admin/import',data); toast('✓ Config imported'); await loadConfig(); render(); }
-    catch(err){ toast('Import failed'); }
+    catch(e){ toast('Import failed'); }
   }; input.click();
 }
-
 async function runDiagnostics(){
-  document.getElementById('diag-dex').innerHTML='<span class="badge blue">Testing...</span>';
-  document.getElementById('diag-worker').innerHTML='<span class="badge blue">Testing...</span>';
+  document.getElementById('diag-dex').innerHTML=badge('Testing…','blue');
+  document.getElementById('diag-worker').innerHTML=badge('Testing…','blue');
   const t0=Date.now();
-  try{ await apiGet('/api/admin/config'); document.getElementById('diag-latency').textContent=`${Date.now()-t0}ms`; document.getElementById('diag-worker').innerHTML='<span class="badge green">OK</span>'; }
-  catch(e){ document.getElementById('diag-worker').innerHTML='<span class="badge red">Error</span>'; }
-  document.getElementById('diag-dex').innerHTML=CONFIG.dexcom_user?'<span class="badge green">Configured</span>':'<span class="badge amber">Not configured</span>';
+  try{ await apiGet('/api/admin/config'); document.getElementById('diag-latency').textContent=`${Date.now()-t0}ms`; document.getElementById('diag-worker').innerHTML=badge('OK','green'); }
+  catch(e){document.getElementById('diag-worker').innerHTML=badge('Error','red'); }
+  document.getElementById('diag-dex').innerHTML=CONFIG.dexcom_user?badge('Configured','green'):badge('Not configured','amber');
 }
-
 async function sendCommand(type){
   try{
     await apiPost('/api/admin/command',{type});
-    const msg = type==='reboot'
-      ? '✓ Reboot command queued'
-      : (type==='upload-logs' ? '✓ Pull SD logs command queued' : (type==='factory-reset' ? '✓ Factory reset command queued' : '✓ Sync-now command queued'));
-    toast(msg);
-    await loadConfig();
-    await loadMetrics();
-    render();
-  }catch(e){
-    toast('❌ Failed to queue command');
-  }
+    const msgs={reboot:'✓ Reboot queued','upload-logs':'✓ Log pull queued','factory-reset':'✓ Factory reset queued','sync-now':'✓ Sync queued'};
+    toast(msgs[type]||'✓ Command queued'); await loadConfig(); await loadMetrics(); render();
+  }catch(e){toast('✕ Command failed'); }
 }
-
 async function setRecoveryKey(){
-  const el=document.getElementById('recovery_device_key');
-  const key=(el?.value||'').trim();
+  const el=document.getElementById('recovery_device_key'),key=(el?.value||'').trim();
   if(!key){ toast('Enter a recovery key first'); return; }
-  if(!key.startsWith('bg_ro_')){ toast('Recovery key must start with bg_ro_'); return; }
-  try{
-    await apiPost('/api/admin/recovery-key',{recovery_device_key:key});
-    if(el) el.value='';
-    await loadConfig();
-    render();
-    toast('✓ Recovery key saved');
-  }catch(e){
-    toast('❌ Failed to save recovery key');
-  }
+  if(!key.startsWith('bg_ro_')){ toast('Key must start with bg_ro_'); return; }
+  try{ await apiPost('/api/admin/recovery-key',{recovery_device_key:key}); if(el) el.value=''; await loadConfig(); render(); toast('✓ Recovery key saved'); }
+  catch(e){toast('✕ Failed'); }
 }
-
 async function clearRecoveryKey(){
-  try{
-    await apiDelete('/api/admin/recovery-key');
-    await loadConfig();
-    render();
-    toast('✓ Recovery key cleared');
-  }catch(e){
-    toast('❌ Failed to clear recovery key');
-  }
+  try{ await apiDelete('/api/admin/recovery-key'); await loadConfig(); render(); toast('✓ Recovery key cleared'); }
+  catch(e){toast('✕ Failed'); }
 }
-
 async function downloadLatestLogs(){
   await ensureSession();
-  const q = new URLSearchParams({ download: '1', session: ADMIN_SESSION || '' });
-  window.open(WORKER_URL + '/api/admin/logs/latest?' + q.toString(), '_blank');
+  const q=new URLSearchParams({download:'1',session:ADMIN_SESSION||''});
+  window.open(WORKER_URL+'/api/admin/logs/latest?'+q.toString(),'_blank');
 }
-
-async function loadLogs(){
-  const q = encodeURIComponent(document.getElementById('log_q')?.value || '');
-  const lvl = encodeURIComponent(document.getElementById('log_lvl')?.value || '');
-  try{
-    LOGS = await apiGet(`/api/admin/logs/latest?limit=120&q=${q}&lvl=${lvl}`);
-    render();
-  }catch(e){
-    toast('Log query failed');
-  }
-}
-
-async function loadMaintenance(){
-  try{ MAINT = await apiGet('/api/admin/maintenance'); }
-  catch(e){ MAINT = null; }
-}
-
-async function fetchDevices(){
-  try{ DEVICES_DATA = await apiGet('/api/admin/devices'); }
-  catch(e){ DEVICES_DATA = null; }
-}
-
+async function loadMaintenance(){ try{ MAINT=await apiGet('/api/admin/maintenance'); }catch(e){MAINT=null; } }
+async function fetchDevices(){ try{ DEVICES_DATA=await apiGet('/api/admin/devices'); }catch(e){DEVICES_DATA=null; } }
 async function revokeDevice(chipId){
-  if(!confirm(`Revoke device ${chipId.slice(-8)}? The device will lose access until re-enrolled.`)) return;
-  try{
-    await apiDelete(`/api/admin/devices/${chipId}`);
-    await fetchDevices();
-    render();
-    toast('✓ Device revoked');
-  }catch(e){ toast('❌ Revoke failed'); }
+  if(!confirm(`Revoke device …${chipId.slice(-8)}? It will lose access until re-enrolled.`)) return;
+  try{ await apiDelete(`/api/admin/devices/${chipId}`); await fetchDevices(); render(); toast('✓ Device revoked'); }catch(e){toast('✕ Revoke failed'); }
 }
-
 async function saveDeviceConfig(chipId){
-  const tzEl=document.getElementById(`dtz-${chipId}`);
-  const pollEl=document.getElementById(`dpoll-${chipId}`);
-  const staleEl=document.getElementById(`dstale-${chipId}`);
   const patch={};
-  if(tzEl&&tzEl.value) patch.timezone=tzEl.value;
-  if(pollEl&&pollEl.value) patch.poll_interval_min=Number(pollEl.value);
-  if(staleEl&&staleEl.value) patch.stale_data_warn_min=Number(staleEl.value);
-  try{
-    await apiPost(`/api/admin/device-config/${chipId}`,patch);
-    await fetchDevices();
-    render();
-    toast('✓ Device config saved');
-  }catch(e){ toast('❌ Save failed'); }
+  const tzEl=document.getElementById(`dtz-${chipId}`),pollEl=document.getElementById(`dpoll-${chipId}`),staleEl=document.getElementById(`dstale-${chipId}`);
+  if(tzEl?.value) patch.timezone=tzEl.value;
+  if(pollEl?.value) patch.poll_interval_min=Number(pollEl.value);
+  if(staleEl?.value) patch.stale_data_warn_min=Number(staleEl.value);
+  try{ await apiPost(`/api/admin/device-config/${chipId}`,patch); await fetchDevices(); render(); toast('✓ Overrides saved'); }catch(e){toast('✕ Save failed'); }
 }
-
 async function clearDeviceConfig(chipId){
-  try{
-    await apiDelete(`/api/admin/device-config/${chipId}`);
-    await fetchDevices();
-    render();
-    toast('✓ Device overrides cleared');
-  }catch(e){ toast('❌ Clear failed'); }
+  try{ await apiDelete(`/api/admin/device-config/${chipId}`); await fetchDevices(); render(); toast('✓ Overrides cleared'); }catch(e){toast('✕ Failed'); }
 }
-
 function toggleDevicePanel(chipId){
-  const el=document.getElementById(`dpanel-${chipId}`);
-  if(el) el.style.display=el.style.display==='none'?'block':'none';
+  const el=document.getElementById(`dpanel-${chipId}`); if(el) el.style.display=el.style.display==='none'?'block':'none';
 }
-
 async function generateDigestNow(){
   const btn=document.getElementById('digest-gen-btn');
-  if(btn){ btn.textContent='Generating...'; btn.disabled=true; }
-  try{
-    await apiPost('/api/admin/digest/generate',{});
-    await loadConfig();
-    render();
-    toast('\u2713 Digest generated');
-  }catch(e){
-    toast('\u274c Digest generation failed');
-  }finally{
-    if(btn){ btn.textContent='Generate now'; btn.disabled=false; }
-  }
+  if(btn){ btn.textContent='Generating…'; btn.disabled=true; }
+  try{ await apiPost('/api/admin/digest/generate',{}); await loadConfig(); render(); toast('✓ Summary generated'); }
+  catch(e){toast('✕ Generation failed'); }
+  finally{ if(btn){ btn.textContent='Generate now'; btn.disabled=false; } }
 }
-
 async function detectTimezoneNow(){
   try{
     const data=await apiGet('/api/detect-timezone');
-    if(data.detected){
-      const tzInput=document.getElementById('timezone');
-      if(tzInput){
-        tzInput.value=data.detected;
-        markDirty();
-        toast(`\u2713 Timezone detected: ${data.detected}`);
-      }
-    }else{
-      toast('\u274c Could not detect timezone');
-    }
-  }catch(e){
-    toast('\u274c Timezone detection failed');
-  }
+    if(data.detected){ const tzInput=document.getElementById('timezone'); if(tzInput){ tzInput.value=data.detected; markDirty(); toast(`✓ Detected: ${data.detected}`); } }
+    else toast('✕ Could not detect timezone');
+  }catch(e){toast('✕ Detection failed'); }
 }
-
 function toggleAdvancedDrawer(forceOpen){
-  gAdvancedOpen = typeof forceOpen === 'boolean' ? forceOpen : !gAdvancedOpen;
-  document.body.style.overflow = gAdvancedOpen ? 'hidden' : '';
+  gAdvancedOpen=typeof forceOpen==='boolean'?forceOpen:!gAdvancedOpen;
+  document.body.style.overflow=gAdvancedOpen?'hidden':'';
   render();
 }
+window.addEventListener('keydown',e=>{ if(e.key==='Escape'&&gAdvancedOpen) toggleAdvancedDrawer(false); });
 
-window.addEventListener('keydown', e=>{
-  if(e.key==='Escape' && gAdvancedOpen) toggleAdvancedDrawer(false);
-});
-
-// ── Collapsible sections ──────────────────────────────────────────────────────
-function toggleSection(id){
-  const body=document.getElementById('body-'+id);
-  const head=document.getElementById('head-'+id);
-  const chev=document.getElementById('chev-'+id);
-  const open=body.classList.toggle('open');
-  head.classList.toggle('open',open);
-  chev.classList.toggle('open',open);
-  localStorage.setItem('section-'+id, open?'1':'0');
+// ── Builder helpers ───────────────────────────────────────────────────────────
+function row(name,desc,ctrl){
+  return `<div class="row"><div class="row-lbl"><div class="row-name">${name}</div>${desc?`<div class="row-desc">${desc}</div>`:''}</div><div class="row-ctrl">${ctrl}</div></div>`;
 }
-
-function sectionOpen(id){ return localStorage.getItem('section-'+id)==='1'; }
-
-function expandAll(){
-  const sectionIds=['digest','wifi','ns','pump','alerts','display','pushover','alerts_cloud','system','control','diag','insights','security','backup','maint','logs','devices'];
-  sectionIds.forEach(id=>{
-    const body=document.getElementById('body-'+id);
-    const head=document.getElementById('head-'+id);
-    const chev=document.getElementById('chev-'+id);
-    if(body){
-      body.classList.add('open');
-      if(head) head.classList.add('open');
-      if(chev) chev.classList.add('open');
-      localStorage.setItem('section-'+id,'1');
-    }
-  });
+function subrow(name,ctrl){
+  return `<div class="row subrow"><div class="row-lbl"><div class="row-name">${name}</div></div><div class="row-ctrl">${ctrl}</div></div>`;
 }
-
-function collapseAll(){
-  const sectionIds=['digest','wifi','ns','pump','alerts','display','pushover','alerts_cloud','system','control','diag','insights','security','backup','maint','logs','devices'];
-  sectionIds.forEach(id=>{
-    const body=document.getElementById('body-'+id);
-    const head=document.getElementById('head-'+id);
-    const chev=document.getElementById('chev-'+id);
-    if(body){
-      body.classList.remove('open');
-      if(head) head.classList.remove('open');
-      if(chev) chev.classList.remove('open');
-      localStorage.setItem('section-'+id,'0');
-    }
-  });
-}
-
-function section(id,iconClass,iconSvg,title,sub,content,fullWidth=false,lockOpen=false){
-  return `<div class="section${fullWidth?' full':''}">
-    <div class="section-head open">
-      <div class="section-icon ${iconClass}">${iconSvg}</div>
-      <div style="flex:1"><div class="section-title">${title}</div>${sub?`<div class="section-sub">${sub}</div>`:''}
-      </div>
-    </div>
-    <div class="section-body open" id="body-${id}">${content}</div>
-  </div>`;
-}
-
-function field(label,desc,control){
-  return `<div class="field"><div class="field-label"><div class="name">${label}</div>${desc?`<div class="desc">${desc}</div>`:''}</div><div class="field-control">${control}</div></div>`;
-}
-
-function helperTip(title,text){
-  return `<div class="helper-tip"><b>${title}:</b> ${text}</div>`;
-}
-
-function subfield(label,control){
-  return `<div class="subfield"><div class="field-label"><div class="name">${label}</div></div><div class="field-control">${control}</div></div>`;
-}
-
+function tip(html){ return `<div class="tip">${html}</div>`; }
 function sel(id,options,val){
   return `<select id="${id}" onchange="markDirty()">${options.map(([v,l])=>`<option value="${v}"${val==v?' selected':''}>${l}</option>`).join('')}</select>`;
 }
-
-function tog(id,val){
-  return `<label class="toggle"><input type="checkbox" id="${id}" onchange="markDirty()"${val?' checked':''}><span class="track"></span></label>`;
-}
-
-function inp(id,type,val,ph,cls='wide'){
-  return `<input type="${type}" id="${id}" class="${cls}" value="${val||''}" placeholder="${ph||''}" oninput="markDirty()">`;
-}
-
-function syncWifiOpenUi(){
-  const openEl = document.getElementById('wifi_open');
-  const passEl = document.getElementById('wifi_pass');
-  if(!openEl || !passEl) return;
-  if(openEl.checked){
-    passEl.value='';
-    passEl.disabled=true;
-    passEl.placeholder='Open network selected (no password)';
-  } else {
-    passEl.disabled=false;
-    passEl.placeholder='Enter new Wi-Fi password';
-  }
-}
-
+function tog(id,val){ return `<label class="toggle"><input type="checkbox" id="${id}" onchange="markDirty()"${val?' checked':''}><span class="track"></span></label>`; }
+function inp(id,type,val,ph,cls='w-wide'){ return `<input type="${type}" id="${id}" class="${cls}" value="${val||''}" placeholder="${ph||''}" oninput="markDirty()">`; }
 function badge(text,cls){ return `<span class="badge ${cls}">${text}</span>`; }
-
-async function loadMetrics(){
-  try{
-    const data=await apiGet('/api/admin/metrics');
-    METRICS=data||null;
-  }catch(e){
-    METRICS=null;
-  }
+function card(id,iconCls,iconSvg,title,sub,content){
+  return `<div class="card" id="${id}">
+    <div class="card-hdr"><div class="card-icon ${iconCls}">${iconSvg}</div>
+      <div><div class="card-title">${title}</div>${sub?`<div class="card-sub">${sub}</div>`:''}</div></div>
+    ${content}</div>`;
 }
 
 // ── Render ────────────────────────────────────────────────────────────────────
 function render(){
-  const c=CONFIG, m=META;
-  const offlineMin = Math.max(5, Number(c.alert_offline_min || 15));
+  const c=CONFIG,m=META;
+  const offlineMin=Math.max(5,Number(c.alert_offline_min||15));
   const online=m.status&&m.status.lastSeen&&(Date.now()-m.status.lastSeen<offlineMin*60000);
-  document.getElementById('statusPill').className='status-pill '+(online?'online':'offline');
-  document.getElementById('statusPill').innerHTML=`<span class="dot"></span>${online?'Device online':'Device offline'}`;
-  const cm=document.getElementById('configMeta');
-  if(cm) cm.textContent=`Last settings update: ${fmtTs(m.configUpdatedAt)}`;
 
+  // Header updates
+  document.getElementById('statusPill').className='status-pill '+(online?'online':'offline');
+  document.getElementById('statusPill').innerHTML=`<span class="dot"></span>${online?'Online':'Offline'}`;
+  const cm=document.getElementById('configMeta');
+  if(cm) cm.textContent=m.configUpdatedAt?`Settings last saved ${fmtTs(m.configUpdatedAt)}`:'';
+
+  // Key rotation
   const {used,remain,label,color}=rotateProgress(m.lastRotated);
   const nextMs=(m.nextAutoRotate||0)-Date.now();
 
-  const wifiIcon=`<svg viewBox="0 0 24 24" stroke-width="2"><path d="M5 12.55a11 11 0 0114.08 0"/><path d="M1.42 9a16 16 0 0121.16 0"/><path d="M8.53 16.11a6 6 0 016.95 0"/><circle cx="12" cy="20" r="1" fill="currentColor"/></svg>`;
-  const dexIcon=`<svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"/></svg>`;
-  const alertIcon=`<svg viewBox="0 0 24 24" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
-  const displayIcon=`<svg viewBox="0 0 24 24" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`;
-  const secIcon=`<svg viewBox="0 0 24 24" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`;
-  const backupIcon=`<svg viewBox="0 0 24 24" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`;
-  const diagIcon=`<svg viewBox="0 0 24 24" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`;
-  const sysIcon=`<svg viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93l-1.41 1.41M4.93 4.93l1.41 1.41M4.93 19.07l1.41-1.41M19.07 19.07l-1.41-1.41M21 12h-2M3 12H1M12 3V1M12 23v-2"/></svg>`;
-  const ctrlIcon=`<svg viewBox="0 0 24 24" stroke-width="2"><path d="M12 2v10"/><path d="M6.2 6.2a8 8 0 1011.3 0"/></svg>`;
-  const pushoverIcon=`<svg viewBox="0 0 24 24" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>`;
-  const aiIcon=`<svg viewBox="0 0 24 24" stroke-width="2"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"/></svg>`;
-  const pumpIcon=`<svg viewBox="0 0 24 24" stroke-width="2"><rect x="5" y="3" width="14" height="18" rx="2"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="9" y1="12" x2="15" y2="12"/><circle cx="12" cy="17" r="1" fill="currentColor"/></svg>`;
+  // SVG icons
+  const iWifi=`<svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M5 12.55a11 11 0 0114.08 0"/><path d="M1.42 9a16 16 0 0121.16 0"/><path d="M8.53 16.11a6 6 0 016.95 0"/><circle cx="12" cy="20" r="1" fill="currentColor"/></svg>`;
+  const iGluc=`<svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"/></svg>`;
+  const iTgt=`<svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>`;
+  const iDisp=`<svg viewBox="0 0 24 24" fill="none" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`;
+  const iNotif=`<svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>`;
+  const iPump=`<svg viewBox="0 0 24 24" fill="none" stroke-width="2"><rect x="5" y="3" width="14" height="18" rx="2"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="9" y1="12" x2="15" y2="12"/><circle cx="12" cy="17" r="1" fill="currentColor"/></svg>`;
+  const iCtrl=`<svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 2v10"/><path d="M6.2 6.2a8 8 0 1011.3 0"/></svg>`;
+  const iSec=`<svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`;
+  const iBkp=`<svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`;
+  const iDiag=`<svg viewBox="0 0 24 24" fill="none" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`;
+  const iSys=`<svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93l-1.41 1.41M4.93 4.93l1.41 1.41M4.93 19.07l1.41-1.41M19.07 19.07l-1.41-1.41M21 12h-2M3 12H1M12 3V1M12 23v-2"/></svg>`;
+  const iAi=`<svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"/></svg>`;
+  const iAlert=`<svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
 
-  // WiFi section
-  const wifiOpen = !c.wifi_pass;
-  const wifiContent =
-    helperTip('First-time setup','Save Wi-Fi first. After save, the device can reboot to reconnect if SSID or password changed.')+
-    field('Wi-Fi network (SSID)',`Current network: ${c.wifi_ssid||'Not set yet'}`,inp('wifi_ssid','text',c.wifi_ssid,'HomeWiFi'))+
-    field('Wi-Fi password','Leave blank to keep the current password. Use Open network only for networks with no password.',inp('wifi_pass','password','','Enter a new Wi-Fi password'))+
-    field('Open network','Turn on only for unsecured Wi-Fi networks.',`<label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="wifi_open" onchange="syncWifiOpenUi();markDirty()"${wifiOpen?' checked':''}> <span style="font-size:12px;color:var(--muted)">This network has no password</span></label>`)+
-    `<div class="field"><div class="field-label"><div class="name">Cellular LTE fallback</div><div class="desc">Automatic failover to LTE when Wi-Fi is unavailable (M5Stack SIM7600G module required). <span style="color:var(--amber);font-weight:600">Coming soon — module not yet in stock.</span></div></div><span style="color:var(--muted);font-size:12px">Not available</span></div>`;
+  // ── Network card ──────────────────────────────────────────────────────────
+  const wifiOpen=!c.wifi_pass;
+  const networkCard=card('sec-network','ci-wifi',iWifi,'Network','Wi-Fi connection settings',
+    tip(`<strong>Heads up:</strong> Changing the network name or password will trigger an automatic device reboot to reconnect.`)+
+    row('Network name',`Currently connected to: <strong>${c.wifi_ssid||'Not set'}</strong>`,inp('wifi_ssid','text',c.wifi_ssid,'e.g. HomeNetwork'))+
+    row('Password','Leave blank to keep the current password.',inp('wifi_pass','password','','Enter new password'))+
+    row('Open network','Enable only for networks with no password.',`<label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="wifi_open" onchange="syncWifiOpenUi();markDirty()"${wifiOpen?' checked':''}><span style="font-size:12px;color:var(--text2)">This network has no password</span></label>`)+
+    `<div class="row"><div class="row-lbl"><div class="row-name">Cellular LTE fallback</div><div class="row-desc">Automatic failover when Wi-Fi drops. Requires M5Stack SIM7600G. <span style="color:var(--amber);font-weight:500">Coming soon.</span></div></div><span style="font-size:12px;color:var(--text2)">Not available</span></div>`
+  );
 
-  // Data sources section
-  const nsContent =
-    helperTip('Common issue','If Dexcom login fails, verify region and use the same username format you use in Dexcom Share (email or full phone). Nightscout is fallback only.')+
-    field('Nightscout URL','',inp('nightscout_url','url',c.nightscout_url,'https://yoursite.ns.io'))+
-    field('Nightscout token or secret','Used to read data from your Nightscout site.',inp('nightscout_secret','password','','token or secret'))+
-    field('Dexcom username','',inp('dexcom_user','text',c.dexcom_user,'email or +1xxxxxxxxxx'))+
-    field('Dexcom password','Leave blank to keep the current password.',inp('dexcom_pass','password','','••••••••'))+
-    field('Dexcom region','Set this to match your Dexcom account region.',segChoice('dexcom_region',[['US','US'],['Non-US','Non-US']],c.dexcom_region||'US'))+
-    field('Reading refresh interval','How often the device checks for new readings.',segChoice('poll_interval_min',[[1,'1 min'],[5,'5 min'],[10,'10 min']],c.poll_interval_min||5))+
-    field('Stale reading warning','Show stale status after no new reading for this long.',segChoice('stale_data_warn_min',[[5,'5 min'],[10,'10 min'],[15,'15 min'],[20,'20 min']],c.stale_data_warn_min||10))+
-    field('Config sync check','How often the device checks for updated settings.',segChoice('config_ping_min',[[1,'1 min'],[2,'2 min'],[5,'5 min']],c.config_ping_min||1));
+  // ── Glucose sources card ──────────────────────────────────────────────────
+  const glucoseCard=card('sec-glucose','ci-gluc',iGluc,'Glucose sources','Dexcom Share is primary · Nightscout is fallback',
+    tip(`<strong>Tip:</strong> If Dexcom login fails, verify your region and use the exact username format from the Dexcom Share app (email or phone number).`)+
+    row('Nightscout URL','',inp('nightscout_url','url',c.nightscout_url,'https://yoursite.ns.io'))+
+    row('Nightscout token','API token or secret used to read from your Nightscout site.',inp('nightscout_secret','password','','token or secret'))+
+    row('Dexcom username','',inp('dexcom_user','text',c.dexcom_user,'email or +1xxxxxxxxxx'))+
+    row('Dexcom password','Leave blank to keep the current password.',inp('dexcom_pass','password','','••••••••'))+
+    row('Dexcom account region','',segChoice('dexcom_region',[['US','US'],['Non-US','Non-US']],c.dexcom_region||'US'))+
+    row('Refresh readings every','How often the device checks for new glucose data.',segChoice('poll_interval_min',[[1,'1 min'],[5,'5 min'],[10,'10 min']],c.poll_interval_min||5))+
+    row('Mark reading as outdated after','Show the stale banner when no new reading has arrived.',segChoice('stale_data_warn_min',[[5,'5 min'],[10,'10 min'],[15,'15 min'],[20,'20 min']],c.stale_data_warn_min||10))+
+    row('Settings sync interval','How often the device checks for updated settings.',segChoice('config_ping_min',[[1,'1 min'],[2,'2 min'],[5,'5 min']],c.config_ping_min||1))
+  );
 
-  // BG Alerts section
-  const alertContent =
-    field('Glucose units','Choose the units used in this dashboard and on device alerts.',segChoice('bg_units',[['mg/dL','mg/dL'],['mmol/L','mmol/L']],c.bg_units||'mg/dL'))+
-    field('Target presets','Apply a quick target profile, then fine-tune below if needed.',`<div class="choice-group"><button type="button" class="choice-pill" onclick="applyThresholdPreset('standard')">Standard</button><button type="button" class="choice-pill" onclick="applyThresholdPreset('tighter')">Tighter</button><button type="button" class="choice-pill" onclick="applyThresholdPreset('wider')">Wider</button></div>`)+
-    field('Urgent low threshold','Critical low value. Highest-priority visual alert.',`<div class="thr-row">${inp('urgent_low','number',c.urgent_low||55,'','')}<span>${c.bg_units||'mg/dL'}</span></div>`)+
-    field('Low threshold','Low glucose warning threshold.',`<div class="thr-row">${inp('low','number',c.low||70,'','')}<span>${c.bg_units||'mg/dL'}</span></div>`)+
-    field('High threshold','High glucose warning threshold.',`<div class="thr-row">${inp('high','number',c.high||180,'','')}<span>${c.bg_units||'mg/dL'}</span></div>`)+
-    field('Urgent high threshold','Critical high glucose threshold.',`<div class="thr-row">${inp('urgent_high','number',c.urgent_high||250,'','')}<span>${c.bg_units||'mg/dL'}</span></div>`)+
-    field('Alert appearance','Visual style shown on the device for threshold alerts.',`<div class="radio-group">${['pulse','flash','color only'].map(s=>`<label class="radio-opt"><input type="radio" name="bg_alert_style" value="${s}"${(c.bg_alert_style||'pulse')===s?' checked':''}> ${s[0].toUpperCase()+s.slice(1)}</label>`).join('')}</div>`);
+  // ── Targets card ──────────────────────────────────────────────────────────
+  const targetsCard=card('sec-targets','ci-tgt',iTgt,'Targets &amp; alerts','Glucose thresholds used for display color coding and alerts',
+    row('Glucose units','',segChoice('bg_units',[['mg/dL','mg/dL'],['mmol/L','mmol/L']],c.bg_units||'mg/dL'))+
+    row('Quick presets','Apply a common target range. Fine-tune the values below as needed.',`<div class="choices"><button type="button" class="cpill" onclick="applyThresholdPreset('standard')">Standard</button><button type="button" class="cpill" onclick="applyThresholdPreset('tighter')">Tighter</button><button type="button" class="cpill" onclick="applyThresholdPreset('wider')">Wider</button></div>`)+
+    row('Critical low',`Highest-priority alert threshold.`,`<div class="thr-row">${inp('urgent_low','number',c.urgent_low||55,'','')}<span>${c.bg_units||'mg/dL'}</span></div>`)+
+    row('Low glucose','',`<div class="thr-row">${inp('low','number',c.low||70,'','')}<span>${c.bg_units||'mg/dL'}</span></div>`)+
+    row('High glucose','',`<div class="thr-row">${inp('high','number',c.high||180,'','')}<span>${c.bg_units||'mg/dL'}</span></div>`)+
+    row('Critical high','',`<div class="thr-row">${inp('urgent_high','number',c.urgent_high||250,'','')}<span>${c.bg_units||'mg/dL'}</span></div>`)+
+    row('Alert style','Visual animation shown on-device when a threshold is crossed.',`<div class="radio-group">${['pulse','flash','color only'].map(s=>`<label class="radio-opt"><input type="radio" name="bg_alert_style" value="${s}"${(c.bg_alert_style||'pulse')===s?' checked':''}> ${s[0].toUpperCase()+s.slice(1)}</label>`).join('')}</div>`)
+  );
 
-  // Pushover alerts section
-  const pushoverContent =
-    helperTip('Pushover keys','Paste User Key and App Token exactly as shown in Pushover. Leave blank to keep existing stored credentials.')+
-    field('Enable phone alerts','Send urgent low/high alerts to your phone through Pushover.',tog('pushover_enabled',c.pushover_enabled))+
-    field('Pushover user key',m.pushoverConfigured?'Stored. Enter a new value only if you want to replace it.':'Your personal user key from pushover.net.',inp('pushover_user_key','password','',m.pushoverConfigured?'(stored)':'user key'))+
-    field('Pushover app token',m.pushoverConfigured?'Stored. Enter a new value only if you want to replace it.':'Application API token from pushover.net.',inp('pushover_api_token','password','',m.pushoverConfigured?'(stored)':'api token'))+
-    field('Phone alert cooldown','Minimum time between repeated urgent phone alerts.',sel('pushover_alert_cooldown_min',[[5,'5 minutes'],[10,'10 minutes'],[15,'15 minutes'],[30,'30 minutes'],[60,'60 minutes']],c.pushover_alert_cooldown_min||15))+
-    field('Status','',m.pushoverConfigured?badge('Credentials stored','green'):badge('Not configured','amber'));
-
-  // Daily AI Digest section
-  const digestText = m.digest&&m.digest.text ? m.digest.text : '';
-  const digestDate = m.digest&&m.digest.generatedAt ? fmtTs(m.digest.generatedAt) : (m.digest&&m.digest.date ? m.digest.date : '');
-  const digestModel = (c.ai_model || (m.digest&&m.digest.ai_model) || '@cf/meta/llama-3.1-8b-instruct');
-  const digestHourOptions = Array.from({length:24},(_,i)=>{
-    const ampm = i<12?'AM':'PM'; const h = i===0?12:(i>12?i-12:i);
-    return `<option value="${i}"${(c.digest_pushover_hour??7)===i?' selected':''}>${h}:00 ${ampm} US/Central</option>`;
-  }).join('');
-  const digestContent =
-    (digestText
-      ? field('Today\'s summary',`Generated ${digestDate}`,`<div style="font-size:12px;line-height:1.6;color:var(--text);max-width:340px;white-space:pre-wrap">${digestText.replace(/</g,'&lt;')}</div>`)
-      : field('Today\'s summary','AI summary based on the last 24 hours of glucose data.','<span style="font-size:12px;color:var(--muted)">No summary yet. It runs daily at 7:00 AM US/Central, and hourly 8 AM–11 PM.</span>'))+
-    field('Generate on demand','Force-regenerate the summary from the last 24h of readings right now.',`<button id="digest-gen-btn" class="btn" onclick="generateDigestNow()">Generate now</button>`)+
-    field('AI model','',`<span style="font-size:12px;color:var(--muted)">${digestModel.replace(/</g,'&lt;')}</span>`)+
-    field('Run schedule','',`<span style="font-size:12px;color:var(--muted)">Daily at 7:00 AM, hourly 8 AM–11 PM US/Central (cron).</span>`)+
-    field('Push digest to Pushover','Send the summary to your phone via Pushover at a set time.',tog('digest_pushover_enabled',c.digest_pushover_enabled))+
-    field('Digest push time','Hour to send the digest (requires Pushover credentials configured above).',`<select id="digest_pushover_hour">${digestHourOptions}</select>`);
-
-  // Pump Profile section
-  const selectedPumpBrand = findPumpBrand(c.insulin_pump_brand || 'No pump');
-  const selectedPumpModel = selectedPumpBrand.models.find(m => m.model === (c.insulin_pump_model || '')) || selectedPumpBrand.models[0];
-  const selectedPumpMode = selectedPumpModel.modes.includes(c.insulin_pump_loop_mode || '') ? c.insulin_pump_loop_mode : selectedPumpModel.modes[0];
-  const pumpContent =
-    field('Pump brand','Select your pump brand so model and automation terms stay accurate.',`<select id="insulin_pump_brand" onchange="syncPumpProfileUi()">${PUMP_CATALOG.map(b=>`<option value="${b.brand}"${b.brand===selectedPumpBrand.brand?' selected':''}>${b.brand}</option>`).join('')}</select>`)+
-    field('Pump model','Models are filtered by selected brand.',`<select id="insulin_pump_model" onchange="syncPumpProfileUi()">${selectedPumpBrand.models.map(m=>`<option value="${m.model}"${m.model===selectedPumpModel.model?' selected':''}>${m.model}</option>`).join('')}</select>`)+
-    field('Automation mode','Terminology adjusts to the selected brand and model.',`<select id="insulin_pump_loop_mode">${selectedPumpModel.modes.map(m=>`<option value="${m}"${m===selectedPumpMode?' selected':''}>${m}</option>`).join('')}</select>`)+
-    `<input type="hidden" id="insulin_pump_type" value="${selectedPumpModel.type}">`+
-    field('Additional notes','Optional context for AI (e.g., exercise pattern, meal timing, known overnight trends).',inp('insulin_pump_notes','text',c.insulin_pump_notes||'','Optional', 'wide'));
-
-  // Display section
-  const dndSched = c.dnd_schedule || {};
-  const dndTime = (day, part, fallback) => {
-    if (dndSched[day] && dndSched[day][part]) return dndSched[day][part];
-    if (part === 'from') return c.dnd_from || '23:00';
-    return c.dnd_to || '06:00';
+  // ── Display card ──────────────────────────────────────────────────────────
+  const dndSched=c.dnd_schedule||{};
+  const dndTime=(day,part,fallback)=>{
+    if(dndSched[day]&&dndSched[day][part]) return dndSched[day][part];
+    if(part==='from') return c.dnd_from||'23:00'; return c.dnd_to||'06:00';
   };
-  const displayContent =
-    field('Trend arrow','Show glucose direction next to the reading.',tog('show_trend_arrow',c.show_trend_arrow!==false))+
-    field('Reading age','Show "X min ago" under the glucose value.',tog('show_last_reading_time',c.show_last_reading_time!==false))+
-    field('Clock format','Choose how time appears on the device screen.',segChoice('clock_24hr',[[false,'12-hour'],[true,'24-hour']],String(!!c.clock_24hr)))+
-    field('Timezone','Auto-detects from your IP on first boot. Change manually if needed.',`<div style="display:flex;gap:8px;align-items:center">${sel('timezone',[['US/Central','US / Central'],['US/Eastern','US / Eastern'],['US/Mountain','US / Mountain'],['US/Pacific','US / Pacific']],c.timezone)}<button class="btn" onclick="detectTimezoneNow()" style="flex-shrink:0">Auto-detect</button></div>`)+
-    field('Screen brightness','After 5 minutes without touch, brightness drops to 15% until the screen is touched again.',segChoice('brightness',[[25,'25%'],[50,'50%'],[75,'75%'],[100,'100%']],c.brightness||100))+
-    field('Do Not Disturb schedule','Turn the screen off during overnight quiet hours.',tog('dnd_enabled',c.dnd_enabled))+
-    helperTip('DND format','Use time format like 10:30 PM. If times look wrong after save, verify AM/PM values for each day.')+
-    subfield('Sunday',`<div class="time-range"><input type="text" id="dnd_sun_from" value="${to12h(dndTime('sun','from','23:00'))}" style="width:88px"><span>to</span><input type="text" id="dnd_sun_to" value="${to12h(dndTime('sun','to','06:00'))}" style="width:88px"></div>`)+
-    subfield('Monday',`<div class="time-range"><input type="text" id="dnd_mon_from" value="${to12h(dndTime('mon','from','23:00'))}" style="width:88px"><span>to</span><input type="text" id="dnd_mon_to" value="${to12h(dndTime('mon','to','06:00'))}" style="width:88px"></div>`)+
-    subfield('Tuesday',`<div class="time-range"><input type="text" id="dnd_tue_from" value="${to12h(dndTime('tue','from','23:00'))}" style="width:88px"><span>to</span><input type="text" id="dnd_tue_to" value="${to12h(dndTime('tue','to','06:00'))}" style="width:88px"></div>`)+
-    subfield('Wednesday',`<div class="time-range"><input type="text" id="dnd_wed_from" value="${to12h(dndTime('wed','from','23:00'))}" style="width:88px"><span>to</span><input type="text" id="dnd_wed_to" value="${to12h(dndTime('wed','to','06:00'))}" style="width:88px"></div>`)+
-    subfield('Thursday',`<div class="time-range"><input type="text" id="dnd_thu_from" value="${to12h(dndTime('thu','from','23:00'))}" style="width:88px"><span>to</span><input type="text" id="dnd_thu_to" value="${to12h(dndTime('thu','to','06:00'))}" style="width:88px"></div>`)+
-    subfield('Friday',`<div class="time-range"><input type="text" id="dnd_fri_from" value="${to12h(dndTime('fri','from','23:00'))}" style="width:88px"><span>to</span><input type="text" id="dnd_fri_to" value="${to12h(dndTime('fri','to','06:00'))}" style="width:88px"></div>`)+
-    subfield('Saturday',`<div class="time-range"><input type="text" id="dnd_sat_from" value="${to12h(dndTime('sat','from','23:00'))}" style="width:88px"><span>to</span><input type="text" id="dnd_sat_to" value="${to12h(dndTime('sat','to','06:00'))}" style="width:88px"></div>`)+
-    `<input type="hidden" id="dnd_from" value="${c.dnd_from||'23:00'}"><input type="hidden" id="dnd_to" value="${c.dnd_to||'06:00'}">`;
+  const days=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const dayKeys=['sun','mon','tue','wed','thu','fri','sat'];
+  const displayCard=card('sec-display','ci-disp',iDisp,'Display &amp; schedule','Screen preferences and quiet hours',
+    row('Trend arrow','Show glucose direction alongside the reading.',tog('show_trend_arrow',c.show_trend_arrow!==false))+
+    row('Reading timestamp','Show "X min ago" beneath the glucose value.',tog('show_last_reading_time',c.show_last_reading_time!==false))+
+    row('Clock format','',segChoice('clock_24hr',[[false,'12-hour'],[true,'24-hour']],String(!!c.clock_24hr)))+
+    row('Timezone','Auto-detected from your IP on first boot.',`<div style="display:flex;gap:8px;align-items:center">${sel('timezone',[['US/Central','US / Central'],['US/Eastern','US / Eastern'],['US/Mountain','US / Mountain'],['US/Pacific','US / Pacific']],c.timezone)}<button class="btn" onclick="detectTimezoneNow()">Auto-detect</button></div>`)+
+    row('Screen brightness','Dims to 15% after 5 minutes of no touch.',segChoice('brightness',[[25,'25%'],[50,'50%'],[75,'75%'],[100,'100%']],c.brightness||100))+
+    row('Do Not Disturb','Turn the screen off during quiet hours.',tog('dnd_enabled',c.dnd_enabled))+
+    tip(`<strong>DND format:</strong> Use 12-hour time, e.g. <b>10:30 PM</b>. Each day can have its own window.`)+
+    dayKeys.map((k,i)=>subrow(days[i],`<div class="time-range"><input type="text" id="dnd_${k}_from" value="${to12h(dndTime(k,'from','23:00'))}" style="width:86px"><span>to</span><input type="text" id="dnd_${k}_to" value="${to12h(dndTime(k,'to','06:00'))}" style="width:86px"></div>`)).join('')+
+    `<input type="hidden" id="dnd_from" value="${c.dnd_from||'23:00'}"><input type="hidden" id="dnd_to" value="${c.dnd_to||'06:00'}">`
+  );
 
-  // Security section
-  const secContent =
-    field('Cloudflare Access','',badge('Enabled','green'))+
-    field('Session timeout','Automatically sign out after inactivity.',sel('session_timeout_min',[[15,'15 min'],[30,'30 min'],[60,'1 hour'],[240,'4 hours']],c.session_timeout_min))+
-    field('IP allowlist','Allow Worker access only from approved IPs.',tog('ip_allowlist_enabled',c.ip_allowlist_enabled))+
-    field('Device API key','Primary key used by the BG MiniView device.',`<span class="key-display">bg_ro_••••••••${m.keyTail||'????'}</span>`)+
-    field('Recovery device key','Optional backup key accepted after local flash wipe.',
-      `<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
-        <div style="display:flex;gap:8px;align-items:center">
-          <input id="recovery_device_key" type="password" class="wide" placeholder="bg_ro_..." style="width:210px">
-          <button class="btn" onclick="setRecoveryKey()">Set</button>
-          <button class="btn danger" onclick="if(confirm('Clear firmware recovery key?'))clearRecoveryKey()">Clear</button>
-        </div>
-        <div style="font-size:11px;color:var(--muted)">
-          ${m.recoveryKeyEnabled ? `Enabled (hash tail ${m.recoveryKeyTail||'????'})` : 'Disabled'}
-          ${m.recoveryKeyUpdatedAt ? ` • Updated ${fmtTs(m.recoveryKeyUpdatedAt)}` : ''}
-        </div>
-      </div>`)+
-    field('Automatic key rotation',`${fmtCountdown(nextMs)} - rotates automatically every 7 days<br><span style="font-size:11px;background:var(--amber-bg);color:var(--amber);padding:1px 7px;border-radius:99px;font-weight:600;display:inline-block;margin-top:3px">Automatic policy</span>`,
-      `<div class="rotate-block">
-        <svg width="36" height="36" viewBox="0 0 36 36">
-          <circle cx="18" cy="18" r="15" fill="none" stroke="#e5e7eb" stroke-width="3"/>
-          <circle cx="18" cy="18" r="15" fill="none" stroke="${color}" stroke-width="3" stroke-dasharray="${used.toFixed(1)} ${remain.toFixed(1)}" stroke-dashoffset="23.6" stroke-linecap="round" transform="rotate(-90 18 18)"/>
-          <text x="18" y="22" text-anchor="middle" font-size="9" fill="#1a1a1a" font-family="sans-serif">${label}</text>
-        </svg>
-        ${m.pendingRotation?badge('ACK pending','amber'):badge('Active','green')}
-        <div class="rotate-meta">Last rotated: ${fmtTs(m.lastRotated)}</div>
-        <div class="rotate-meta">Next: ${m.nextAutoRotate?new Date(m.nextAutoRotate).toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',hour12:true}):'—'}</div>
-      </div>`)+
-    field('Certificate pinning','The device rejects unexpected TLS certificates.',badge('Active','green'))+
-    field('Rate limit','Maximum requests allowed per minute to the Worker.',sel('rate_limit_per_min',[[10,'10 per minute'],[15,'15 per minute'],[25,'25 per minute'],[30,'30 per minute'],[45,'45 per minute'],[60,'60 per minute']],c.rate_limit_per_min))+
-    field('Failed login lockout','Temporarily block access after repeated failed attempts.',tog('lockout_enabled',c.lockout_enabled!==false))+
-    subfield('Attempts before lockout',sel('lockout_attempts',[[3,'3 attempts'],[5,'5 attempts'],[10,'10 attempts']],c.lockout_attempts))+
-    subfield('Lockout duration',sel('lockout_duration_min',[[5,'5 minutes'],[15,'15 minutes'],[60,'1 hour']],c.lockout_duration_min))+
-    field('Last known device IP','Masked for privacy',`<span class="key-display">${m.status?.ip||'—'}</span>`)+
-    field('Failed auth attempts','Last 24 hours',badge(`${m.failedAuthCount||0} attempts`,m.failedAuthCount>0?'red':'green'))+
-    `<div style="padding:8px 13px;background:var(--surface-2);border-top:1px solid rgba(255,255,255,.07)"><div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Recent configuration changes <span style="font-size:10px;font-weight:400">(v${m.config_version||0})</span></div>${(m.changelog||[]).slice(0,5).map(l=>`<div class="log-row"><span>${l.msg}</span><span>${fmtTs(l.ts)}</span></div>`).join('')||'<div style="font-size:12px;color:var(--faint);padding:4px 0">No changes recorded yet</div>'}<div style="text-align:right;margin-top:6px"><button class="btn" onclick="clearLog()">Clear history</button></div></div>`;
+  // ── Notifications card ────────────────────────────────────────────────────
+  const digestText=m.digest?.text||'';
+  const digestDate=m.digest?.generatedAt?fmtTs(m.digest.generatedAt):(m.digest?.date||'');
+  const digestModel=c.ai_model||m.digest?.ai_model||'@cf/meta/llama-3.1-8b-instruct';
+  const digestHourOptions=Array.from({length:24},(_,i)=>{
+    const ap=i<12?'AM':'PM',h=i===0?12:(i>12?i-12:i);
+    return `<option value="${i}"${(c.digest_pushover_hour??7)===i?' selected':''}>${h}:00 ${ap} US/Central</option>`;
+  }).join('');
+  const notifsCard=card('sec-notifs','ci-notif',iNotif,'Notifications','Pushover phone alerts and AI glucose summaries',
+    `<div class="card-section-lbl">Phone alerts via Pushover</div>`+
+    tip(`<strong>Pushover keys:</strong> Paste your user key and app token from pushover.net. Leave blank to keep existing credentials.`)+
+    row('Enable phone alerts','Receive urgent low and high glucose notifications on your phone.',tog('pushover_enabled',c.pushover_enabled))+
+    row('User key',m.pushoverConfigured?'Credentials stored. Enter a new value only to replace.':'Your personal user key from pushover.net.',inp('pushover_user_key','password','',m.pushoverConfigured?'(stored)':'user key'))+
+    row('App token',m.pushoverConfigured?'Credentials stored. Enter a new value only to replace.':'Application API token from pushover.net.',inp('pushover_api_token','password','',m.pushoverConfigured?'(stored)':'api token'))+
+    row('Alert cooldown','Minimum time between repeat alerts for the same condition.',sel('pushover_alert_cooldown_min',[[5,'5 minutes'],[10,'10 minutes'],[15,'15 minutes'],[30,'30 minutes'],[60,'60 minutes']],c.pushover_alert_cooldown_min||15))+
+    row('Credential status','',m.pushoverConfigured?badge('Stored','green'):badge('Not configured','amber'))+
+    `<div class="card-section-lbl">AI glucose summary (EndoAI)</div>`+
+    (digestText
+      ?row('Today\'s summary',`Generated ${digestDate}`,`<div style="font-size:12px;line-height:1.6;color:var(--text);max-width:320px;white-space:pre-wrap">${digestText.replace(/</g,'&lt;')}</div>`)
+      :row('Today\'s summary','AI summary from the last 24 hours of readings.','<span style="font-size:12px;color:var(--text2)">Not generated yet. Runs daily at 7:00 AM and hourly 8 AM–11 PM US/Central.</span>'))+
+    row('Regenerate','Force a new summary from the last 24 hours of data right now.',`<button id="digest-gen-btn" class="btn" onclick="generateDigestNow()">Generate now</button>`)+
+    row('Model','',`<span style="font-size:12px;color:var(--text2)">${digestModel.replace(/</g,'&lt;')}</span>`)+
+    row('Send to phone','Push the daily summary to Pushover at a set time.',tog('digest_pushover_enabled',c.digest_pushover_enabled))+
+    row('Daily push time','Requires Pushover credentials configured above.',`<select id="digest_pushover_hour">${digestHourOptions}</select>`)
+  );
 
-  // Backup section
-  const backupContent =
-    field('Export settings','Download all settings as a JSON backup file.',`<button class="btn" onclick="exportConfig()">Export</button>`)+
-    field('Import settings','Restore settings from a previous JSON backup.',`<button class="btn" onclick="importConfig()">Import</button>`)+
-    field('Automatic backup','Save a snapshot to KV each time settings are saved.',tog('auto_backup',c.auto_backup!==false));
+  // ── Pump profile card ──────────────────────────────────────────────────────
+  const selBrand=findPumpBrand(c.insulin_pump_brand||'No pump');
+  const selModel=selBrand.models.find(m=>m.model===(c.insulin_pump_model||''))||selBrand.models[0];
+  const selMode=selModel.modes.includes(c.insulin_pump_loop_mode||'')?c.insulin_pump_loop_mode:selModel.modes[0];
+  const pumpCard=card('sec-pump','ci-pump',iPump,'Insulin profile','Optional pump context improves AI summary accuracy',
+    row('Brand','',`<select id="insulin_pump_brand" onchange="syncPumpProfileUi()">${PUMP_CATALOG.map(b=>`<option value="${b.brand}"${b.brand===selBrand.brand?' selected':''}>${b.brand}</option>`).join('')}</select>`)+
+    row('Model','Filtered by selected brand.',`<select id="insulin_pump_model" onchange="syncPumpProfileUi()">${selBrand.models.map(m=>`<option value="${m.model}"${m.model===selModel.model?' selected':''}>${m.model}</option>`).join('')}</select>`)+
+    row('Automation mode','',`<select id="insulin_pump_loop_mode">${selModel.modes.map(m=>`<option value="${m}"${m===selMode?' selected':''}>${m}</option>`).join('')}</select>`)+
+    `<input type="hidden" id="insulin_pump_type" value="${selModel.type}">`+
+    row('Notes','Optional context for the AI: exercise patterns, meal timing, overnight trends.',inp('insulin_pump_notes','text',c.insulin_pump_notes||'','e.g. Low-carb diet, active mornings','w-wide'))
+  );
 
-  // Diagnostics section
-  const diagContent =
+  // ── Advanced drawer: Device actions ──────────────────────────────────────
+  const cmd=m.pendingCommand,ack=m.lastCommandAck,logMeta=m.lastLogUpload;
+  const controlCard=card('adv-ctrl','ci-ctrl',iCtrl,'Device actions','Send commands and retrieve logs from the device',
+    row('Quick actions','These are one-time commands sent to the device.',`<div style="display:flex;gap:7px;flex-wrap:wrap"><button class="btn" onclick="sendCommand('sync-now')">Sync now</button><button class="btn" onclick="sendCommand('upload-logs')">Pull SD logs</button><button class="btn danger" onclick="sendCommand('reboot')">Reboot</button><button class="btn danger" onclick="if(confirm('Queue a factory reset? The device will wipe local config.'))sendCommand('factory-reset')">Factory reset</button></div>`)+
+    row('Latest SD logs','Most recent log package uploaded from the device.',
+      logMeta
+        ?`<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px"><span style="font-size:12px;color:var(--text2)">${logMeta.lineCount||0} lines · ${logMeta.bytes||0} bytes · ${fmtTs(logMeta.uploadedAt)}</span><button class="btn" onclick="downloadLatestLogs()">Download</button></div>`
+        :'<span style="font-size:12px;color:var(--text2)">No logs uploaded yet</span>')+
+    row('Pending command','',cmd?badge(`${cmd.type} queued`,'amber'):badge('None','green'))+
+    row('Last ACK','',ack?`<span style="font-size:12px;color:var(--text2)">${ack.type}: ${ack.ok?'OK':'Failed'} · ${fmtTs(ack.ts)}</span>`:'<span style="font-size:12px;color:var(--text2)">—</span>')
+  );
+
+  // ── Advanced drawer: Alert tuning ─────────────────────────────────────────
+  const alertTuningCard=card('adv-alerts','ci-notif',iAlert,'Alert thresholds','Server-side alert conditions and cooldowns',
+    row('Offline alert','Send a Pushover alert when the device hasn\'t checked in.',tog('alert_offline_enabled',c.alert_offline_enabled!==false))+
+    row('Offline threshold','Alert after the device has been unreachable for this long.',sel('alert_offline_min',[[10,'10 minutes'],[15,'15 minutes'],[30,'30 minutes'],[60,'60 minutes']],c.alert_offline_min||15))+
+    row('Stale data threshold','Alert when glucose data is older than this.',sel('alert_stale_min',[[15,'15 minutes'],[30,'30 minutes'],[45,'45 minutes'],[60,'60 minutes']],c.alert_stale_min||30))+
+    row('Low battery threshold','Alert when battery drops to or below this level.',sel('alert_battery_low_pct',[[10,'10%'],[15,'15%'],[20,'20%'],[25,'25%']],c.alert_battery_low_pct||15))+
+    row('Alert cooldown','Minimum wait before re-sending the same alert.',sel('alert_cooldown_min',[[15,'15 min'],[30,'30 min'],[60,'1 hour'],[180,'3 hours']],c.alert_cooldown_min||60))
+  );
+
+  // ── Advanced drawer: Diagnostics ──────────────────────────────────────────
+  const diagCard=card('adv-diag','ci-diag',iDiag,'Diagnostics','Connectivity and service health',
     `<div class="diag-row"><span>Cloudflare Worker</span><span id="diag-worker">${badge('—','blue')}</span></div>`+
     `<div class="diag-row"><span>Dexcom Share</span><span id="diag-dex">${badge('—','blue')}</span></div>`+
-    `<div class="diag-row"><span>Worker latency</span><span id="diag-latency" style="font-size:12px;color:var(--muted)">—</span></div>`+
-    `<div class="diag-row"><span>Last seen</span><span style="font-size:12px;color:var(--muted)">${fmtTs(m.status?.lastSeen)}</span></div>`+
-    `<div class="diag-row"><span>Firmware version</span><span style="font-size:12px;color:var(--muted)">${m.status?.firmware||'—'}</span></div>`+
-    `<div style="padding:10px 13px"><button class="btn full" onclick="runDiagnostics()">Run connectivity check</button></div>`;
+    `<div class="diag-row"><span>Worker latency</span><span id="diag-latency" style="font-size:12px;color:var(--text2)">—</span></div>`+
+    `<div class="diag-row"><span>Device last seen</span><span style="font-size:12px;color:var(--text2)">${fmtTs(m.status?.lastSeen)}</span></div>`+
+    `<div class="diag-row"><span>Firmware</span><span style="font-size:12px;color:var(--text2)">${m.status?.firmware||'—'}</span></div>`+
+    `<div class="btn-row"><button class="btn full" onclick="runDiagnostics()">Run connectivity check</button></div>`
+  );
 
-  // Device Control section
-  const cmd = m.pendingCommand;
-  const ack = m.lastCommandAck;
-  const logMeta = m.lastLogUpload;
-  const controlContent =
-    field('Quick actions','Send a one-time command to the device.',`<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" onclick="sendCommand('sync-now')">Sync now</button><button class="btn" onclick="sendCommand('upload-logs')">Pull SD logs</button><button class="btn danger" onclick="sendCommand('reboot')">Reboot now</button><button class="btn danger" onclick="if(confirm('Queue factory reset? Device will wipe local config and return to setup mode.'))sendCommand('factory-reset')">Factory reset</button></div>`)+
-    field('Latest SD log upload','Most recent log package uploaded from the device.',
-      logMeta
-        ? `<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end"><span style="font-size:12px;color:var(--muted)">${logMeta.lineCount||0} lines, ${logMeta.bytes||0} bytes (${fmtTs(logMeta.uploadedAt)})</span><button class="btn" onclick="downloadLatestLogs()">Download logs</button></div>`
-        : '<span style="font-size:12px;color:var(--muted)">No uploaded logs yet</span>'
-    )+
-    field('Pending command','',cmd?badge(`${cmd.type} queued`, 'amber'):badge('None', 'green'))+
-    field('Last command ACK','',ack?`<span style="font-size:12px;color:var(--muted)">${ack.type}: ${ack.ok?'OK':'Failed'} (${fmtTs(ack.ts)})</span>`:'<span style="font-size:12px;color:var(--muted)">—</span>');
+  // ── Advanced drawer: Cloud insights ──────────────────────────────────────
+  const mx=METRICS?.metrics||{};
+  const insightsCard=card('adv-insights','ci-diag',iDiag,'Cloud insights','Telemetry trends and Worker-side metrics',
+    `<div class="vrow"><span class="lbl">Telemetry samples</span><span>${mx.samples??'—'}</span></div>`+
+    `<div class="vrow"><span class="lbl">Average RSSI</span><span>${mx.avgRssi!=null?`${mx.avgRssi} dBm`:'—'}</span></div>`+
+    `<div class="vrow"><span class="lbl">Battery range</span><span>${mx.minBattery!=null?`${mx.minBattery}%`:'—'} / ${mx.maxBattery!=null?`${mx.maxBattery}%`:'—'}</span></div>`+
+    `<div class="vrow"><span class="lbl">Stale reading ratio</span><span>${mx.staleSamplePct!=null?`${mx.staleSamplePct}%`:'—'}</span></div>`+
+    `<div class="vrow"><span class="lbl">Events last hour</span><span style="font-size:12px;color:var(--text2)">Alerts ${mx.eventCounts1h?.alert??0} · Saves ${mx.eventCounts1h?.configSave??0} · ACK failures ${mx.eventCounts1h?.commandAckFail??0}</span></div>`+
+    `<div class="vrow"><span class="lbl">Source health (NS/Dex)</span><span style="font-size:12px;color:var(--text2)">${mx.sourceHealth?.nsOk??0}↑${mx.sourceHealth?.nsFail??0}↓ · ${mx.sourceHealth?.dexOk??0}↑${mx.sourceHealth?.dexFail??0}↓</span></div>`+
+    `<div class="vrow"><span class="lbl">Confidence score</span><span>${mx.confidence?.score!=null?`${mx.confidence.score}%`:'—'}</span></div>`
+  );
 
-  // Cloud Insights section
-  const mx = METRICS?.metrics || {};
-  const cloudInsightsContent =
-    field('Telemetry samples','Recent telemetry points retained in KV.',`<span style="font-size:12px;color:var(--muted)">${mx.samples ?? '—'}</span>`)+
-    field('Average RSSI','Average Wi-Fi signal strength over the sample window.',`<span style="font-size:12px;color:var(--muted)">${mx.avgRssi ?? '—'}${mx.avgRssi!==null&&mx.avgRssi!==undefined?' dBm':''}</span>`)+
-    field('Battery range','Lowest and highest battery level in the sample window.',`<span style="font-size:12px;color:var(--muted)">${mx.minBattery ?? '—'}${mx.minBattery!==null&&mx.minBattery!==undefined?'%':''} / ${mx.maxBattery ?? '—'}${mx.maxBattery!==null&&mx.maxBattery!==undefined?'%':''}</span>`)+
-    field('Stale reading ratio','Percent of stale glucose samples in the window.',`<span style="font-size:12px;color:var(--muted)">${mx.staleSamplePct ?? '—'}%</span>`)+
-    field('Events (last hour)','Alerts / Config saves / Failed command ACK.',`<span style="font-size:12px;color:var(--muted)">${mx.eventCounts1h?.alert ?? 0} / ${mx.eventCounts1h?.configSave ?? 0} / ${mx.eventCounts1h?.commandAckFail ?? 0}</span>`)+
-    field('Source health','Nightscout success/fail and Dexcom success/fail counts.',`<span style="font-size:12px;color:var(--muted)">${mx.sourceHealth?.nsOk ?? 0}/${mx.sourceHealth?.nsFail ?? 0} • ${mx.sourceHealth?.dexOk ?? 0}/${mx.sourceHealth?.dexFail ?? 0}</span>`)+
-    field('Confidence score','Overall health score for recent data quality.',`<span style="font-size:12px;color:var(--muted)">${mx.confidence?.score ?? '—'}%</span>`);
-
-  // UI Alerts section
-  const alertTuningContent =
-    field('Offline device alert','Send a Pushover alert when the device has not checked in. Turn this off to suppress offline notices.',tog('alert_offline_enabled',c.alert_offline_enabled!==false))+
-    field('Offline alert threshold','Send an alert when the device has not checked in for this long.',sel('alert_offline_min',[[10,'10 minutes'],[15,'15 minutes'],[30,'30 minutes'],[60,'60 minutes']],c.alert_offline_min||15))+
-    field('Stale data alert threshold','Send an alert when glucose data is older than this.',sel('alert_stale_min',[[15,'15 minutes'],[30,'30 minutes'],[45,'45 minutes'],[60,'60 minutes']],c.alert_stale_min||30))+
-    field('Low battery threshold','Send an alert when battery is at or below this level.',sel('alert_battery_low_pct',[[10,'10%'],[15,'15%'],[20,'20%'],[25,'25%']],c.alert_battery_low_pct||15))+
-    field('Alert cooldown','Minimum wait time before sending the same alert again.',sel('alert_cooldown_min',[[15,'15 minutes'],[30,'30 minutes'],[60,'60 minutes'],[180,'3 hours']],c.alert_cooldown_min||60));
-
-  // System section
-  const sdBadge = m.status?.sdAvailable ? badge('Available','green') : badge('Not detected','amber');
-  const sysContent =
-    `<div class="vrow"><span class="label">Firmware</span><span>${m.status?.firmware||'—'}</span></div>`+
-    `<div class="vrow"><span class="label">Connection</span><span>${badge(m.status?.connection||'—','green')}</span></div>`+
-    `<div class="vrow"><span class="label">IP address</span><span>${m.status?.deviceIP||m.status?.ip||'—'}</span></div>`+
-    `<div class="vrow"><span class="label">RSSI</span><span>${m.status?.rssi?`${m.status.rssi} dBm`:'—'}</span></div>`+
-    `<div class="vrow"><span class="label">Connected SSID</span><span>${m.status?.ssid||'—'}</span></div>`+
-    `<div class="vrow"><span class="label">Free memory</span><span>${m.status?.freeMemory?`${m.status.freeMemory} KB`:'—'}</span></div>`+
-    `<div class="vrow"><span class="label">Uptime</span><span>${fmtUptime(m.status?.uptime)}</span></div>`+
-    `<div class="vrow"><span class="label">SD card</span><span>${sdBadge}</span></div>`+
-    `<div class="vrow"><span class="label">Config version</span><span>v${m.config_version||0}</span></div>`+
-    `<div class="vrow"><span class="label">Reset reason</span><span>${m.status?.resetReason||'—'}</span></div>`+
-    `<div style="padding:12px 16px"><button class="btn full danger" onclick="if(confirm('Factory reset? Device will wipe local config and return to setup mode.'))sendCommand('factory-reset')">Factory reset device</button></div>`;
-
-  const logRows = (LOGS.preview||[]).map(l=>`<div class="log-row" style="font-family:var(--mono)"><span style="white-space:pre-wrap;word-break:break-word">${l.replace(/</g,'&lt;')}</span></div>`).join('');
-  const logExplorerContent =
-    `<div class="field"><div class="field-label"><div class="name">Filter logs</div><div class="desc">Search and filter the latest uploaded SD log package.</div></div><div style="display:flex;gap:8px;align-items:center"><input id="log_q" type="text" class="wide" placeholder="search text"><select id="log_lvl"><option value="">All</option><option value="ERR">ERR</option><option value="NET">NET</option><option value="CFG">CFG</option><option value="SYS">SYS</option><option value="BG">BG</option><option value="CMD">CMD</option></select><button class="btn" onclick="loadLogs()">Run</button></div></div>`+
-    `<div class="diag-row"><span>Matched lines</span><span style="font-size:12px;color:var(--muted)">${LOGS.total||0}</span></div>`+
-    (logRows||`<div class="diag-row"><span style="color:var(--muted)">No log lines loaded yet</span></div>`);
-
-  const maintContent =
-    `<div class="vrow"><span class="label">Auto reboot</span><span>${MAINT?.rebootSchedule||'Daily 03:00 local'}</span></div>`+
-    `<div class="vrow"><span class="label">Last reset reason</span><span>${MAINT?.lastResetReason||m.status?.resetReason||'—'}</span></div>`+
-    `<div class="vrow"><span class="label">BG fail streak</span><span>${MAINT?.sourceFailStreak??m.status?.bgPollFailStreak??0}</span></div>`+
-    `<div class="vrow"><span class="label">Key rotation due</span><span>${MAINT?.keyRotationDueInMs!==undefined?fmtCountdown(MAINT.keyRotationDueInMs):'—'}</span></div>`+
-    `<div class="vrow"><span class="label">NS secret age</span><span>${MAINT?.nightscoutSecretAgeDays==null?'—':MAINT.nightscoutSecretAgeDays+'d'}</span></div>`+
-    `<div class="vrow"><span class="label">Dexcom pass age</span><span>${MAINT?.dexcomPassAgeDays==null?'—':MAINT.dexcomPassAgeDays+'d'}</span></div>`+
-    `<div class="vrow"><span class="label">Rotation reminders</span><span>${(m.reminders||[]).length?`${m.reminders.length} pending`:'none'}</span></div>`;
-
-  // Enrolled devices section
-  const devList = DEVICES_DATA?.devices || [];
-  const devicesContent = devList.length === 0
-    ? `<div style="padding:16px;font-size:13px;color:var(--muted)">No enrolled devices. Flash firmware with the default key — the device will self-enroll on first boot.</div>`
-    : devList.map(d => {
-        const enrolledAt = d.enrolledAt ? new Date(d.enrolledAt).toLocaleString([],{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',hour12:true}) : '—';
-        const lastSeen = d.lastSeen ? fmtTs(d.lastSeen) : '—';
-        const cfgBadge = d.hasPerDeviceConfig ? badge('Custom','amber') : badge('Default','green');
-        const panelId = `dpanel-${d.chipId}`;
-        const panel = `<div id="${panelId}" style="display:none;padding:12px 16px;border-top:1px solid rgba(255,255,255,.07)">
-          <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Per-device config overrides</div>
-          ${field('Timezone override','Leave blank to use global timezone.',`<input type="text" id="dtz-${d.chipId}" class="wide" placeholder="e.g. US/Central" value="${d.perDeviceConfig?.timezone||''}">`)  }
-          ${field('Poll interval','Minutes between BG checks.',sel(`dpoll-${d.chipId}`,[[1,'1 min'],[5,'5 min'],[10,'10 min']],d.perDeviceConfig?.poll_interval_min||''))}
-          ${field('Stale warning','Minutes before stale reading banner shows.',sel(`dstale-${d.chipId}`,[[5,'5 min'],[10,'10 min'],[15,'15 min'],[20,'20 min']],d.perDeviceConfig?.stale_data_warn_min||''))}
-          <div style="display:flex;gap:8px;padding-top:4px">
-            <button class="btn primary" onclick="saveDeviceConfig('${d.chipId}')">Save overrides</button>
-            <button class="btn" onclick="clearDeviceConfig('${d.chipId}')">Clear overrides</button>
-          </div>
-        </div>`;
-        return `<div style="border:1px solid rgba(255,255,255,.07);border-radius:8px;margin:8px 16px;overflow:hidden">
-          <div style="display:flex;align-items:center;gap:10px;padding:10px 14px">
-            <div style="flex:1;min-width:0">
-              <div style="font-size:13px;font-weight:600;font-family:var(--mono)">${d.chipId.slice(-8)}</div>
-              <div style="font-size:11px;color:var(--muted);margin-top:2px">Enrolled ${enrolledAt} · Last seen ${lastSeen} · Key: <code>…${d.keyTail||'????'}</code></div>
-            </div>
-            ${cfgBadge}
-            <button class="btn" onclick="toggleDevicePanel('${d.chipId}')">Configure</button>
-            <button class="btn danger" onclick="revokeDevice('${d.chipId}')">Revoke</button>
-          </div>
-          ${panel}
-        </div>`;
-      }).join('')+
-    `<div style="padding:12px 16px"><button class="btn" onclick="fetchDevices().then(()=>render())">Refresh</button></div>`;
-
-  const connectionLabel = m.status?.connection || 'Unknown';
-  const sourceLabel = c.dexcom_user ? 'Dexcom primary' : (c.nightscout_url ? 'Nightscout only' : 'Source not set');
-  const lastSeenLabel = fmtTs(m.status?.lastSeen);
-
-  const primaryCards = `
-      <div class="flow-grid">
-        ${section('wifi','icon-wifi',wifiIcon,'Connect to Wi-Fi','Your home network SSID and password',wifiContent)}
-        ${section('ns','icon-dex',dexIcon,'Glucose sources','Dexcom primary · Nightscout fallback',nsContent)}
-        ${section('alerts','icon-alert',alertIcon,'Glucose targets','Ranges used for alerts and display color coding',alertContent)}
-        ${section('display','icon-display',displayIcon,'Screen & quiet hours','Clock style, brightness, and DND schedule',displayContent)}
-        ${section('pushover','icon-pushover',pushoverIcon,'Phone alerts','Urgent alerts and daily digest via Pushover',pushoverContent)}
-        ${section('digest','icon-ai',aiIcon,'AI daily summary','Review and schedule your glucose summary',digestContent)}
-        ${section('pump','icon-display',pumpIcon,'Insulin profile','Optional context for smarter AI summaries',pumpContent)}
-      </div>`;
-
-  const advancedDrawer = `
-    <div class="advanced-overlay${gAdvancedOpen?' show':''}" onclick="toggleAdvancedDrawer(false)"></div>
-    <aside class="advanced-drawer${gAdvancedOpen?' show':''}">
-      <div class="drawer-head">
-        <div>
-          <div class="drawer-title">Advanced tools</div>
-          <div class="drawer-sub">Technical controls moved here so daily setup stays simple.</div>
+  // ── Advanced drawer: Security ─────────────────────────────────────────────
+  const secCard=card('adv-sec','ci-sec',iSec,'Security','Keys, access control, and protection policies',
+    row('Cloudflare Access','All admin routes are protected by Cloudflare Access JWT.',badge('Active','green'))+
+    row('Session timeout','',sel('session_timeout_min',[[15,'15 min'],[30,'30 min'],[60,'1 hour'],[240,'4 hours']],c.session_timeout_min))+
+    row('IP allowlist','Restrict Worker access to approved IPs only.',tog('ip_allowlist_enabled',c.ip_allowlist_enabled))+
+    row('Device API key','Primary key used by the BG MiniView hardware.',`<span class="kv">bg_ro_••••••••${m.keyTail||'????'}</span>`)+
+    row('Recovery key','Accepted by firmware after a local flash wipe when the primary key is gone.',
+      `<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+        <div style="display:flex;gap:8px;align-items:center">
+          <input id="recovery_device_key" type="password" class="w-wide" placeholder="bg_ro_…">
+          <button class="btn" onclick="setRecoveryKey()">Set</button>
+          <button class="btn danger" onclick="if(confirm('Clear recovery key?'))clearRecoveryKey()">Clear</button>
         </div>
+        <div style="font-size:11px;color:var(--text2)">${m.recoveryKeyEnabled?'Enabled · hash tail '+(m.recoveryKeyTail||'????')+(m.recoveryKeyUpdatedAt?' · updated '+fmtTs(m.recoveryKeyUpdatedAt):''):'Disabled'}</div>
+      </div>`)+
+    row('API key rotation',`Auto-rotates every 7 days · ${fmtCountdown(nextMs)} remaining`,
+      `<div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px">
+        <svg width="36" height="36" viewBox="0 0 36 36">
+          <circle cx="18" cy="18" r="15" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="3"/>
+          <circle cx="18" cy="18" r="15" fill="none" stroke="${color}" stroke-width="3" stroke-dasharray="${used.toFixed(1)} ${remain.toFixed(1)}" stroke-dashoffset="23.6" stroke-linecap="round" transform="rotate(-90 18 18)"/>
+          <text x="18" y="22" text-anchor="middle" font-size="9" fill="${color}" font-family="sans-serif" font-weight="600">${label}</text>
+        </svg>
+        ${m.pendingRotation?badge('ACK pending','amber'):badge('Active','green')}
+        <div class="rotate-meta">Rotated ${fmtTs(m.lastRotated)}</div>
+      </div>`)+
+    row('TLS certificate pinning','The device rejects unexpected server certificates.',badge('Active','green'))+
+    row('Rate limiting','Maximum requests allowed per minute.',sel('rate_limit_per_min',[[10,'10/min'],[15,'15/min'],[25,'25/min'],[30,'30/min'],[45,'45/min'],[60,'60/min']],c.rate_limit_per_min))+
+    row('Brute-force protection','Temporarily block access after repeated failed attempts.',tog('lockout_enabled',c.lockout_enabled!==false))+
+    subrow('Attempts before lockout',sel('lockout_attempts',[[3,'3 attempts'],[5,'5 attempts'],[10,'10 attempts']],c.lockout_attempts))+
+    subrow('Lockout duration',sel('lockout_duration_min',[[5,'5 minutes'],[15,'15 minutes'],[60,'1 hour']],c.lockout_duration_min))+
+    row('Last device IP','Masked for privacy.',`<span class="kv">${m.status?.ip||'—'}</span>`)+
+    row('Failed auth attempts','Last 24 hours.',badge(`${m.failedAuthCount||0}`,m.failedAuthCount>0?'red':'green'))+
+    `<div style="padding:10px 16px;background:rgba(255,255,255,.018);border-top:1px solid var(--border)">
+      <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:7px">Config change history <span style="font-weight:400;font-size:9.5px">(v${m.config_version||0})</span></div>
+      ${(m.changelog||[]).slice(0,5).map(l=>`<div class="chg-row"><span>${l.msg}</span><span style="flex-shrink:0">${fmtTs(l.ts)}</span></div>`).join('')||'<div style="font-size:12px;color:var(--text3);padding:2px 0">No changes recorded</div>'}
+      <div style="text-align:right;margin-top:7px"><button class="btn" onclick="clearLog()">Clear history</button></div>
+    </div>`
+  );
+
+  // ── Advanced drawer: Enrolled devices ────────────────────────────────────
+  const devList=DEVICES_DATA?.devices||[];
+  const devicesCard=card('adv-dev','ci-sec',iSec,'Enrolled devices','Per-device keys and configuration overrides',
+    devList.length===0
+      ?`<div style="padding:16px;font-size:13px;color:var(--text2)">No enrolled devices. Flash firmware with the default key — the device will self-enroll on first boot.</div>`
+      :devList.map(d=>{
+          const enrolledAt=d.enrolledAt?new Date(d.enrolledAt).toLocaleString([],{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',hour12:true}):'—';
+          return `<div class="dev-card">
+            <div class="dev-card-hdr">
+              <div style="flex:1;min-width:0">
+                <div style="font-size:13px;font-weight:600;font-family:var(--mono)">${d.chipId.slice(-8)}</div>
+                <div style="font-size:11px;color:var(--text2);margin-top:2px">Enrolled ${enrolledAt} · Last seen ${fmtTs(d.lastSeen)} · Key: …${d.keyTail||'????'}</div>
+              </div>
+              ${d.hasPerDeviceConfig?badge('Custom config','amber'):badge('Default config','green')}
+              <button class="btn" onclick="toggleDevicePanel('${d.chipId}')" style="margin-left:8px">Configure</button>
+              <button class="btn danger" onclick="revokeDevice('${d.chipId}')" style="margin-left:4px">Revoke</button>
+            </div>
+            <div id="dpanel-${d.chipId}" class="dev-panel">
+              <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">Per-device overrides</div>
+              ${row('Timezone override','Leave blank to use the global timezone.',`<input type="text" id="dtz-${d.chipId}" class="w-wide" placeholder="e.g. US/Central" value="${d.perDeviceConfig?.timezone||''}">`)  }
+              ${row('Refresh interval','',sel(`dpoll-${d.chipId}`,[[1,'1 min'],[5,'5 min'],[10,'10 min']],d.perDeviceConfig?.poll_interval_min||''))}
+              ${row('Stale warning','',sel(`dstale-${d.chipId}`,[[5,'5 min'],[10,'10 min'],[15,'15 min'],[20,'20 min']],d.perDeviceConfig?.stale_data_warn_min||''))}
+              <div style="display:flex;gap:8px;margin-top:8px">
+                <button class="btn primary" onclick="saveDeviceConfig('${d.chipId}')">Save overrides</button>
+                <button class="btn" onclick="clearDeviceConfig('${d.chipId}')">Clear overrides</button>
+              </div>
+            </div>
+          </div>`;
+        }).join('')+
+      `<div class="btn-row"><button class="btn" onclick="fetchDevices().then(()=>render())">Refresh</button></div>`
+  );
+
+  // ── Advanced drawer: Backup ──────────────────────────────────────────────
+  const backupCard=card('adv-bkp','ci-bkp',iBkp,'Backup &amp; restore','Export, import, and automatic snapshots',
+    row('Export settings','Download all settings as a JSON file.',`<button class="btn" onclick="exportConfig()">Export</button>`)+
+    row('Import settings','Restore settings from a previous JSON backup.',`<button class="btn" onclick="importConfig()">Import</button>`)+
+    row('Auto-backup on save','Save a KV snapshot each time settings are updated.',tog('auto_backup',c.auto_backup!==false))
+  );
+
+  // ── Advanced drawer: Maintenance ─────────────────────────────────────────
+  const maintCard=card('adv-maint','ci-ctrl',iSys,'Maintenance','Scheduled operations and system health',
+    `<div class="vrow"><span class="lbl">Auto reboot</span><span>${MAINT?.rebootSchedule||'Daily at 3:00 AM local'}</span></div>`+
+    `<div class="vrow"><span class="lbl">Last reset reason</span><span>${MAINT?.lastResetReason||m.status?.resetReason||'—'}</span></div>`+
+    `<div class="vrow"><span class="lbl">BG fetch fail streak</span><span>${MAINT?.sourceFailStreak??m.status?.bgPollFailStreak??0}</span></div>`+
+    `<div class="vrow"><span class="lbl">Key rotation due in</span><span>${MAINT?.keyRotationDueInMs!==undefined?fmtCountdown(MAINT.keyRotationDueInMs):'—'}</span></div>`+
+    `<div class="vrow"><span class="lbl">Nightscout secret age</span><span>${MAINT?.nightscoutSecretAgeDays==null?'—':MAINT.nightscoutSecretAgeDays+'d'}</span></div>`+
+    `<div class="vrow"><span class="lbl">Dexcom password age</span><span>${MAINT?.dexcomPassAgeDays==null?'—':MAINT.dexcomPassAgeDays+'d'}</span></div>`+
+    `<div class="vrow"><span class="lbl">Pending reminders</span><span>${(m.reminders||[]).length?badge(`${m.reminders.length} pending`,'amber'):'None'}</span></div>`
+  );
+
+  // ── Status strip ──────────────────────────────────────────────────────────
+  const connectionLabel=m.status?.connection||'—';
+  const sourceLabel=c.dexcom_user?'Dexcom + Nightscout':(c.nightscout_url?'Nightscout only':'Not configured');
+  const statStrip=`<div class="stat-strip">
+    <div class="stat-tile"><div class="k">Device</div><div class="v" style="color:${online?'var(--green)':'var(--red)'}">${online?'Online':'Offline'}</div></div>
+    <div class="stat-tile"><div class="k">Connection</div><div class="v">${connectionLabel}</div></div>
+    <div class="stat-tile"><div class="k">Last seen</div><div class="v">${fmtTs(m.status?.lastSeen)}</div></div>
+    <div class="stat-tile"><div class="k">Data source</div><div class="v">${sourceLabel}</div></div>
+  </div>`;
+
+  // ── Advanced drawer ───────────────────────────────────────────────────────
+  const advDrawer=`
+    <div class="overlay${gAdvancedOpen?' show':''}" onclick="toggleAdvancedDrawer(false)"></div>
+    <aside class="drawer${gAdvancedOpen?' show':''}">
+      <div class="drawer-hdr">
+        <div><div class="drawer-title">Advanced tools</div><div class="drawer-sub">Technical controls, security, diagnostics, and device management.</div></div>
         <div class="drawer-actions">
           <button class="btn primary" data-save-config="1" onclick="saveConfig()">Save changes</button>
           <button class="btn" onclick="toggleAdvancedDrawer(false)">Close</button>
         </div>
       </div>
-      <div class="drawer-chip-row">
-        <div class="toolbar-chip">Operations</div>
-        <div class="toolbar-chip">Diagnostics</div>
-        <div class="toolbar-chip">Security</div>
-        <div class="toolbar-chip">Logs and backups</div>
-      </div>
-      <div class="flow-grid">
-        ${section('control','icon-system',ctrlIcon,'Device actions','Run sync, reboot, and maintenance commands',controlContent)}
-        ${section('alerts_cloud','icon-alert',alertIcon,'Worker alert tuning','Server-side alert thresholds and cooldowns',alertTuningContent)}
-        ${section('diag','icon-diag',diagIcon,'Diagnostics','Connectivity and service checks',diagContent)}
-        ${section('insights','icon-diag',diagIcon,'Cloud insights','Telemetry trends and worker-side metrics',cloudInsightsContent)}
-        ${section('security','icon-security',secIcon,'Security','Access control, keys, and protection policies',secContent)}
-        ${section('devices','icon-security',secIcon,'Enrolled devices','Per-device keys and config overrides',devicesContent)}
-        ${section('backup','icon-backup',backupIcon,'Backup and restore','Export, import, and automatic snapshots',backupContent)}
-        ${section('maint','icon-system',sysIcon,'Maintenance center','Automation, rotations, and source health',maintContent)}
-        ${section('logs','icon-diag',diagIcon,'Log explorer','Search and inspect uploaded SD logs',logExplorerContent)}
+      <div class="drawer-body">
+        ${controlCard}${alertTuningCard}${diagCard}${insightsCard}${secCard}${devicesCard}${backupCard}${maintCard}
       </div>
     </aside>`;
 
-  document.getElementById('app').innerHTML = `
-  <div class="hero-wrap">
-    <div class="hero">
-      <h2>Device settings</h2>
-      <p>All settings in one view. Diagnostics and technical controls are in Advanced tools.</p>
-      <div class="hero-actions">
-        <div class="toolbar-chip">Dexcom primary · Nightscout fallback</div>
-        <div class="toolbar-chip">Config v${m.config_version||0}</div>
-        <button class="btn ghost" onclick="toggleAdvancedDrawer(true)">Advanced tools</button>
-      </div>
-    </div>
-    <div class="quick-grid">
-      <div class="quick-tile"><div class="k">Device status</div><div class="v">${online?'Online':'Offline'}</div></div>
-      <div class="quick-tile"><div class="k">Connection</div><div class="v">${connectionLabel}</div></div>
-      <div class="quick-tile"><div class="k">Last seen</div><div class="v">${lastSeenLabel}</div></div>
-      <div class="quick-tile"><div class="k">Data source</div><div class="v">${sourceLabel}</div></div>
-    </div>
-  </div>
-  <div class="stack">
-  ${primaryCards}
-  </div>
-  ${advancedDrawer}
-  </div>`;
+  // ── Assemble ──────────────────────────────────────────────────────────────
+  document.getElementById('app').innerHTML=`<div class="main-inner">
+    ${statStrip}
+    ${networkCard}${glucoseCard}${targetsCard}${displayCard}${notifsCard}${pumpCard}
+  </div>${advDrawer}`;
 
   syncWifiOpenUi();
   syncPumpProfileUi();
+  initNav();
 }
 
-// ── Init ──────────────────────────────────────────────────────────────────────
+// ── Data loading ──────────────────────────────────────────────────────────────
+async function loadMetrics(){
+  try{ const d=await apiGet('/api/admin/metrics'); METRICS=d||null; }catch(e){METRICS=null; }
+}
 async function loadConfig(){
   const data=await apiGet('/api/admin/config');
   CONFIG=data.config||{};
@@ -1258,25 +1071,44 @@ async function loadConfig(){
     recoveryKeyUpdatedAt:data.recoveryKeyUpdatedAt||null,
     pendingRotation:data.pendingRotation,config_version:data.config_version,
     pendingCommand:data.pendingCommand,lastCommandAck:data.lastCommandAck,
-    lastLogUpload:data.lastLogUpload,
-    reminders:data.reminders||[],
-    secretMeta:data.secretMeta||{},
-    configUpdatedAt:data.config_updated_at||null,
-    digest:data.digest||null,
-    pushoverConfigured:!!data.pushoverConfigured,
+    lastLogUpload:data.lastLogUpload,reminders:data.reminders||[],
+    secretMeta:data.secretMeta||{},configUpdatedAt:data.config_updated_at||null,
+    digest:data.digest||null,pushoverConfigured:!!data.pushoverConfigured,
   };
 }
 
+// ── Nav active state (IntersectionObserver) ───────────────────────────────────
+let _navObserver=null;
+function initNav(){
+  if(_navObserver) _navObserver.disconnect();
+  const secs=['sec-network','sec-glucose','sec-targets','sec-display','sec-notifs','sec-pump'];
+  const navItems=[
+    ...document.querySelectorAll('.sidenav .nav-item[data-sec]'),
+    ...document.querySelectorAll('.mobnav a[href]'),
+  ];
+  function setActive(id){
+    navItems.forEach(n=>{
+      const key=n.dataset?.sec||n.getAttribute('href')?.slice(1);
+      n.classList.toggle('active',key===id);
+    });
+  }
+  _navObserver=new IntersectionObserver(entries=>{
+    entries.forEach(e=>{ if(e.isIntersecting) setActive(e.target.id); });
+  },{rootMargin:'-35% 0px -55% 0px',threshold:0});
+  secs.forEach(id=>{ const el=document.getElementById(id); if(el) _navObserver.observe(el); });
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
 async function init(){
   try{
     await ensureSession();
-    await loadConfig();
-    await loadMetrics();
-    await loadMaintenance();
-    await fetchDevices();
+    await Promise.all([loadConfig(),loadMetrics(),loadMaintenance(),fetchDevices()]);
     render();
   }catch(e){
-    document.getElementById('app').innerHTML=`<div style="text-align:center;padding:3rem;color:var(--red)">Could not reach Worker at <code>${WORKER_URL}</code><br><small style="color:var(--muted);margin-top:8px;display:block">Check that wrangler is deployed and the URL is correct.</small></div>`;
+    document.getElementById('app').innerHTML=`<div class="main-inner" style="padding:2rem 0;color:var(--red)">
+      Could not reach the Worker at <code style="font-family:var(--mono);font-size:12px">${WORKER_URL}</code><br>
+      <span style="color:var(--text2);font-size:12px;display:block;margin-top:8px">Check that the Worker is deployed and the URL is correct.</span>
+    </div>`;
   }
 }
 init();
