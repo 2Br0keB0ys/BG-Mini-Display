@@ -8,6 +8,8 @@ param(
   [Parameter(Mandatory = $false)]
   [string]$InfisicalEnv = "production",
   [Parameter(Mandatory = $false)]
+  [string]$InfisicalProjectId = "",
+  [Parameter(Mandatory = $false)]
   [string]$WorkerUrl = "",
   [Parameter(Mandatory = $false)]
   [string]$DeviceKey = "",
@@ -36,7 +38,6 @@ $repoRoot      = Resolve-Path (Join-Path $scriptDir "..\..")
 $pioExe        = "$env:USERPROFILE\.platformio\penv\Scripts\pio.exe"
 $secureScript  = Join-Path $scriptDir "secure_provision.ps1"
 $syncScript    = Join-Path $scriptDir "firmware_secrets_sync.ps1"
-$enrollScript  = Join-Path $repoRoot "apps\cloudflare\scripts\enroll_device.ps1"
 
 $results = [ordered]@{}
 
@@ -105,6 +106,7 @@ if ($SkipSecretsSync) {
     $syncArgs = @{}
     if ($UseInfisical) {
       $syncArgs.InfisicalEnv = $InfisicalEnv
+      if ($InfisicalProjectId) { $syncArgs.InfisicalProjectId = $InfisicalProjectId }
     } else {
       $syncArgs.SkipInfisical = $true
       if ($WorkerUrl) { $syncArgs.WorkerUrl = $WorkerUrl }
