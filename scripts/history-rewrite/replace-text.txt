@@ -1,0 +1,16 @@
+# git-filter-repo replacement rules template
+# Keep this file free of real identifiers. Add project-specific mappings only when needed,
+# then remove or redact them after incident response work is complete.
+
+# Generic examples (safe placeholders)
+placeholder_old_value==>placeholder_new_value
+regex:bg_ro_[a-z0-9]{32}==>bg_ro_REDACTED_POSSIBLE_SECRET***REMOVED***
+***REMOVED***
+new==>new
+replacement==>replacement
+
+literal:bg_ro_REDACTED_ROTATED_KEY==>bg_ro_REDACTED_ROTATED_KEY
+literal:<REDACTED_INFISICAL_PROJECT_ID>==><REDACTED_INFISICAL_PROJECT_ID>
+literal:<REDACTED_DEVICE_MAC>==><REDACTED_DEVICE_MAC>
+literal:<REDACTED_DEVICE_CHIP_ID>==><REDACTED_DEVICE_CHIP_ID>
+regex:bg_ro_[a-z0-9]{32}==>bg_ro_REDACTED_POSSIBLE_SECRET
