@@ -55,7 +55,17 @@ if (-not (Test-Path $setupChecklyPath)) {
 }
 
 $infisicalEnabled = $UseInfisical -or (-not $SkipInfisical)
-$infisicalCliPath = "C:\Users\zaneb\AppData\Roaming\npm\infisical.cmd"
+function Resolve-InfisicalCliPath {
+  $cmd = Get-Command infisical -ErrorAction SilentlyContinue
+  if ($cmd) { return $cmd.Source }
+
+  $defaultPath = Join-Path $env:APPDATA "npm\infisical.cmd"
+  if (Test-Path $defaultPath) { return $defaultPath }
+
+  return $null
+}
+
+$infisicalCliPath = Resolve-InfisicalCliPath
 $infisicalAvailable = Test-Path $infisicalCliPath
 
 if ($infisicalEnabled -and -not $infisicalAvailable) {

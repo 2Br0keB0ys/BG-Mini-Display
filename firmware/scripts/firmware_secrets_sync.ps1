@@ -23,8 +23,18 @@ $repoRoot   = Resolve-Path (Join-Path $scriptDir "..\..")
 $defaultOut = Join-Path $repoRoot "firmware\src\secrets.h"
 if (-not $OutFile) { $OutFile = $defaultOut }
 
-$infisicalCliPath  = "C:\Users\zaneb\AppData\Roaming\npm\infisical.cmd"
-$infisicalAvailable = Test-Path $infisicalCliPath
+function Resolve-InfisicalCli {
+  $cmd = Get-Command infisical -ErrorAction SilentlyContinue
+  if ($cmd) { return $cmd.Source }
+
+  $defaultPath = Join-Path $env:APPDATA "npm\infisical.cmd"
+  if (Test-Path $defaultPath) { return $defaultPath }
+
+  return $null
+}
+
+$infisicalCliPath  = Resolve-InfisicalCli
+$infisicalAvailable = -not [string]::IsNullOrWhiteSpace($infisicalCliPath)
 
 if (-not $SkipInfisical -and $infisicalAvailable) {
   Write-Host "Hydrating firmware secrets from Infisical ($InfisicalEnv)..." -ForegroundColor Cyan

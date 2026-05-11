@@ -24,6 +24,9 @@ firmware/scripts/provision_logs/
 # Node modules if installed later
 **/node_modules/
 
+# Generated UI build output
+apps/ui/dist/
+
 # Cloudflare local secrets
 apps/cloudflare/.dev.vars
 **/.env

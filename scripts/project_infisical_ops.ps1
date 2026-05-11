@@ -51,8 +51,18 @@ $repoRoot = Resolve-Path (Join-Path $scriptDir "..")
 $cloudflareDir = Join-Path $repoRoot "apps\cloudflare"
 
 $infisicalEnabled = -not $SkipInfisical
-$infisicalCliPath = "C:\Users\zaneb\AppData\Roaming\npm\infisical.cmd"
-$infisicalAvailable = Test-Path $infisicalCliPath
+function Resolve-InfisicalCli {
+  $cmd = Get-Command infisical -ErrorAction SilentlyContinue
+  if ($cmd) { return $cmd.Source }
+
+  $defaultPath = Join-Path $env:APPDATA "npm\infisical.cmd"
+  if (Test-Path $defaultPath) { return $defaultPath }
+
+  return $null
+}
+
+$infisicalCliPath = Resolve-InfisicalCli
+$infisicalAvailable = -not [string]::IsNullOrWhiteSpace($infisicalCliPath)
 
 if ($infisicalEnabled -and -not $infisicalAvailable) {
   Write-Host "Infisical CLI not found at $infisicalCliPath" -ForegroundColor Yellow

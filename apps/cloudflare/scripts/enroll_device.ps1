@@ -15,10 +15,20 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Resolve-InfisicalCli {
+  $cmd = Get-Command infisical -ErrorAction SilentlyContinue
+  if ($cmd) { return $cmd.Source }
+
+  $defaultPath = Join-Path $env:APPDATA "npm\infisical.cmd"
+  if (Test-Path $defaultPath) { return $defaultPath }
+
+  return $null
+}
+
 # ── Infisical hydration ────────────────────────────────────────────────────────
 if ($UseInfisical) {
-  $infisicalCli = "C:\Users\zaneb\AppData\Roaming\npm\infisical.cmd"
-  if (Test-Path $infisicalCli) {
+  $infisicalCli = Resolve-InfisicalCli
+  if ($infisicalCli) {
     Write-Host "Hydrating from Infisical ($InfisicalEnv)..." -ForegroundColor Cyan
     $exportArgs = @("--silent", "export", "--env", $InfisicalEnv, "--format", "json")
     if ($InfisicalProjectId) { $exportArgs += @("--projectId", $InfisicalProjectId) }
@@ -106,8 +116,8 @@ try {
 
   # Store in Infisical under bg_device_<chipId>_KEY
   if ($UseInfisical) {
-    $infisicalCli = "C:\Users\zaneb\AppData\Roaming\npm\infisical.cmd"
-    if (Test-Path $infisicalCli) {
+    $infisicalCli = Resolve-InfisicalCli
+    if ($infisicalCli) {
       Write-Host "Storing key in Infisical as bg_device_${ChipId}_KEY ..." -ForegroundColor Cyan
       $secretName = "bg_device_${ChipId}_KEY"
       try {

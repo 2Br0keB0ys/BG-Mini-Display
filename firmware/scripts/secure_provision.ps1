@@ -5,8 +5,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$python = "C:\Users\zaneb\.platformio\penv\Scripts\python.exe"
-$toolRoot = "C:\Users\zaneb\.platformio\packages\tool-esptoolpy"
+$python = Join-Path $env:USERPROFILE ".platformio\penv\Scripts\python.exe"
+$toolRoot = Join-Path $env:USERPROFILE ".platformio\packages\tool-esptoolpy"
 $espefuse = Join-Path $toolRoot "espefuse.py"
 $espsecure = Join-Path $toolRoot "espsecure.py"
 
