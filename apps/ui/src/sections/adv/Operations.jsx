@@ -12,16 +12,24 @@ export function DeviceActions({ meta, onCommand, showToast }) {
   const cmd = meta.pendingCommand;
   const ack = meta.lastCommandAck;
   const log = meta.lastLogUpload;
+  const ota = meta.otaRelease;
 
   return (
     <Card iconClass="ic-system" icon={ctrlIcon} title="Device actions" sub="Sync, reboot, maintenance">
       <Field label="Quick actions">
         <div className="quick-action-grid">
           <button className="btn" onClick={() => onCommand('sync-now')}>Sync now</button>
+          <button className="btn" onClick={() => onCommand('ota-check')}>Check OTA</button>
+          <button className="btn" disabled={!ota} onClick={() => onCommand('ota-apply')}>Apply OTA</button>
           <button className="btn" onClick={() => onCommand('upload-logs')}>Pull SD logs</button>
           <button className="btn btn-danger" onClick={() => onCommand('reboot')}>Reboot</button>
           <button className="btn btn-danger" onClick={() => { if (confirm('Queue factory reset? Device will wipe local config.')) onCommand('factory-reset'); }}>Factory reset</button>
         </div>
+      </Field>
+      <Field label="Prepared OTA release" desc={ota ? `Channel ${ota.channel || 'stable'} · published ${fmtTs(ota.publishedAt)}` : 'No OTA release metadata has been prepared yet.'}>
+        {ota
+          ? <span className="row-meta">v{ota.version}{ota.mandatory ? ' · mandatory' : ''}{ota.sizeBytes ? ` · ${Math.round(ota.sizeBytes / 1024)} KB` : ''}</span>
+          : <span className="row-meta">—</span>}
       </Field>
       <Field label="Latest SD log upload" desc={log ? `${log.lineCount || 0} lines, ${log.bytes || 0} bytes · ${fmtTs(log.uploadedAt)}` : 'No uploads yet'}>
         {log && <button className="btn" onClick={() => { const s = getSession(); window.open(`${WORKER_URL}/api/admin/logs/latest?download=1&session=${encodeURIComponent(s)}`, '_blank'); }}>Download</button>}

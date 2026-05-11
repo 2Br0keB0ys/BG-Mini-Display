@@ -117,6 +117,10 @@ const DEFAULT_CONFIG = {
   dnd_use_schedule: true,
   dnd_schedule: DEFAULT_DND_SCHEDULE,
   clock_24hr: false, timezone: "US/Central",
+  // Cloudflare OTA
+  ota_enabled: true,
+  ota_check_min: 360,
+  ota_channel: "stable",
   // Security
   rate_limit_per_min: 45, lockout_enabled: true,
   lockout_attempts: 5, lockout_duration_min: 15,
@@ -168,6 +172,9 @@ function normalizeConfig(cfg) {
   out.dnd_schedule = normalizeDndSchedule(out.dnd_schedule, out.dnd_from, out.dnd_to);
   out.pushover_alert_cooldown_min = Math.max(5, Math.min(60, Number(out.pushover_alert_cooldown_min || 15)));
   out.digest_pushover_hour = Math.max(0, Math.min(23, Number(out.digest_pushover_hour ?? 7)));
+  out.ota_enabled = out.ota_enabled !== false;
+  out.ota_check_min = Math.max(30, Math.min(1440, Number(out.ota_check_min || 360)));
+  out.ota_channel = String(out.ota_channel || "stable").trim().toLowerCase().slice(0, 15) || "stable";
   const pumpType = String(out.insulin_pump_type || "none").trim().toLowerCase();
   out.insulin_pump_type = ["none", "pump", "patch-pump"].includes(pumpType) ? pumpType : "none";
   out.insulin_pump_brand = String(out.insulin_pump_brand || "").trim().slice(0, 40);
@@ -618,6 +625,87 @@ function buildDigestStorageMeta(type, now = new Date()) {
     date: central.date,
     hour: central.hour,
     key: type === "hourly" ? `hourly_digest_${central.hour}` : "daily_digest",
+  };
+}
+
+function parseVersionParts(version) {
+  return String(version || "")
+    .trim()
+    .replace(/^[^\d]*/, "")
+    .split(/[.-]/)
+    .map(part => parseInt(part, 10))
+    .filter(part => Number.isFinite(part));
+}
+
+function compareVersions(a, b) {
+  const left = parseVersionParts(a);
+  const right = parseVersionParts(b);
+  const len = Math.max(left.length, right.length);
+  for (let i = 0; i < len; i++) {
+    const l = left[i] || 0;
+    const r = right[i] || 0;
+    if (l > r) return 1;
+    if (l < r) return -1;
+  }
+  return 0;
+}
+
+function normalizeOtaRelease(input, fallbackChannel = "stable") {
+  if (!input || typeof input !== "object") return null;
+  const channel = String(input.channel || fallbackChannel || "stable").trim().toLowerCase().slice(0, 15) || "stable";
+  const version = String(input.version || "").trim().slice(0, 24);
+  const r2Key = String(input.r2Key || input.r2_key || "").trim();
+  const md5 = String(input.md5 || "").trim().toLowerCase();
+  const sha256 = String(input.sha256 || "").trim().toLowerCase();
+  const notes = String(input.notes || "").trim().slice(0, 400);
+  const sizeBytes = Number(input.sizeBytes ?? input.size_bytes ?? 0);
+  const mandatory = !!input.mandatory;
+  if (!version || !r2Key) return null;
+  return {
+    channel,
+    version,
+    r2Key,
+    md5,
+    sha256,
+    notes,
+    sizeBytes: Number.isFinite(sizeBytes) && sizeBytes > 0 ? sizeBytes : 0,
+    mandatory,
+    publishedAt: Number(input.publishedAt || Date.now()),
+  };
+}
+
+async function getOtaRelease(env, channel = "stable") {
+  const safeChannel = String(channel || "stable").trim().toLowerCase().slice(0, 15) || "stable";
+  const stored = await env.BGDISPLAY_CONFIG.get(`ota_release:${safeChannel}`, { type: "json" });
+  return normalizeOtaRelease(stored, safeChannel);
+}
+
+async function buildOtaDownloadSignature(auth, channel, version, expiresAt, chipId = "") {
+  return hmacSha256Hex(auth?.keyHash || "", `ota-download|${channel}|${version}|${expiresAt}|${chipId}`);
+}
+
+async function buildOtaManifestResponse(request, env, auth, release) {
+  if (!release) return { available: false };
+  const current = String(new URL(request.url).searchParams.get("current") || "").trim();
+  if (current && compareVersions(release.version, current) <= 0) {
+    return { available: false, current, latest: release.version, channel: release.channel };
+  }
+  const chipId = (request.headers.get("X-Device-Id") || "").trim().toLowerCase();
+  const expiresAt = Date.now() + (10 * 60 * 1000);
+  const signature = await buildOtaDownloadSignature(auth, release.channel, release.version, expiresAt, chipId);
+  const downloadPath = `/api/ota/download/${encodeURIComponent(release.channel)}/${encodeURIComponent(release.version)}?exp=${expiresAt}&sig=${signature}${chipId ? `&chip=${encodeURIComponent(chipId)}` : ""}`;
+  return {
+    available: true,
+    channel: release.channel,
+    version: release.version,
+    notes: release.notes,
+    mandatory: release.mandatory,
+    sizeBytes: release.sizeBytes,
+    md5: release.md5 || "",
+    sha256: release.sha256 || "",
+    publishedAt: release.publishedAt,
+    downloadUrl: `${new URL(request.url).origin}${downloadPath}`,
+    expiresAt,
   };
 }
 
@@ -2167,6 +2255,54 @@ export default {
       return json({ ok: true });
     }
 
+    // ── GET /api/ota/manifest ───────────────────────────────────────────────
+    if (path === "/api/ota/manifest" && method === "GET") {
+      const deviceKey = request.headers.get("X-Device-Key");
+      if (!deviceKey) return json({ error: "Missing key" }, 401);
+      const keyHash = await sha256(deviceKey);
+      if (!isDeviceKeyValid(auth, keyHash)) return json({ error: "Invalid key" }, 401);
+      const sig = await verifyDeviceSignature(request, env, keyHash, "");
+      if (!sig.ok) return json({ error: sig.error }, 401);
+
+      const channel = String(url.searchParams.get("channel") || config.ota_channel || "stable").trim().toLowerCase();
+      const release = await getOtaRelease(env, channel);
+      return json(await buildOtaManifestResponse(request, env, auth, release));
+    }
+
+    // ── GET /api/ota/download/:channel/:version ─────────────────────────────
+    if (path.startsWith("/api/ota/download/") && method === "GET") {
+      const parts = path.split("/").filter(Boolean);
+      const channel = decodeURIComponent(parts[3] || "").trim().toLowerCase();
+      const version = decodeURIComponent(parts[4] || "").trim();
+      const expiresAt = Number(url.searchParams.get("exp") || 0);
+      const sig = String(url.searchParams.get("sig") || "").trim().toLowerCase();
+      const chipId = String(url.searchParams.get("chip") || "").trim().toLowerCase();
+      if (!channel || !version || !expiresAt || !sig) return json({ error: "Invalid OTA download request" }, 400);
+      if (Date.now() > expiresAt) return json({ error: "OTA download link expired" }, 410);
+
+      const release = await getOtaRelease(env, channel);
+      if (!release || release.version !== version) return json({ error: "Release not found" }, 404);
+
+      const expected = await buildOtaDownloadSignature(auth, channel, version, expiresAt, chipId);
+      if (expected !== sig) return json({ error: "Invalid OTA download signature" }, 401);
+      if (!env.FIRMWARE_BUCKET) return json({ error: "Firmware bucket binding not configured" }, 503);
+
+      const object = await env.FIRMWARE_BUCKET.get(release.r2Key);
+      if (!object) return json({ error: "Firmware artifact missing" }, 404);
+
+      const headers = new Headers({
+        "Content-Type": "application/octet-stream",
+        "Cache-Control": "private, max-age=60",
+        "Content-Disposition": `attachment; filename="bg-miniview-${release.version}.bin"`,
+        "X-BG-Release-Version": release.version,
+      });
+      if (release.md5) headers.set("x-MD5", release.md5);
+      if (release.sha256) headers.set("X-BG-SHA256", release.sha256);
+      if (release.sizeBytes > 0) headers.set("Content-Length", String(release.sizeBytes));
+
+      return new Response(object.body, { status: 200, headers });
+    }
+
     // ── GET /api/digest — Device fetches AI daily summary ────────────────────
     if (path === "/api/digest" && method === "GET") {
       const deviceKey = request.headers.get("X-Device-Key");
@@ -2243,6 +2379,7 @@ export default {
       const failedAuth = await env.BGDISPLAY_AUTH.get("failed_auth_24h",     { type: "json" }) || { count: 0 };
       const version    = await getConfigVersion(env);
       const digest     = await env.BGDISPLAY_CONFIG.get("daily_digest",      { type: "json" }) || null;
+      const otaRelease = await getOtaRelease(env, config.ota_channel || "stable");
       const pushoverConfigured = !!(await env.BGDISPLAY_CONFIG.get("pushover_creds"));
 
       const offlineMin = Number(config?.alert_offline_min || 15);
@@ -2285,6 +2422,7 @@ export default {
         config_updated_at: configUpdatedAt,
         device_config_version: status?.config_version || 0,
         digest,
+        otaRelease,
         pushoverConfigured,
       });
     }
@@ -2368,6 +2506,36 @@ export default {
       return json({ metrics: computeMetrics(status, telemetry, events), telemetryRecent: telemetry.slice(0, 120), workerEvents: events.slice(0, 40) });
     }
 
+    if (path === "/api/admin/ota" && method === "GET") {
+      const channel = String(url.searchParams.get("channel") || config.ota_channel || "stable").trim().toLowerCase();
+      const otaRelease = await getOtaRelease(env, channel);
+      return json({ channel, otaRelease, bucketConfigured: !!env.FIRMWARE_BUCKET });
+    }
+
+    if (path === "/api/admin/ota" && method === "POST") {
+      if (!(await checkRateLimit(env, `admin-write:${ip}`, config.admin_write_rate_limit_per_min || 15))) {
+        return json({ error: "Admin write rate limit exceeded" }, 429);
+      }
+      const body = await request.json().catch(() => null);
+      if (!body || typeof body !== "object") return json({ error: "Invalid JSON" }, 400);
+      const release = normalizeOtaRelease(body, body.channel || config.ota_channel || "stable");
+      if (!release) return json({ error: "Missing or invalid OTA release metadata" }, 400);
+      await env.BGDISPLAY_CONFIG.put(`ota_release:${release.channel}`, JSON.stringify(release));
+      await appendChangeLog(env, `OTA release prepared: ${release.channel} ${release.version}`);
+      await appendWorkerEvent(env, { type: "ota-release", channel: release.channel, version: release.version });
+      return json({ ok: true, otaRelease: release, bucketConfigured: !!env.FIRMWARE_BUCKET });
+    }
+
+    if (path === "/api/admin/ota" && method === "DELETE") {
+      if (!(await checkRateLimit(env, `admin-write:${ip}`, config.admin_write_rate_limit_per_min || 15))) {
+        return json({ error: "Admin write rate limit exceeded" }, 429);
+      }
+      const channel = String(url.searchParams.get("channel") || config.ota_channel || "stable").trim().toLowerCase();
+      await env.BGDISPLAY_CONFIG.delete(`ota_release:${channel}`);
+      await appendChangeLog(env, `OTA release cleared: ${channel}`);
+      return json({ ok: true, channel });
+    }
+
     if (path === "/api/admin/digest" && method === "GET") {
       const digest = await env.BGDISPLAY_CONFIG.get("daily_digest", { type: "json" });
       if (!digest) return json({ available: false });
@@ -2424,7 +2592,7 @@ export default {
       if (!adminReplay.ok) return json({ error: adminReplay.error }, 409);
       const body = await request.json().catch(() => null);
       if (!body?.type) return json({ error: "Missing command type" }, 400);
-      const allowed = ["reboot", "sync-now", "upload-logs", "factory-reset", "fetch-digest", "display-message"];
+      const allowed = ["reboot", "sync-now", "upload-logs", "factory-reset", "fetch-digest", "display-message", "ota-check", "ota-apply"];
       if (!allowed.includes(body.type)) return json({ error: "Unsupported command" }, 400);
       const cmd = { id: crypto.randomUUID(), type: body.type, args: body.args || {}, createdAt: Date.now(), expiresAt: Date.now() + 10 * 60 * 1000 };
       await env.BGDISPLAY_CONFIG.put("command:all", JSON.stringify(cmd));

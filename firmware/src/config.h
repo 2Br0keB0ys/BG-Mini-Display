@@ -3,7 +3,7 @@
 #include <Preferences.h>
 #include "crypto.h"
 
-#define FIRMWARE_VERSION "4.1.0"
+#define FIRMWARE_VERSION "4.1.1"
 
 #ifndef ENABLE_OTA
 #define ENABLE_OTA 1
@@ -63,6 +63,11 @@ struct AppConfig {
   bool clock24hr=false;
   char timezone[32]="US/Central";
 
+  // Cloudflare OTA
+  bool otaEnabled=true;
+  int  otaCheckMin=360;
+  char otaChannel[16]="stable";
+
   // Last known config version from Worker
   int  lastConfigVersion=0;
 
@@ -88,6 +93,10 @@ inline void sanitizeConfig(AppConfig& c) {
 
   if (c.glookoPollMin < 30)  c.glookoPollMin = 30;
   if (c.glookoPollMin > 240) c.glookoPollMin = 240;
+
+  if (c.otaCheckMin < 30)  c.otaCheckMin = 30;
+  if (c.otaCheckMin > 1440) c.otaCheckMin = 1440;
+  if (!strlen(c.otaChannel)) strlcpy(c.otaChannel, "stable", sizeof(c.otaChannel));
 }
 
 // Save config — sensitive fields encrypted, rest plain
@@ -127,6 +136,9 @@ inline void saveConfig(Preferences& p, const AppConfig& c) {
   p.putInt("cfgVersion",    c.lastConfigVersion);
   p.putBool("glookoEn",     c.glookoEnabled);
   p.putInt("glookoMin",     c.glookoPollMin);
+  p.putBool("otaEnable",    c.otaEnabled);
+  p.putInt("otaCheckMin",   c.otaCheckMin);
+  p.putString("otaChannel", c.otaChannel);
 
   // Encrypted sensitive fields
   nvsPutEncrypted(p, "deviceKey",  c.deviceKey);
@@ -174,6 +186,9 @@ inline void loadConfig(Preferences& p, AppConfig& c) {
   c.lastConfigVersion  = p.getInt("cfgVersion",0);
   c.glookoEnabled      = p.getBool("glookoEn", false);
   c.glookoPollMin      = p.getInt("glookoMin", 30);
+  c.otaEnabled         = p.getBool("otaEnable", true);
+  c.otaCheckMin        = p.getInt("otaCheckMin", 360);
+  strlcpy(c.otaChannel, p.getString("otaChannel","stable").c_str(), sizeof(c.otaChannel));
 
   // Decrypt sensitive fields
   String dk = nvsGetEncrypted(p, "deviceKey");

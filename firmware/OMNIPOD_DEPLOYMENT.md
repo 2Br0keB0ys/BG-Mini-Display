@@ -31,7 +31,6 @@ The display uses **severity-based selection**: the most critical condition from 
 ✅ Firmware compiled successfully: 1.24 MB
 ✅ Compilation time: ~49-61 seconds
 ✅ Zero compilation errors
-✅ Zero compilation warnings
 ✅ All thresholds properly evaluated
 ✅ Ready for M5Stack Core2 deployment
 
@@ -40,11 +39,11 @@ The display uses **severity-based selection**: the most critical condition from 
 ### Prerequisites
 - M5Stack Core2 device with USB-C cable
 - PlatformIO Core installed
-- Workspace: `n:\vsCode\bgdisplay\firmware\bgdisplay`
+- Workspace root: `n:\vsCode\bgdisplay`
 
 ### Deploy to Device
 ```bash
-cd n:\vsCode\bgdisplay\firmware\bgdisplay
+cd n:\vsCode\bgdisplay
 pio run -t upload
 ```
 
@@ -83,8 +82,8 @@ pio run -t upload
 
 ## Firmware Information
 - **Platform:** ESP32 (M5Stack Core2)
-- **Build Size:** 1,298,048 bytes (19.7% of 6.5MB flash)
-- **RAM Usage:** 63,504 bytes (1.4% of 4.5MB)
+- **Build Size:** ~1.31 MB (varies by build)
+- **RAM Usage:** ~63 KB (varies by build)
 - **Build Date:** April 26, 2026
 - **Status:** Production Ready
 

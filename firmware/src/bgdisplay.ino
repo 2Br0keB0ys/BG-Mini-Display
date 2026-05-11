@@ -46,6 +46,7 @@ unsigned long lastConfigPing  = 0;
 unsigned long lastStatusPush  = 0;
 unsigned long lastCommandPoll = 0;
 unsigned long lastLogUpload   = 0;
+unsigned long lastOTACheck    = 0;
 unsigned long lastTimeDraw    = 0;
 unsigned long bootTime        = millis();
 unsigned long lastNoSourceWarn = 0;
@@ -71,6 +72,7 @@ int           gDigestFetchDay = -1; // local yday of last successful digest fetc
 bool gFactoryResetArmed = false;
 unsigned long gFactoryResetArmMs = 0;
 bool gLogUploadActive = false;   // set true during uploadSdLogs, prevents concurrent auto-reboot
+bool gOtaUpdateActive = false;
 
 String normalizeWorkerBase(const char* raw) {
   String base = raw ? String(raw) : String("");
@@ -557,6 +559,17 @@ void loop() {
     gLogUploadActive = false;
   }
 
+  if (appConfig.otaEnabled && WiFi.status() == WL_CONNECTED) {
+    unsigned long otaCheckMs = (unsigned long)appConfig.otaCheckMin * 60000UL;
+    if (now - lastOTACheck > otaCheckMs) {
+      lastOTACheck = now;
+      CloudOtaReleaseInfo release;
+      if (fetchCloudOtaRelease(appConfig, release) && release.available) {
+        sdLogfEx("OTA", "OTA", "available version:%s channel:%s", release.version, release.channel);
+      }
+    }
+  }
+
   // BG poll — every pollIntervalMin
   bool hasDexcomCfg = strlen(appConfig.dexcomUser) > 0 && strlen(appConfig.dexcomPass) > 0;
   bool hasNightscoutCfg = strlen(appConfig.nightscoutUrl) > 0;
@@ -691,7 +704,7 @@ void checkDailyAutoReboot() {
   if (lastStamp == dayStamp) return;
 
   // Guard: don't reboot while a log upload or OTA update is in-flight.
-  if (gLogUploadActive) return;
+  if (gLogUploadActive || gOtaUpdateActive) return;
 
   prefs.putInt("autoRbDay", dayStamp);
   sdLogfEx("SYS", "SYS", "daily_auto_reboot dayStamp:%d", dayStamp);
@@ -892,6 +905,9 @@ void pullCloudflareConfig(AppConfig& cfg, Preferences& p) {
     if (c.containsKey("dnd_to"))              strlcpy(cfg.dndTo,        c["dnd_to"],         8);
     if (c.containsKey("glooko_enabled"))      cfg.glookoEnabled    = c["glooko_enabled"];
     if (c.containsKey("glooko_poll_min"))     cfg.glookoPollMin    = c["glooko_poll_min"];
+    if (c.containsKey("ota_enabled"))         cfg.otaEnabled       = c["ota_enabled"];
+    if (c.containsKey("ota_check_min"))       cfg.otaCheckMin      = c["ota_check_min"];
+    if (c.containsKey("ota_channel"))         strlcpy(cfg.otaChannel, c["ota_channel"], sizeof(cfg.otaChannel));
 
     if (c.containsKey("dnd_schedule") && c["dnd_schedule"].is<JsonObject>()) {
       static const char* kDays[7] = {"sun", "mon", "tue", "wed", "thu", "fri", "sat"};
@@ -1060,6 +1076,8 @@ bool pushStatus(AppConfig& cfg) {
     // AI digest availability — lets MCP see whether the device has a cached digest
     doc["digestAvailable"]  = strlen(gDigestText) > 0;
     if (gDigestFetchDay >= 0) doc["digestFetchDay"] = gDigestFetchDay;
+    doc["otaEnabled"]       = cfg.otaEnabled;
+    doc["otaChannel"]       = cfg.otaChannel;
     // Omnipod / pump proxy status (only when enabled and valid data available)
     if (cfg.glookoEnabled) {
       doc["glookoEnabled"] = true;
@@ -1183,6 +1201,59 @@ void pollCloudflareCommand(AppConfig& cfg, Preferences& p) {
       setDisplayBanner(dispState, "No digest available", CLR_DIM, 2500UL);
     }
     ackCloudflareCommand(cfg, cmdId, true, strlen(gDigestText) ? "digest shown" : "no digest");
+    return;
+  }
+
+  if (!strcmp(cmdType, "ota-check")) {
+    sdLog("CMD", "Executing command: ota-check");
+    CloudOtaReleaseInfo release;
+    if (!fetchCloudOtaRelease(cfg, release)) {
+      setDisplayBanner(dispState, "OTA check failed", CLR_RED, 2500UL);
+      ackCloudflareCommand(cfg, cmdId, false, "ota manifest fetch failed");
+      return;
+    }
+    if (!release.available) {
+      setDisplayBanner(dispState, "Already up to date", CLR_GREEN, 2500UL);
+      ackCloudflareCommand(cfg, cmdId, true, "already up to date");
+      return;
+    }
+    char otaMsg[96];
+    snprintf(otaMsg, sizeof(otaMsg), "Update ready: %s", release.version);
+    setDisplayBanner(dispState, otaMsg, CLR_GREEN, 3500UL);
+    ackCloudflareCommand(cfg, cmdId, true, otaMsg);
+    return;
+  }
+
+  if (!strcmp(cmdType, "ota-apply")) {
+    sdLog("CMD", "Executing command: ota-apply");
+    setDisplayBanner(dispState, "Applying OTA...", CLR_MUTED, 5000UL);
+    CloudOtaReleaseInfo release;
+    if (!fetchCloudOtaRelease(cfg, release)) {
+      setDisplayBanner(dispState, "OTA manifest failed", CLR_RED, 2500UL);
+      ackCloudflareCommand(cfg, cmdId, false, "ota manifest fetch failed");
+      return;
+    }
+    if (!release.available) {
+      setDisplayBanner(dispState, "No update available", CLR_GREEN, 2500UL);
+      ackCloudflareCommand(cfg, cmdId, false, "no update available");
+      return;
+    }
+
+    String otaResult;
+    gOtaUpdateActive = true;
+    bool ok = performCloudOtaUpdate(cfg, &release, &otaResult);
+    gOtaUpdateActive = false;
+
+    if (!ok) {
+      const char* msg = otaResult.length() ? otaResult.c_str() : "ota update failed";
+      setDisplayBanner(dispState, "OTA failed", CLR_RED, 3000UL);
+      ackCloudflareCommand(cfg, cmdId, false, msg);
+      return;
+    }
+
+    ackCloudflareCommand(cfg, cmdId, true, otaResult.length() ? otaResult.c_str() : "ota applied, rebooting");
+    delay(500);
+    ESP.restart();
     return;
   }
 

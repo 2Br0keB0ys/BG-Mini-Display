@@ -1,6 +1,6 @@
 # BGDisplay Context Snapshot
 
-Last updated: 2026-04-26
+Last updated: 2026-05-11
 
 This file is a concise operational snapshot for fast onboarding.
 
@@ -18,9 +18,9 @@ BGDisplay is an M5Stack Core2 bedside/desk glucose display.
 
 | Component | Version |
 |---|---|
-| Firmware | 3.0.0-S |
+| Firmware | 4.1.1 |
 | Worker | 3.0.0 |
-| UI | Single-file runtime UI (no explicit semver in file) |
+| UI | React/Vite production UI (`apps/ui`) |
 
 ## Live Architecture
 
@@ -30,7 +30,9 @@ Dexcom Share (primary)  --->
 Nightscout (fallback) --->                            \              \
                                                        \              --> Durable Object WS relay
                                                         \
-                                                         --> Cloudflare Pages UI (admin/config)
+                                                         --> Cloudflare Pages UI (`apps/ui`)
+
+OTA release artifacts live in R2 (`bgdisplay-firmware`) and are delivered via signed short-lived Worker URLs.
 ```
 
 ## Key Behaviors
@@ -44,21 +46,25 @@ Nightscout (fallback) --->                            \              \
 - API keys rotate on a 7-day schedule with overlap support.
 - Daily AI digest is generated on Worker cron and fetched by device.
 - Optional Pushover alerting and digest push are supported.
+- OTA remote commands are available: `ota-check`, `ota-apply`.
+- Cloud OTA device flow: `/api/ota/manifest` -> signed `/api/ota/download/:channel/:version`.
 
 ## Important Paths
 
 - Firmware: `firmware/src/`
 - Worker: `apps/cloudflare/src/worker.js`
 - Worker config: `apps/cloudflare/wrangler.toml`
-- UI: `apps/pages/index.html`
+- UI (production): `apps/ui/`
 
 ## Archived Paths
 
 - NAS MCP: `archive/apps/nas-control-mcp/`
 - n8n artifacts: `archive/n8n/`
+- Legacy UI snapshot: `apps/pages/`
 
 ## Notes
 
 - MQTT is no longer part of the active design.
 - Cellular fallback remains planned, not currently active.
+- Retired Checkly automation is archived under `archive/checkly/`.
 - For full implementation detail, use `CLAUDE.md` as the source of truth.

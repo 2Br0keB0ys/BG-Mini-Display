@@ -27,6 +27,10 @@ new_classes = ["ConfigSyncRelay"]
 [ai]
 binding = "AI"
 
+[[r2_buckets]]
+binding = "FIRMWARE_BUCKET"
+bucket_name = "bgdisplay-firmware"
+
 # Cron triggers:
 #   Feature 2 — daily digest at 7:00 AM CDT/CST (12:00 PM UTC CDT, 1:00 PM UTC CST)
 #   Feature 3 — hourly summaries 8 AM–11 PM CDT/CST (UTC windows over-cover; worker enforces local hours)

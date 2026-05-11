@@ -28,9 +28,10 @@ Use these rules when modifying files under `firmware`.
 
 ## Build Optimizations
 
-The `platformio.ini` is configured for fast, optimized builds:
-- **Link-Time Optimization (`-flto`)**: Enables whole-program optimization across object files
-- **RTTI and Exception Disabled**: `-fno-rtti -fno-exceptions` reduces code bloat (~15-20% size reduction)
-- **Optimization Level**: `-O2` balances speed and code size
-- **No strict warnings**: `-Wno-unused-parameter` allows flexible function signatures
-All header files are included in the main sketch; avoid creating new .cpp files unless necessary to avoid recompilation overhead.
+Current `platformio.ini` build profile is intentionally conservative and stable:
+- **Optimization Level**: `-O2`
+- **Debug level**: `-DCORE_DEBUG_LEVEL=0`
+- **Loop stack size**: `-DARDUINO_LOOP_STACK_SIZE=16384`
+- **Warnings**: `-Wall -Wextra -Wno-unused-parameter`
+
+All header files are included in the main sketch; avoid creating new `.cpp` files unless needed, to keep iteration fast.
