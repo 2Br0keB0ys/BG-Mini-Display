@@ -1,0 +1,5 @@
+{
+  "workspaceId": "<set-in-local-copy>",
+  "defaultEnvironment": "prod",
+  "gitBranchToEnvironmentMapping": null
+}

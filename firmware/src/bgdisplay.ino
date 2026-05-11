@@ -25,11 +25,11 @@
 #endif
 
 #ifndef BGDISPLAY_DEFAULT_WORKER_URL
-#define BGDISPLAY_DEFAULT_WORKER_URL "https://bgdisplay-worker.zanebaize.workers.dev"
+#define BGDISPLAY_DEFAULT_WORKER_URL "https://example-worker.your-domain.workers.dev"
 #endif
 
 #ifndef BGDISPLAY_DEFAULT_DEVICE_KEY
-#define BGDISPLAY_DEFAULT_DEVICE_KEY "bg_ro_REDACTED_POSSIBLE_SECRET"
+#define BGDISPLAY_DEFAULT_DEVICE_KEY "bg_ro_replace_with_bootstrap_key"
 #endif
 
 #ifndef BGDISPLAY_DEFAULT_TIMEZONE

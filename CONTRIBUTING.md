@@ -36,6 +36,17 @@ Run the checks that match your changes:
   - nonce / replay checks
   - encrypted credential storage
 - Do not commit secrets or tokens.
+- Use Infisical (or equivalent secret manager) for real secrets; keep repository files placeholder-only.
+
+## Public repository safety
+
+- Review `docs/public-repo-safety.md` before opening PRs.
+- Keep local-only files untracked (`secrets.h`, `.env*`, `.dev.vars`, `.infisical.json`, `.claude/settings.local.json`).
+
+## First-time setup help
+
+- Beginner walkthrough: `docs/setup-for-beginners.md`
+- Guided Windows helper: `scripts/bootstrap_windows.ps1`
 
 ## OTA-related changes
 
