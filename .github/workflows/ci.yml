@@ -8,6 +8,16 @@ on:
   workflow_call:
 
 jobs:
+  secret-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run secret literal guard
+        shell: pwsh
+        run: ./scripts/security/secret_guard.ps1
+
   firmware-build:
     runs-on: ubuntu-latest
     steps:
