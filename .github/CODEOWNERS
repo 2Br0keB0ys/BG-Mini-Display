@@ -1,0 +1,7 @@
+# Default code owners for all paths in this repository.
+* @2Br0keB0ys
+
+# Optional future granularity examples:
+# /firmware/ @2Br0keB0ys
+# /apps/cloudflare/ @2Br0keB0ys
+# /apps/ui/ @2Br0keB0ys
