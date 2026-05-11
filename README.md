@@ -11,6 +11,12 @@ Current architecture:
 
 Archived/retired optional surfaces now live under `archive/`.
 
+## Production Status
+
+- Cloudflare Worker + Pages are deployed.
+- OTA release channel `stable` is active with signed manifest/download flow.
+- Firmware `v4.1.1` is the current production baseline.
+
 ## Repository Layout
 
 ```text
@@ -18,7 +24,8 @@ bg-miniview/
 ├── archive/               # archived NAS MCP, n8n workflow material, legacy workspace files
 ├── apps/
 │   ├── cloudflare/        # Worker + wrangler config
-│   ├── pages/             # Single-file UI (index.html)
+│   ├── ui/                # Production React/Vite UI (deployed to Cloudflare Pages)
+│   └── pages/             # Legacy single-file UI snapshot
 ├── firmware/              # PlatformIO firmware for BG MiniView on M5Stack Core2
 ├── research/              # local research notes and references (gitignored)
 ├── CLAUDE.md              # Deep architecture and ops reference
@@ -69,7 +76,7 @@ npm run test:mcp:pushover
 
 ## 2) Deploy Config UI (Cloudflare Pages)
 
-Edit `apps/pages/index.html` and set `WORKER_URL` at the top of the script block.
+Production UI is built from `apps/ui/` and deployed via the Cloudflare app scripts.
 
 ```bash
 cd apps/cloudflare
@@ -118,6 +125,17 @@ Use the Cloudflare Pages UI for:
 - **EndoAI** — AI-powered glucose summaries (daily at 7:00 AM, hourly 8 AM–11 PM)
 - Security and advanced options
 
+## 6) OTA Release Operations (Cloudflare)
+
+OTA is productionized and uses Worker-signed download URLs backed by R2.
+
+High-level release flow:
+
+1. Build firmware (`pio run`)
+2. Upload `.bin` to R2 (`bgdisplay-firmware/<channel>/<artifact>.bin`)
+3. Register release metadata with `POST /api/admin/ota`
+4. Device executes `ota-check` / `ota-apply` via command queue
+
 ## Display Features
 
 ### Main Screen
@@ -156,11 +174,11 @@ Use the Cloudflare Pages UI for:
 
 ## Notes
 
-- OTA is implemented via `ArduinoOTA` when enabled in firmware.
+- OTA supports both local LAN (`ArduinoOTA`) and Cloudflare-managed signed update flow.
 - Cellular fallback is a planned hardware path and not currently active.
 - **Pump data sources:** Direct integrations with Glooko, Tandem, Medtronic, and Tidepool APIs
 - **EndoAI:** Daily summaries generated at 7:00 AM US/Central; hourly summaries every hour 8 AM–11 PM. Both can push to Pushover if credentials configured.
-- **Build optimizations:** Firmware uses Link-Time Optimization (`-flto`), disabled RTTI/exceptions, and `-O2` for fast compilation.
+- **Build profile:** Firmware uses a conservative/stable profile (`-O2`, `-DCORE_DEBUG_LEVEL=0`, `-DARDUINO_LOOP_STACK_SIZE=16384`, `-Wall -Wextra -Wno-unused-parameter`).
 - See `CLAUDE.md` for endpoint lists, auth model, pump provider details, and full architecture.
 
 ## Archived Components
@@ -168,3 +186,4 @@ Use the Cloudflare Pages UI for:
 - `archive/apps/nas-control-mcp/` contains the retired NAS MCP control surface.
 - `archive/n8n/cloudflare-n8n/` contains archived import-ready n8n workflow templates.
 - `archive/n8n/workflows/` contains the archived n8n-as-code sync workspace and `archive/n8n/n8nac-config.json`.
+- `archive/checkly/` contains retired Checkly automation scripts.

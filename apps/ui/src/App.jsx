@@ -26,6 +26,7 @@ function extractMeta(data) {
     lastLogUpload: data.lastLogUpload, reminders: data.reminders || [],
     configUpdatedAt: data.config_updated_at || null,
     digest: data.digest || null, pushoverConfigured: !!data.pushoverConfigured,
+    otaRelease: data.otaRelease || null,
   };
 }
 
@@ -43,7 +44,7 @@ function collectConfig(form) {
   const c = {};
   const str = ['wifi_ssid', 'nightscout_url', 'nightscout_secret', 'dexcom_user', 'dexcom_region',
     'bg_units', 'insulin_pump_type', 'insulin_pump_brand', 'insulin_pump_model',
-    'insulin_pump_loop_mode', 'insulin_pump_notes', 'timezone', 'bg_alert_style'];
+    'insulin_pump_loop_mode', 'insulin_pump_notes', 'timezone', 'bg_alert_style', 'ota_channel'];
   str.forEach(k => { if (form[k] !== undefined && form[k] !== '') c[k] = form[k]; });
 
   ['wifi_pass', 'dexcom_pass'].forEach(k => { if (form[k]) c[k] = form[k]; });
@@ -53,12 +54,12 @@ function collectConfig(form) {
   const nums = ['poll_interval_min', 'stale_data_warn_min', 'config_ping_min', 'brightness',
     'urgent_low', 'low', 'high', 'urgent_high', 'rate_limit_per_min', 'lockout_attempts',
     'lockout_duration_min', 'session_timeout_min', 'alert_offline_min', 'alert_stale_min',
-    'alert_battery_low_pct', 'alert_cooldown_min', 'pushover_alert_cooldown_min', 'digest_pushover_hour'];
+    'alert_battery_low_pct', 'alert_cooldown_min', 'pushover_alert_cooldown_min', 'digest_pushover_hour', 'ota_check_min'];
   nums.forEach(k => { if (form[k] !== undefined) c[k] = Number(form[k]); });
 
   const bools = ['show_trend_arrow', 'show_last_reading_time', 'clock_24hr', 'dnd_enabled',
     'pushover_enabled', 'digest_pushover_enabled', 'ip_allowlist_enabled', 'lockout_enabled',
-    'auto_backup', 'alert_offline_enabled'];
+    'auto_backup', 'alert_offline_enabled', 'ota_enabled'];
   bools.forEach(k => { if (form[k] !== undefined) c[k] = !!form[k]; });
 
   const dndSchedule = {};
@@ -177,9 +178,9 @@ export default function App() {
     finally { setSaving(false); }
   }
 
-  async function sendCommand(type) {
+  async function sendCommand(type, args = {}) {
     try {
-      await apiPost('/api/admin/command', { type });
+      await apiPost('/api/admin/command', { type, args });
       showToast(`✓ ${type} command queued`);
       await loadConfig();
     } catch(e) { showToast('✕ Failed to queue command'); }

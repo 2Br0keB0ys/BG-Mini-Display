@@ -44,7 +44,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs PlatformIO firmware build and w
 ### Archived Components
 - NAS MCP automation lives under `archive/apps/nas-control-mcp/`.
 - n8n JSON templates and n8n-as-code sync artifacts live under `archive/n8n/`.
-- Checkly monitoring scripts live under `archive/checkly/` (Checkly removed 2026-05-10).
+- Retired Checkly monitoring scripts live under `archive/checkly/`.
 
 ## Architecture
 
@@ -64,7 +64,7 @@ The main sketch is `bgdisplay.ino`. All modules are header-only files included b
 | `glooko.h` | Pump data status fetch — supports multiple sources: Glooko (direct API), Tandem, Medtronic, Tidepool. Returns IOB, last bolus, pod change data. |
 | `wifi_setup.h` | AP mode captive portal on 192.168.4.1 for first-boot WiFi setup only; generates WiFi QR code |
 | `sd_logger.h` | Encrypted JSON log rotation at 100KB; uses same chip-derived key (different salt: `BGDisplay_SD_v1`) |
-| `ota.h` | `ArduinoOTA` — active when `ENABLE_OTA=1` (default) |
+| `ota.h` | LAN OTA (`ArduinoOTA`) + Cloudflare OTA manifest/apply flow (`/api/ota/manifest` + signed download URL) |
 | `ws_sync.h` | Persistent WSS client to `/api/ws` (Durable Object relay); any `config-changed` push triggers immediate `pullCloudflareConfig()` |
 
 **NVS encrypted fields:** `deviceKey`, `wifiPass`, `nightscoutSecret`, `dexcomUser`, `dexcomPass`. All other fields stored plain. Salt: `BGDisplay_NVS_v1`.
@@ -73,7 +73,7 @@ The main sketch is `bgdisplay.ino`. All modules are header-only files included b
 - **BG source priority:** Dexcom Share is tried first; Nightscout is the fallback. Both failing → display `---` and "STALE" banner after `staleDataWarnMin`.
 - **Display:** All drawing to off-screen `M5Canvas` sprite, pushed atomically to avoid flicker. Redraws only on dirty data (BG value, trend, time, RSSI coarse, stale state, key error). Includes BG sparkline and battery % top-right.
 - **Config sync:** WebSocket connection to `/api/ws` (Durable Object relay) is the primary push channel — on `config-changed` message the device immediately calls `pullCloudflareConfig()`. HTTPS ping fallback: 30s when WS is disconnected, `configPingMin` (capped 5 min) when WS is up.
-- **Command poll:** Device polls `GET /api/command` every 60s for remote commands (`reboot`, `sync-now`, `upload-logs`, `factory-reset`). Commands are HMAC-signed envelopes verified by firmware.
+- **Command poll:** Device polls `GET /api/command` every 60s for remote commands (`reboot`, `sync-now`, `upload-logs`, `factory-reset`, `ota-check`, `ota-apply`). Commands are HMAC-signed envelopes verified by firmware.
 - **Log upload:** Firmware uploads decrypted SD logs to `/api/log-upload` every 2 minutes (small payload) and on `upload-logs` command.
 - **Auth:** Requests signed with HMAC-SHA256 (method + path + timestamp + nonce + body hash). API keys auto-rotate every 7 days with 48h overlap window.
 - **BG poll backoff:** On 3+ consecutive failures, poll interval is floored to 3 min; on 8+, floored to 5 min.
@@ -100,6 +100,7 @@ Single file handling all backend logic. Two KV namespaces:
 **Bindings:**
 - `CONFIG_SYNC` — Durable Object (`ConfigSyncRelay`) for WebSocket relay; one instance per device
 - `AI` — Workers AI binding (used by `generateDailyDigest()` and `generateHourlyDigest()`)
+- `FIRMWARE_BUCKET` — Cloudflare R2 bucket for firmware artifacts consumed by OTA signed downloads
 - `KV_ENCRYPT_KEY` — Worker secret (set via `wrangler secret put`); AES-256-GCM key for encrypting Pushover credentials in KV. If unset, Pushover credentials cannot be stored.
 
 **Pump Provider Modules** (`apps/cloudflare/src/providers/`):
@@ -124,6 +125,8 @@ All adapters follow a common interface: authenticate, fetch latest pump data, re
 | POST | `/api/log-upload` | Upload decrypted SD logs |
 | GET | `/api/digest` | Fetch today's AI digest text (204 = none yet) |
 | GET | `/api/omnipod` | Fetch proxied Omnipod status from Worker-side Glooko integration |
+| GET | `/api/ota/manifest` | OTA release discovery (signed device auth) |
+| GET | `/api/ota/download/:channel/:version` | Signed short-lived firmware download URL target |
 
 **Admin endpoints** (Cloudflare Access JWT + scoped session token):
 
@@ -145,6 +148,7 @@ All adapters follow a common interface: authenticate, fetch latest pump data, re
 | DELETE | `/api/admin/devices/:chipId` | Revoke device enrollment; restores previous key hash so device can re-enroll |
 | GET | `/api/admin/device-config/:chipId` | Per-device config overrides |
 | POST | `/api/admin/device-config/:chipId` | Set per-device config overrides (empty object = delete overrides) |
+| GET/POST/DELETE | `/api/admin/ota` | Read/prepare/clear OTA release metadata |
 
 **MCP endpoint** (JSON-RPC 2.0, device-key auth):
 
@@ -243,7 +247,7 @@ Each prompt is paired with a user message containing:
 - `GET /api/admin/digest` — Admin UI endpoint; returns full digest object including timestamp and stats
 - `POST /api/admin/config` with `force_digest_generation: true` — Triggers immediate digest generation (bypasses daily/hourly guard)
 
-**Admin UI Integration (`apps/pages/index.html`):**
+**Admin UI Integration (`apps/ui/`):**
 - **"EndoAI" section:** Shows today's cached digest text, generation timestamp, reading stats (TIR, min/max/avg)
 - **Manual generation:** "Generate Now" button calls `/api/admin/config` with force flag
 - **Pushover controls:** Toggles for daily/hourly push, time selector for daily push hour, display of configured Pushover user key (masked)
@@ -265,7 +269,7 @@ React + Vite + Tailwind app. Build: `npm run deploy:pages` from `apps/cloudflare
 
 **SD log download:** "Device actions" card → "Latest SD log upload" → Download button opens `GET /api/admin/logs/latest?download=1&session=TOKEN` in a new tab (worker accepts session via query param for this endpoint only).
 
-DND times displayed and stored in 12-hour format in the UI, converted to 24-hour on save. `apps/pages/index.html` is a legacy single-file version — not deployed.
+DND times displayed and stored in 12-hour format in the UI, converted to 24-hour on save. Production UI is `apps/ui/`; `apps/pages/` is retained only as an archive snapshot.
 
 ### Scripts (`firmware/scripts/`)
 
@@ -285,7 +289,7 @@ $es = "$env:USERPROFILE\.platformio\packages\tool-esptoolpy\esptool.py"
 & $py $es --chip esp32 --port COM6 erase_region 0x9000 0x7000
 ```
 
-**This device:** MAC `84:1f:e8:82:ed:e8` · Chip ID `0000e8ed82e81f84` · Flashed 2026-05-10
+**This device:** MAC `84:1f:e8:82:ed:e8` · Chip ID `0000e8ed82e81f84` · Flashed 2026-05-11
 
 ## Hardware
 
