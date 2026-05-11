@@ -1,0 +1,6 @@
+# Paths to remove from entire history (local-only/sensitive artifacts)
+.claude/settings.local.json
+apps/cloudflare/scripts/.infisical.json
+firmware/src/secrets.h
+firmware/scripts/provision_logs/provision_20260510_085427.json
+firmware/scripts/provision_logs/provision_20260510_094254.json

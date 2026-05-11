@@ -35,3 +35,7 @@ All real secrets should come from **Infisical** (or equivalent secret manager) a
 - [ ] No `.env`, `.dev.vars`, `secrets.h`, or `.infisical.json` in staged files
 - [ ] No raw tokens/keys in changed text
 - [ ] Commands and docs use placeholders like `<project-id>`
+
+## If a secret was committed in the past
+
+Use `docs/history-rewrite-plan.md` and `scripts/history-rewrite/*` to perform a safe mirror-based history rewrite.
