@@ -46,6 +46,7 @@ For first-time users, see:
 Security helpers:
 - `scripts/security/generate_bootstrap_key.ps1` (generate a new `bg_ro_` bootstrap key for rotation)
 - `scripts/security/secret_guard.ps1` (scan tracked files for blocked secret-like literals)
+- `scripts/security/install_git_hooks.ps1` (enable local pre-commit secret guard via `.githooks/pre-commit`)
 
 ## 1) Deploy Cloudflare Worker
 

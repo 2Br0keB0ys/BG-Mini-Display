@@ -39,6 +39,10 @@ foreach ($file in $trackedFiles) {
     continue
   }
 
+  if ($file -eq "scripts/security/secret_guard.ps1") {
+    continue
+  }
+
   foreach ($rule in $blockedPatterns) {
     try {
       $foundMatches = Select-String -Path $file -Pattern $rule.Pattern -AllMatches -CaseSensitive

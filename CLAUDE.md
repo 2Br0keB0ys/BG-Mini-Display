@@ -45,6 +45,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs PlatformIO firmware build and w
 ```bash
 pwsh ./scripts/security/secret_guard.ps1
 pwsh ./scripts/security/generate_bootstrap_key.ps1 -CopyToClipboard
+pwsh ./scripts/security/install_git_hooks.ps1
 ```
 
 ### Archived Components
