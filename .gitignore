@@ -15,6 +15,7 @@ firmware/src/*.ino.cpp
 
 # Local secret material
 apps/cloudflare/bgdisplay-device-key.txt
+firmware/src/secrets.h
 
 # Device provisioning audit logs (contain chip IDs and timing metadata)
 firmware/scripts/provision_logs/
@@ -27,6 +28,7 @@ apps/cloudflare/.dev.vars
 
 # Local Claude/Copilot permission overrides
 **/.claude/settings.local.json
+apps/cloudflare/scripts/.infisical.json
 
 # Local archives and exports
 *.7z
