@@ -1,0 +1,40 @@
+firmware:
+  - changed-files:
+      - any-glob-to-any-file:
+          - firmware/**
+
+worker:
+  - changed-files:
+      - any-glob-to-any-file:
+          - apps/cloudflare/**
+
+ui:
+  - changed-files:
+      - any-glob-to-any-file:
+          - apps/ui/**
+
+docs:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '**/*.md'
+          - docs/**
+
+ci:
+  - changed-files:
+      - any-glob-to-any-file:
+          - .github/workflows/**
+
+security:
+  - changed-files:
+      - any-glob-to-any-file:
+          - firmware/src/crypto.h
+          - firmware/src/config.h
+          - apps/cloudflare/src/worker.js
+          - SECURITY.md
+
+dependencies:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '**/package.json'
+          - '**/package-lock.json'
+          - .github/dependabot.yml
