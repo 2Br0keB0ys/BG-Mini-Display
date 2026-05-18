@@ -38,6 +38,24 @@ bg-miniview/
 - VS Code with PlatformIO extension
 - M5Stack Core2 with USB-C cable
 
+## Code Quality & Formatting
+
+Run lint/format checks in each app workspace:
+
+```bash
+cd apps/cloudflare
+npm run lint
+npm run format
+
+cd ../ui
+npm run lint
+npm run format
+```
+
+Line endings are normalized via repository-level `.gitattributes`:
+- Most source/docs/config files use `LF`
+- PowerShell scripts (`*.ps1`) use `CRLF`
+
 For first-time users, see:
 - `docs/setup-for-beginners.md` (full step-by-step onboarding)
 - `scripts/bootstrap_windows.ps1` (guided Windows setup helper)

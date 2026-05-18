@@ -23,6 +23,9 @@ firmware/scripts/provision_logs/
 
 # Node modules if installed later
 **/node_modules/
+**/.eslintcache
+**/.cache/
+**/coverage/
 
 # Generated UI build output
 apps/ui/dist/

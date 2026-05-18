@@ -33,10 +33,23 @@ cd apps/cloudflare
 npm run deploy:worker           # wrangler deploy (worker)
 npm run deploy:pages            # wrangler pages deploy to Pages production branch (UI)
 npm run deploy:all              # both in sequence
+npm run lint                    # eslint src --max-warnings 0
+npm run format                  # prettier --write src
 npm run test:mcp                # MCP smoke test (metadata + tools/list)
 npm run test:mcp:bg             # MCP smoke test + live get_current_bg
 node --check src/worker.js      # syntax check (no validate script)
 ```
+
+### UI (React + Vite)
+```bash
+cd apps/ui
+npm run lint                    # eslint src --max-warnings 0
+npm run format                  # prettier --write src
+```
+
+### Line endings
+- Repository-level `.gitattributes` normalizes text files.
+- Source/docs/config default to `LF`; PowerShell scripts (`*.ps1`) use `CRLF`.
 
 ### CI
 GitHub Actions (`.github/workflows/ci.yml`) runs PlatformIO firmware build and worker syntax validation on push/PR to main.
