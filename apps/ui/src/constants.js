@@ -26,8 +26,24 @@ export const PUMP_CATALOG = [
       { model: 'MiniMed 670G', type: 'pump', modes: ['Auto Mode', 'Manual Mode'] },
     ],
   },
-  { brand: 'Beta Bionics', models: [{ model: 'iLet Bionic Pancreas', type: 'pump', modes: ['Bionic Mode'] }] },
-  { brand: 'Ypsomed', models: [{ model: 'mylife YpsoPump', type: 'pump', modes: ['CamAPS FX Auto Mode', 'Manual Mode'] }] },
-  { brand: 'Roche', models: [{ model: 'Accu-Chek Solo', type: 'patch-pump', modes: ['Manual Mode'] }] },
-  { brand: 'Other', models: [{ model: 'Other', type: 'pump', modes: ['Manual Mode', 'Hybrid Closed Loop', 'Closed Loop'] }] },
+  {
+    brand: 'Beta Bionics',
+    models: [{ model: 'iLet Bionic Pancreas', type: 'pump', modes: ['Bionic Mode'] }],
+  },
+  {
+    brand: 'Ypsomed',
+    models: [
+      { model: 'mylife YpsoPump', type: 'pump', modes: ['CamAPS FX Auto Mode', 'Manual Mode'] },
+    ],
+  },
+  {
+    brand: 'Roche',
+    models: [{ model: 'Accu-Chek Solo', type: 'patch-pump', modes: ['Manual Mode'] }],
+  },
+  {
+    brand: 'Other',
+    models: [
+      { model: 'Other', type: 'pump', modes: ['Manual Mode', 'Hybrid Closed Loop', 'Closed Loop'] },
+    ],
+  },
 ];

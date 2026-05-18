@@ -1,16 +1,17 @@
 // BG MiniView Cloudflare Worker v3.0
 // Features: WebSocket relay (DO), Workers AI digest, MCP server, Pushover alerts
 
-
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, X-Device-Key, X-Device-Id, X-Command-Id, X-Log-Lines, X-Admin-Session, CF-Access-Jwt-Assertion",
+  "Access-Control-Allow-Headers":
+    "Content-Type, X-Device-Key, X-Device-Id, X-Command-Id, X-Log-Lines, X-Admin-Session, CF-Access-Jwt-Assertion",
 };
 
-const KEY_ROTATE_MS      = 7 * 24 * 60 * 60 * 1000;
+const KEY_ROTATE_MS = 7 * 24 * 60 * 60 * 1000;
 const PENDING_KEY_TTL_MS = 48 * 60 * 60 * 1000;
 const ADMIN_SESSION_TTL_SEC = 8 * 60 * 60;
+/* global WebSocketPair */
 
 const DEFAULT_DND_SCHEDULE = {
   sun: { from: "23:00", to: "06:00" },
@@ -30,7 +31,7 @@ function normalizeClock(v, fallback) {
 }
 
 function normalizeDndSchedule(sched, fallbackFrom, fallbackTo) {
-  const src = (sched && typeof sched === "object") ? sched : {};
+  const src = sched && typeof sched === "object" ? sched : {};
   const out = {};
   for (const [day, def] of Object.entries(DEFAULT_DND_SCHEDULE)) {
     const d = src[day] && typeof src[day] === "object" ? src[day] : {};
@@ -59,7 +60,7 @@ function detectTimezoneFromIANA(ianaName) {
     "America/Winnipeg": "US/Central",
     "America/North_Dakota/Center": "US/Central",
     "America/North_Dakota/New_Salem": "US/Central",
-    "CST6CDT": "US/Central",
+    CST6CDT: "US/Central",
     // Eastern Time
     "America/New_York": "US/Eastern",
     "America/Detroit": "US/Eastern",
@@ -74,7 +75,7 @@ function detectTimezoneFromIANA(ianaName) {
     "America/Kentucky/Louisville": "US/Eastern",
     "America/Kentucky/Monticello": "US/Eastern",
     "America/Toronto": "US/Eastern",
-    "EST5EDT": "US/Eastern",
+    EST5EDT: "US/Eastern",
     // Mountain Time
     "America/Denver": "US/Mountain",
     "America/Boise": "US/Mountain",
@@ -88,45 +89,67 @@ function detectTimezoneFromIANA(ianaName) {
     "America/Yakutat": "US/Mountain",
     "America/Fort_Nelson": "US/Mountain",
     "America/Edmonton": "US/Mountain",
-    "MST7MDT": "US/Mountain",
+    MST7MDT: "US/Mountain",
     // Pacific Time
     "America/Los_Angeles": "US/Pacific",
     "America/Vancouver": "US/Pacific",
     "America/Tijuana": "US/Pacific",
-    "PST8PDT": "US/Pacific",
+    PST8PDT: "US/Pacific",
   };
   return mapping[ianaName] || "US/Central";
 }
 
 const DEFAULT_CONFIG = {
   // WiFi
-  wifi_ssid: "", wifi_pass: "", cellular_fallback: false, reconnect_attempts: 5,
+  wifi_ssid: "",
+  wifi_pass: "",
+  cellular_fallback: false,
+  reconnect_attempts: 5,
   // Nightscout (fallback)
-  nightscout_url: "", nightscout_secret: "",
+  nightscout_url: "",
+  nightscout_secret: "",
   // Dexcom (primary)
-  dexcom_user: "", dexcom_pass: "", dexcom_region: "US",
+  dexcom_user: "",
+  dexcom_pass: "",
+  dexcom_region: "US",
   // Polling
-  poll_interval_min: 5, stale_data_warn_min: 15, config_ping_min: 1,
+  poll_interval_min: 5,
+  stale_data_warn_min: 15,
+  config_ping_min: 1,
   // BG thresholds
-  bg_units: "mg/dL", urgent_low: 55, low: 70, high: 180, urgent_high: 250,
+  bg_units: "mg/dL",
+  urgent_low: 55,
+  low: 70,
+  high: 180,
+  urgent_high: 250,
   bg_alert_style: "pulse",
   // Display
-  show_last_reading_time: true, show_trend_arrow: true,
-  brightness: 75, auto_dim_min: 10, dim_to_pct: 10,
-  dnd_enabled: false, dnd_from: "23:00", dnd_to: "06:00",
+  show_last_reading_time: true,
+  show_trend_arrow: true,
+  brightness: 75,
+  auto_dim_min: 10,
+  dim_to_pct: 10,
+  dnd_enabled: false,
+  dnd_from: "23:00",
+  dnd_to: "06:00",
   dnd_use_schedule: true,
   dnd_schedule: DEFAULT_DND_SCHEDULE,
-  clock_24hr: false, timezone: "US/Central",
+  clock_24hr: false,
+  timezone: "US/Central",
   // Cloudflare OTA
   ota_enabled: true,
   ota_check_min: 360,
   ota_channel: "stable",
   // Security
-  rate_limit_per_min: 45, lockout_enabled: true,
-  lockout_attempts: 5, lockout_duration_min: 15,
+  rate_limit_per_min: 45,
+  lockout_enabled: true,
+  lockout_attempts: 5,
+  lockout_duration_min: 15,
   device_write_rate_limit_per_min: 20,
   admin_write_rate_limit_per_min: 15,
-  session_timeout_min: 30, ip_allowlist_enabled: false, ip_allowlist: [],
+  session_timeout_min: 30,
+  ip_allowlist_enabled: false,
+  ip_allowlist: [],
   // Alerts / Monitoring
   alert_stale_min: 30,
   alert_battery_low_pct: 15,
@@ -137,7 +160,7 @@ const DEFAULT_CONFIG = {
   pushover_alert_cooldown_min: 15,
   // Feature 4b: Daily digest push to Pushover
   digest_pushover_enabled: false,
-  digest_pushover_hour: 7,  // hour in US/Central time to send the digest (0–23)
+  digest_pushover_hour: 7, // hour in US/Central time to send the digest (0–23)
   // AI context: insulin therapy / pump profile
   insulin_pump_type: "none",
   insulin_pump_brand: "",
@@ -155,30 +178,56 @@ function normalizeConfig(cfg) {
   }
 
   // Strip retired MQTT fields and legacy keys
-  delete out.mqtt_host; delete out.mqtt_user; delete out.mqtt_pass;
+  delete out.mqtt_host;
+  delete out.mqtt_user;
+  delete out.mqtt_pass;
   delete out.config_ping_sec;
   // Pushover credentials are stored encrypted, never in the main config blob
-  delete out.pushover_user_key; delete out.pushover_api_token;
+  delete out.pushover_user_key;
+  delete out.pushover_api_token;
 
   out.alert_stale_min = Math.max(5, Math.min(240, Number(out.alert_stale_min || 30)));
   out.alert_battery_low_pct = Math.max(5, Math.min(40, Number(out.alert_battery_low_pct || 15)));
   out.alert_cooldown_min = Math.max(5, Math.min(360, Number(out.alert_cooldown_min || 60)));
   out.rate_limit_per_min = Math.max(10, Math.min(300, Number(out.rate_limit_per_min || 45)));
-  out.device_write_rate_limit_per_min = Math.max(5, Math.min(180, Number(out.device_write_rate_limit_per_min || 20)));
-  out.admin_write_rate_limit_per_min = Math.max(3, Math.min(120, Number(out.admin_write_rate_limit_per_min || 15)));
+  out.device_write_rate_limit_per_min = Math.max(
+    5,
+    Math.min(180, Number(out.device_write_rate_limit_per_min || 20))
+  );
+  out.admin_write_rate_limit_per_min = Math.max(
+    3,
+    Math.min(120, Number(out.admin_write_rate_limit_per_min || 15))
+  );
   out.dnd_use_schedule = out.dnd_use_schedule !== false;
   out.dnd_schedule = normalizeDndSchedule(out.dnd_schedule, out.dnd_from, out.dnd_to);
-  out.pushover_alert_cooldown_min = Math.max(5, Math.min(60, Number(out.pushover_alert_cooldown_min || 15)));
+  out.pushover_alert_cooldown_min = Math.max(
+    5,
+    Math.min(60, Number(out.pushover_alert_cooldown_min || 15))
+  );
   out.digest_pushover_hour = Math.max(0, Math.min(23, Number(out.digest_pushover_hour ?? 7)));
   out.ota_enabled = out.ota_enabled !== false;
   out.ota_check_min = Math.max(30, Math.min(1440, Number(out.ota_check_min || 360)));
-  out.ota_channel = String(out.ota_channel || "stable").trim().toLowerCase().slice(0, 15) || "stable";
-  const pumpType = String(out.insulin_pump_type || "none").trim().toLowerCase();
+  out.ota_channel =
+    String(out.ota_channel || "stable")
+      .trim()
+      .toLowerCase()
+      .slice(0, 15) || "stable";
+  const pumpType = String(out.insulin_pump_type || "none")
+    .trim()
+    .toLowerCase();
   out.insulin_pump_type = ["none", "pump", "patch-pump"].includes(pumpType) ? pumpType : "none";
-  out.insulin_pump_brand = String(out.insulin_pump_brand || "").trim().slice(0, 40);
-  out.insulin_pump_model = String(out.insulin_pump_model || "").trim().slice(0, 40);
-  out.insulin_pump_loop_mode = String(out.insulin_pump_loop_mode || "No automation").trim().slice(0, 60);
-  out.insulin_pump_notes = String(out.insulin_pump_notes || "").trim().slice(0, 180);
+  out.insulin_pump_brand = String(out.insulin_pump_brand || "")
+    .trim()
+    .slice(0, 40);
+  out.insulin_pump_model = String(out.insulin_pump_model || "")
+    .trim()
+    .slice(0, 40);
+  out.insulin_pump_loop_mode = String(out.insulin_pump_loop_mode || "No automation")
+    .trim()
+    .slice(0, 60);
+  out.insulin_pump_notes = String(out.insulin_pump_notes || "")
+    .trim()
+    .slice(0, 180);
 
   return out;
 }
@@ -189,8 +238,9 @@ function loadSecretsIntoConfig(env, cfg) {
   if (!cfg.dexcom_user && env.DEXCOM_EMAIL) cfg.dexcom_user = env.DEXCOM_EMAIL;
   if (!cfg.dexcom_pass && env.DEXCOM_PASSWORD) cfg.dexcom_pass = env.DEXCOM_PASSWORD;
   if (!cfg.nightscout_url && env.NIGHTSCOUT_URL) cfg.nightscout_url = env.NIGHTSCOUT_URL;
-  if (!cfg.nightscout_secret && env.NIGHTSCOUT_API_TOKEN) cfg.nightscout_secret = env.NIGHTSCOUT_API_TOKEN;
-  return cfg
+  if (!cfg.nightscout_secret && env.NIGHTSCOUT_API_TOKEN)
+    cfg.nightscout_secret = env.NIGHTSCOUT_API_TOKEN;
+  return cfg;
 }
 
 // ─── Core Helpers ─────────────────────────────────────────────────────────────
@@ -202,8 +252,8 @@ function json(data, status = 200) {
       ...CORS_HEADERS,
       "Content-Type": "application/json",
       "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-      "Pragma": "no-cache",
-      "Expires": "0",
+      Pragma: "no-cache",
+      Expires: "0",
     },
   });
 }
@@ -214,8 +264,8 @@ function mcpResult(id, result) {
       ...CORS_HEADERS,
       "Content-Type": "application/json",
       "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-      "Pragma": "no-cache",
-      "Expires": "0",
+      Pragma: "no-cache",
+      Expires: "0",
     },
   });
 }
@@ -226,8 +276,8 @@ function mcpError(id, code, message) {
       ...CORS_HEADERS,
       "Content-Type": "application/json",
       "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-      "Pragma": "no-cache",
-      "Expires": "0",
+      Pragma: "no-cache",
+      Expires: "0",
     },
   });
 }
@@ -241,14 +291,24 @@ function generateKey() {
 
 async function sha256(str) {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 async function hmacSha256Hex(key, msg) {
   const enc = new TextEncoder();
-  const k = await crypto.subtle.importKey("raw", enc.encode(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const k = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(key),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
   const sig = await crypto.subtle.sign("HMAC", k, enc.encode(msg));
-  return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, "0")).join("");
+  return Array.from(new Uint8Array(sig))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 function getClientIP(r) {
@@ -261,7 +321,11 @@ function maskIP(ip) {
 }
 
 function parseHost(urlLike) {
-  try { return new URL(urlLike).hostname.toLowerCase(); } catch { return ""; }
+  try {
+    return new URL(urlLike).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
 }
 
 function isTrustedAdminOrigin(request, env) {
@@ -269,8 +333,10 @@ function isTrustedAdminOrigin(request, env) {
   const refererHost = parseHost(request.headers.get("Referer") || "");
   const defaults = ["bgdisplay-ui.pages.dev", "setup.2brokeboys.uk", "localhost", "127.0.0.1"];
   const extra = String(env.ADMIN_ALLOWED_ORIGINS || "")
-    .split(",").map(s => s.trim().toLowerCase()).filter(Boolean)
-    .map(h => h.replace(/^https?:\/\//, "").replace(/\/$/, ""));
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean)
+    .map((h) => h.replace(/^https?:\/\//, "").replace(/\/$/, ""));
   const allowed = new Set([...defaults, ...extra]);
   return allowed.has(originHost) || allowed.has(refererHost);
 }
@@ -278,7 +344,10 @@ function isTrustedAdminOrigin(request, env) {
 // ─── KV Encryption (AES-256-GCM, key from env.KV_ENCRYPT_KEY secret) ──────────
 
 function hexToUint8(hex) {
-  const h = hex.replace(/[^0-9a-fA-F]/g, "").slice(0, 64).padEnd(64, "0");
+  const h = hex
+    .replace(/[^0-9a-fA-F]/g, "")
+    .slice(0, 64)
+    .padEnd(64, "0");
   const out = new Uint8Array(32);
   for (let i = 0; i < 32; i++) out[i] = parseInt(h.slice(i * 2, i * 2 + 2), 16);
   return out;
@@ -287,11 +356,18 @@ function hexToUint8(hex) {
 async function kvEncrypt(plaintext, keyHex) {
   if (!keyHex) return null;
   const keyBytes = hexToUint8(keyHex);
-  const cryptoKey = await crypto.subtle.importKey("raw", keyBytes, { name: "AES-GCM" }, false, ["encrypt"]);
+  const cryptoKey = await crypto.subtle.importKey("raw", keyBytes, { name: "AES-GCM" }, false, [
+    "encrypt",
+  ]);
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const enc = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, cryptoKey, new TextEncoder().encode(plaintext));
+  const enc = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv },
+    cryptoKey,
+    new TextEncoder().encode(plaintext)
+  );
   const combined = new Uint8Array(12 + enc.byteLength);
-  combined.set(iv); combined.set(new Uint8Array(enc), 12);
+  combined.set(iv);
+  combined.set(new Uint8Array(enc), 12);
   return btoa(String.fromCharCode(...combined));
 }
 
@@ -299,32 +375,49 @@ async function kvDecrypt(ciphertext, keyHex) {
   if (!keyHex || !ciphertext) return null;
   try {
     const keyBytes = hexToUint8(keyHex);
-    const cryptoKey = await crypto.subtle.importKey("raw", keyBytes, { name: "AES-GCM" }, false, ["decrypt"]);
-    const combined = Uint8Array.from(atob(ciphertext), c => c.charCodeAt(0));
-    const iv = combined.slice(0, 12), enc = combined.slice(12);
+    const cryptoKey = await crypto.subtle.importKey("raw", keyBytes, { name: "AES-GCM" }, false, [
+      "decrypt",
+    ]);
+    const combined = Uint8Array.from(atob(ciphertext), (c) => c.charCodeAt(0));
+    const iv = combined.slice(0, 12),
+      enc = combined.slice(12);
     const dec = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, cryptoKey, enc);
     return new TextDecoder().decode(dec);
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 // ─── Dexcom Share Fetch Helper (used by MCP get_current_bg) ──────────────────
 
-const DEXCOM_US_BASE  = "https://share2.dexcom.com/ShareWebServices/Services";
+const DEXCOM_US_BASE = "https://share2.dexcom.com/ShareWebServices/Services";
 const DEXCOM_OUS_BASE = "https://shareous1.dexcom.com/ShareWebServices/Services";
-const DEXCOM_APP_ID   = "d8665ade-9673-4e27-9ff6-92db4ce13d13";
+const DEXCOM_APP_ID = "d8665ade-9673-4e27-9ff6-92db4ce13d13";
 
 // Standard Dexcom/Nightscout trend scale (0-8)
 const TREND_NAMES = {
-  0: "None", 1: "DoubleUp", 2: "SingleUp", 3: "FortyFiveUp",
-  4: "Flat", 5: "FortyFiveDown", 6: "SingleDown", 7: "DoubleDown", 8: "NotComputable",
+  0: "None",
+  1: "DoubleUp",
+  2: "SingleUp",
+  3: "FortyFiveUp",
+  4: "Flat",
+  5: "FortyFiveDown",
+  6: "SingleDown",
+  7: "DoubleDown",
+  8: "NotComputable",
 };
 
 // Accepts either a Dexcom numeric trend (0-8) or a Nightscout direction string.
 // Returns { numeric, name } on the standard Dexcom scale.
 function normalizeTrend(trendNum, directionStr) {
   const nsToNum = {
-    DoubleUp: 1, SingleUp: 2, FortyFiveUp: 3, Flat: 4,
-    FortyFiveDown: 5, SingleDown: 6, DoubleDown: 7,
+    DoubleUp: 1,
+    SingleUp: 2,
+    FortyFiveUp: 3,
+    Flat: 4,
+    FortyFiveDown: 5,
+    SingleDown: 6,
+    DoubleDown: 7,
   };
   if (directionStr && nsToNum[directionStr] !== undefined) {
     return { numeric: nsToNum[directionStr], name: directionStr };
@@ -343,8 +436,12 @@ async function fetchDexcomShareLatest(config) {
     // Step 1: Authenticate — returns a quoted session UUID
     const authResp = await fetch(`${base}/General/AuthenticatePublisherAccount`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Accept": "application/json" },
-      body: JSON.stringify({ accountName: config.dexcom_user, password: config.dexcom_pass, applicationId: DEXCOM_APP_ID }),
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({
+        accountName: config.dexcom_user,
+        password: config.dexcom_pass,
+        applicationId: DEXCOM_APP_ID,
+      }),
       signal: AbortSignal.timeout(8000),
     });
     if (!authResp.ok) return null;
@@ -354,7 +451,7 @@ async function fetchDexcomShareLatest(config) {
     // Step 2: Fetch latest reading
     const readResp = await fetch(
       `${base}/Publisher/ReadPublisherLatestGlucoseValues?sessionId=${encodeURIComponent(sessionId)}&minutes=1440&maxCount=1`,
-      { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8000) },
+      { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8000) }
     );
     if (!readResp.ok) return null;
     const data = await readResp.json();
@@ -365,7 +462,9 @@ async function fetchDexcomShareLatest(config) {
     const m = (r.WT || r.ST || "").match(/Date\((\d+)/);
     if (m) ts = parseInt(m[1], 10);
     return { value: r.Value, trend: r.Trend ?? 4, direction: null, timestamp: ts };
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 // ─── Shared formatting helpers ─────────────────────────────────────────────────
@@ -391,7 +490,7 @@ async function fetchDexcomSensorSession(config, env) {
   if (env?.BGDISPLAY_CONFIG) {
     const cached = await env.BGDISPLAY_CONFIG.get(DEXCOM_SENSOR_CACHE_KEY, { type: "json" });
     const cacheTs = Number(cached?.fetchedAt || 0);
-    if (cached?.session_start_ts && (nowSec - cacheTs) <= DEXCOM_SENSOR_CACHE_MAX_AGE_SEC) {
+    if (cached?.session_start_ts && nowSec - cacheTs <= DEXCOM_SENSOR_CACHE_MAX_AGE_SEC) {
       return cached;
     }
   }
@@ -400,8 +499,12 @@ async function fetchDexcomSensorSession(config, env) {
   try {
     const authResp = await fetch(`${base}/General/AuthenticatePublisherAccount`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Accept": "application/json" },
-      body: JSON.stringify({ accountName: config.dexcom_user, password: config.dexcom_pass, applicationId: DEXCOM_APP_ID }),
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({
+        accountName: config.dexcom_user,
+        password: config.dexcom_pass,
+        applicationId: DEXCOM_APP_ID,
+      }),
       signal: AbortSignal.timeout(8000),
     });
     if (!authResp.ok) return null;
@@ -411,17 +514,20 @@ async function fetchDexcomSensorSession(config, env) {
     // Fetch 10 days of readings to find where current sensor session started
     const readResp = await fetch(
       `${base}/Publisher/ReadPublisherLatestGlucoseValues?sessionId=${encodeURIComponent(sessionId)}&minutes=14400&maxCount=2880`,
-      { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(12000) },
+      { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(12000) }
     );
     if (!readResp.ok) return null;
     const data = await readResp.json();
     if (!Array.isArray(data) || !data.length) return null;
 
     // Parse timestamps (Dexcom format: "Date(1234567890123)")
-    const readings = data.map(r => {
-      const m = (r.WT || r.ST || "").match(/Date\((\d+)/);
-      return m ? Math.floor(parseInt(m[1], 10) / 1000) : 0;
-    }).filter(t => t > 0).sort((a, b) => b - a); // newest first
+    const readings = data
+      .map((r) => {
+        const m = (r.WT || r.ST || "").match(/Date\((\d+)/);
+        return m ? Math.floor(parseInt(m[1], 10) / 1000) : 0;
+      })
+      .filter((t) => t > 0)
+      .sort((a, b) => b - a); // newest first
 
     // Walk backwards to find the start of the current contiguous session
     // A gap > 30 min (1800s) means a new sensor was inserted
@@ -448,14 +554,14 @@ async function fetchDexcomSensorSession(config, env) {
     };
 
     if (env?.BGDISPLAY_CONFIG) {
-      await env.BGDISPLAY_CONFIG.put(
-        DEXCOM_SENSOR_CACHE_KEY,
-        JSON.stringify(result),
-        { expirationTtl: 24 * 60 * 60 },
-      );
+      await env.BGDISPLAY_CONFIG.put(DEXCOM_SENSOR_CACHE_KEY, JSON.stringify(result), {
+        expirationTtl: 24 * 60 * 60,
+      });
     }
     return result;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 // ─── Nightscout Fetch Helpers (used by cron jobs and MCP) ─────────────────────
@@ -464,30 +570,38 @@ async function fetchNightscoutLatest(config) {
   if (!config.nightscout_url) return null;
   try {
     const base = config.nightscout_url.replace(/\/$/, "");
-    const token = config.nightscout_secret ? `&token=${encodeURIComponent(config.nightscout_secret)}` : "";
+    const token = config.nightscout_secret
+      ? `&token=${encodeURIComponent(config.nightscout_secret)}`
+      : "";
     const resp = await fetch(`${base}/api/v1/entries.json?count=1${token}`, {
-      headers: { "Accept": "application/json" },
+      headers: { Accept: "application/json" },
       signal: AbortSignal.timeout(8000),
     });
     if (!resp.ok) return null;
     const data = await resp.json();
     return Array.isArray(data) && data.length > 0 ? data[0] : null;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 async function fetchNightscoutHistory(config, count = 24) {
   if (!config.nightscout_url) return [];
   try {
     const base = config.nightscout_url.replace(/\/$/, "");
-    const token = config.nightscout_secret ? `&token=${encodeURIComponent(config.nightscout_secret)}` : "";
+    const token = config.nightscout_secret
+      ? `&token=${encodeURIComponent(config.nightscout_secret)}`
+      : "";
     const n = Math.min(288, Math.max(1, count));
     const resp = await fetch(`${base}/api/v1/entries.json?count=${n}${token}`, {
-      headers: { "Accept": "application/json" },
+      headers: { Accept: "application/json" },
       signal: AbortSignal.timeout(10000),
     });
     if (!resp.ok) return [];
     return resp.json();
-  } catch { return []; }
+  } catch {
+    return [];
+  }
 }
 
 // ─── DND Window Check (Worker-side, for cron Pushover guard) ──────────────────
@@ -495,57 +609,88 @@ async function fetchNightscoutHistory(config, count = 24) {
 function isInDNDWindow(config) {
   if (!config.dnd_enabled) return false;
   const tzMap = {
-    "US/Central": "America/Chicago", "US/Eastern": "America/New_York",
-    "US/Mountain": "America/Denver", "US/Pacific": "America/Los_Angeles",
+    "US/Central": "America/Chicago",
+    "US/Eastern": "America/New_York",
+    "US/Mountain": "America/Denver",
+    "US/Pacific": "America/Los_Angeles",
   };
   const ianaZone = tzMap[config.timezone] || "America/Chicago";
   try {
     const now = new Date();
     const fmt = new Intl.DateTimeFormat("en-US", {
-      timeZone: ianaZone, weekday: "short",
-      hour: "2-digit", minute: "2-digit", hour12: false,
+      timeZone: ianaZone,
+      weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
     });
     const parts = fmt.formatToParts(now);
-    const get = (type) => parts.find(p => p.type === type)?.value || "0";
+    const get = (type) => parts.find((p) => p.type === type)?.value || "0";
     const dayShort = get("weekday").toLowerCase().slice(0, 3);
-    const hour = parseInt(get("hour")); const minute = parseInt(get("minute"));
+    const hour = parseInt(get("hour"));
+    const minute = parseInt(get("minute"));
     const curMin = (hour === 24 ? 0 : hour) * 60 + minute;
 
     let fromStr, toStr;
     if (config.dnd_use_schedule !== false && config.dnd_schedule?.[dayShort]) {
       fromStr = config.dnd_schedule[dayShort].from || config.dnd_from || "23:00";
-      toStr   = config.dnd_schedule[dayShort].to   || config.dnd_to   || "06:00";
+      toStr = config.dnd_schedule[dayShort].to || config.dnd_to || "06:00";
     } else {
-      fromStr = config.dnd_from || "23:00"; toStr = config.dnd_to || "06:00";
+      fromStr = config.dnd_from || "23:00";
+      toStr = config.dnd_to || "06:00";
     }
     const [fH, fM] = fromStr.split(":").map(Number);
     const [tH, tM] = toStr.split(":").map(Number);
-    const fromMin = fH * 60 + fM, toMin = tH * 60 + tM;
-    return fromMin > toMin ? (curMin >= fromMin || curMin < toMin) : (curMin >= fromMin && curMin < toMin);
-  } catch { return false; }
+    const fromMin = fH * 60 + fM,
+      toMin = tH * 60 + tM;
+    return fromMin > toMin
+      ? curMin >= fromMin || curMin < toMin
+      : curMin >= fromMin && curMin < toMin;
+  } catch {
+    return false;
+  }
 }
 
 // ─── Trend Arrow Text ──────────────────────────────────────────────────────────
 
 function trendArrowText(trend) {
   const names = {
-    2: "↑↑ Rising Rapidly", 3: "↑ Rising", 4: "↗ Rising Slightly",
-    5: "→ Stable", 6: "↘ Falling Slightly", 7: "↓ Falling", 8: "↓↓ Falling Rapidly",
+    2: "↑↑ Rising Rapidly",
+    3: "↑ Rising",
+    4: "↗ Rising Slightly",
+    5: "→ Stable",
+    6: "↘ Falling Slightly",
+    7: "↓ Falling",
+    8: "↓↓ Falling Rapidly",
   };
   return names[trend] || "→ Stable";
 }
 
 function directionToTrend(dir) {
-  const m = { DoubleUp: 2, SingleUp: 3, FortyFiveUp: 4, Flat: 5, FortyFiveDown: 6, SingleDown: 7, DoubleDown: 8 };
+  const m = {
+    DoubleUp: 2,
+    SingleUp: 3,
+    FortyFiveUp: 4,
+    Flat: 5,
+    FortyFiveDown: 6,
+    SingleDown: 7,
+    DoubleDown: 8,
+  };
   return m[dir] || 5;
 }
 
 function truncateToSentence(text, maxChars) {
-  const clean = String(text || "").replace(/\s+/g, " ").trim();
+  const clean = String(text || "")
+    .replace(/\s+/g, " ")
+    .trim();
   if (clean.length <= maxChars) return clean;
 
   const clipped = clean.slice(0, maxChars);
-  const sentenceEnd = Math.max(clipped.lastIndexOf("."), clipped.lastIndexOf("!"), clipped.lastIndexOf("?"));
+  const sentenceEnd = Math.max(
+    clipped.lastIndexOf("."),
+    clipped.lastIndexOf("!"),
+    clipped.lastIndexOf("?")
+  );
   if (sentenceEnd >= Math.floor(maxChars * 0.6)) {
     return clipped.slice(0, sentenceEnd + 1).trim();
   }
@@ -578,30 +723,42 @@ function isAiTextUsable(text, type) {
   if (!t) return false;
   if (/^ai\s+error:/i.test(t)) return false;
   if (/^ai\s+digest\s+unavailable/i.test(t)) return false;
-  if (/^i\s+cannot|^i\s+can\'?t|as\s+an\s+ai\s+language\s+model/i.test(t)) return false;
+  if (/^i\s+cannot|^i\s+can't|as\s+an\s+ai\s+language\s+model/i.test(t)) return false;
   const minLen = type === "hourly" ? 35 : 80;
   return t.length >= minLen;
 }
 
 function buildDeterministicDigest(type, ctx) {
   const {
-    tir, low, high, aboveHigh, belowLow, urgLows, urgHighs,
-    overnightAvg, latest, latestTrend, latestAgeMin,
-    avgDelta, variability, latestLocalTime,
+    tir,
+    low,
+    high,
+    aboveHigh,
+    belowLow,
+    urgLows,
+    urgHighs,
+    overnightAvg,
+    latest,
+    latestTrend,
+    latestAgeMin,
+    avgDelta,
+    variability,
+    latestLocalTime,
   } = ctx;
 
   if (type === "hourly") {
     return [
       `Current glucose is ${latest ?? "unknown"} mg/dL (${latestTrend}) from ${latestLocalTime}, about ${latestAgeMin ?? "unknown"} minutes ago.`,
-      `Over the past hour, movement averaged ${avgDelta >= 0 ? "+" : ""}${avgDelta} mg/dL per 5 minutes with variability near ${variability} mg/dL.`
+      `Over the past hour, movement averaged ${avgDelta >= 0 ? "+" : ""}${avgDelta} mg/dL per 5 minutes with variability near ${variability} mg/dL.`,
     ].join(" ");
   }
 
   const rangeLine = `In the last 24 hours, time in range (${low}-${high} mg/dL) was ${tir}%.`;
   const eventsLine = `There were ${belowLow} lows, ${aboveHigh} highs, with urgent events at ${urgLows} low and ${urgHighs} high readings.`;
-  const overnightLine = overnightAvg != null
-    ? `Overnight average glucose was ${overnightAvg} mg/dL.`
-    : "Overnight average could not be calculated from available data.";
+  const overnightLine =
+    overnightAvg !== null && overnightAvg !== undefined
+      ? `Overnight average glucose was ${overnightAvg} mg/dL.`
+      : "Overnight average could not be calculated from available data.";
   const nowLine = `Current glucose is ${latest ?? "unknown"} mg/dL (${latestTrend}) from ${latestLocalTime}, about ${latestAgeMin ?? "unknown"} minutes ago.`;
   const trendLine = `Recent movement averaged ${avgDelta >= 0 ? "+" : ""}${avgDelta} mg/dL per 5 minutes with variability near ${variability} mg/dL.`;
   return [rangeLine, eventsLine, overnightLine, nowLine, trendLine].join(" ");
@@ -617,9 +774,10 @@ function getCentralDateParts(now = new Date()) {
     hour12: false,
   });
   const parts = Object.fromEntries(
-    formatter.formatToParts(now)
-      .filter(part => part.type !== "literal")
-      .map(part => [part.type, part.value])
+    formatter
+      .formatToParts(now)
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value])
   );
   return {
     date: `${parts.year}-${parts.month}-${parts.day}`,
@@ -641,8 +799,8 @@ function parseVersionParts(version) {
     .trim()
     .replace(/^[^\d]*/, "")
     .split(/[.-]/)
-    .map(part => parseInt(part, 10))
-    .filter(part => Number.isFinite(part));
+    .map((part) => parseInt(part, 10))
+    .filter((part) => Number.isFinite(part));
 }
 
 function compareVersions(a, b) {
@@ -660,12 +818,24 @@ function compareVersions(a, b) {
 
 function normalizeOtaRelease(input, fallbackChannel = "stable") {
   if (!input || typeof input !== "object") return null;
-  const channel = String(input.channel || fallbackChannel || "stable").trim().toLowerCase().slice(0, 15) || "stable";
-  const version = String(input.version || "").trim().slice(0, 24);
+  const channel =
+    String(input.channel || fallbackChannel || "stable")
+      .trim()
+      .toLowerCase()
+      .slice(0, 15) || "stable";
+  const version = String(input.version || "")
+    .trim()
+    .slice(0, 24);
   const r2Key = String(input.r2Key || input.r2_key || "").trim();
-  const md5 = String(input.md5 || "").trim().toLowerCase();
-  const sha256 = String(input.sha256 || "").trim().toLowerCase();
-  const notes = String(input.notes || "").trim().slice(0, 400);
+  const md5 = String(input.md5 || "")
+    .trim()
+    .toLowerCase();
+  const sha256 = String(input.sha256 || "")
+    .trim()
+    .toLowerCase();
+  const notes = String(input.notes || "")
+    .trim()
+    .slice(0, 400);
   const sizeBytes = Number(input.sizeBytes ?? input.size_bytes ?? 0);
   const mandatory = !!input.mandatory;
   if (!version || !r2Key) return null;
@@ -683,13 +853,20 @@ function normalizeOtaRelease(input, fallbackChannel = "stable") {
 }
 
 async function getOtaRelease(env, channel = "stable") {
-  const safeChannel = String(channel || "stable").trim().toLowerCase().slice(0, 15) || "stable";
+  const safeChannel =
+    String(channel || "stable")
+      .trim()
+      .toLowerCase()
+      .slice(0, 15) || "stable";
   const stored = await env.BGDISPLAY_CONFIG.get(`ota_release:${safeChannel}`, { type: "json" });
   return normalizeOtaRelease(stored, safeChannel);
 }
 
 async function buildOtaDownloadSignature(auth, channel, version, expiresAt, chipId = "") {
-  return hmacSha256Hex(auth?.keyHash || "", `ota-download|${channel}|${version}|${expiresAt}|${chipId}`);
+  return hmacSha256Hex(
+    auth?.keyHash || "",
+    `ota-download|${channel}|${version}|${expiresAt}|${chipId}`
+  );
 }
 
 async function buildOtaManifestResponse(request, env, auth, release) {
@@ -699,8 +876,14 @@ async function buildOtaManifestResponse(request, env, auth, release) {
     return { available: false, current, latest: release.version, channel: release.channel };
   }
   const chipId = (request.headers.get("X-Device-Id") || "").trim().toLowerCase();
-  const expiresAt = Date.now() + (10 * 60 * 1000);
-  const signature = await buildOtaDownloadSignature(auth, release.channel, release.version, expiresAt, chipId);
+  const expiresAt = Date.now() + 10 * 60 * 1000;
+  const signature = await buildOtaDownloadSignature(
+    auth,
+    release.channel,
+    release.version,
+    expiresAt,
+    chipId
+  );
   const downloadPath = `/api/ota/download/${encodeURIComponent(release.channel)}/${encodeURIComponent(release.version)}?exp=${expiresAt}&sig=${signature}${chipId ? `&chip=${encodeURIComponent(chipId)}` : ""}`;
   return {
     available: true,
@@ -738,7 +921,7 @@ async function generateDailyDigest(env, force = false, type = "daily") {
     if (type === "daily" && storage.hour !== 7) return;
     if (type === "hourly" && (storage.hour < 8 || storage.hour > 23)) return;
   }
-  
+
   // Guard: only run once per calendar day/hour (bypassed when force=true)
   const stored = await env.BGDISPLAY_CONFIG.get(storage.key, { type: "json" });
   if (!force && stored?.date === today) return;
@@ -746,10 +929,17 @@ async function generateDailyDigest(env, force = false, type = "daily") {
   const config = normalizeConfig(await env.BGDISPLAY_CONFIG.get("config", { type: "json" }));
 
   if (!config.nightscout_url) {
-    const text = type === "hourly" ? "No Nightscout URL configured." : "No Nightscout URL configured.";
-    await env.BGDISPLAY_CONFIG.put(storage.key, JSON.stringify({
-      text, generatedAt: Date.now(), date: today, type,
-    }));
+    const text =
+      type === "hourly" ? "No Nightscout URL configured." : "No Nightscout URL configured.";
+    await env.BGDISPLAY_CONFIG.put(
+      storage.key,
+      JSON.stringify({
+        text,
+        generatedAt: Date.now(),
+        date: today,
+        type,
+      })
+    );
     return;
   }
 
@@ -757,40 +947,64 @@ async function generateDailyDigest(env, force = false, type = "daily") {
   const readingCount = type === "hourly" ? 12 : 288;
   const readings = await fetchNightscoutHistory(config, readingCount);
   if (!readings.length) {
-    await env.BGDISPLAY_CONFIG.put(storage.key, JSON.stringify({
-      text: "No readings available for digest.", generatedAt: Date.now(), date: today, type,
-    }));
+    await env.BGDISPLAY_CONFIG.put(
+      storage.key,
+      JSON.stringify({
+        text: "No readings available for digest.",
+        generatedAt: Date.now(),
+        date: today,
+        type,
+      })
+    );
     return;
   }
 
-  const values = readings.map(r => r.sgv).filter(v => v > 0);
+  const values = readings.map((r) => r.sgv).filter((v) => v > 0);
   const latest = readings[0] || null;
-  const low = config.low || 70, high = config.high || 180;
-  const urgLow = config.urgent_low || 55, urgHigh = config.urgent_high || 250;
-  const tir = (values.filter(v => v >= low && v <= high).length / values.length * 100).toFixed(0);
-  const belowLow = values.filter(v => v < low).length;
-  const aboveHigh = values.filter(v => v > high).length;
-  const urgLows = values.filter(v => v < urgLow).length;
-  const urgHighs = values.filter(v => v > urgHigh).length;
-  const minVal = Math.min(...values), maxVal = Math.max(...values);
+  const low = config.low || 70,
+    high = config.high || 180;
+  const urgLow = config.urgent_low || 55,
+    urgHigh = config.urgent_high || 250;
+  const tir = ((values.filter((v) => v >= low && v <= high).length / values.length) * 100).toFixed(
+    0
+  );
+  const belowLow = values.filter((v) => v < low).length;
+  const aboveHigh = values.filter((v) => v > high).length;
+  const urgLows = values.filter((v) => v < urgLow).length;
+  const urgHighs = values.filter((v) => v > urgHigh).length;
+  const minVal = Math.min(...values),
+    maxVal = Math.max(...values);
   const avgVal = Math.round(values.reduce((a, b) => a + b, 0) / values.length);
   const latestTrend = latest?.direction || latest?.trend || "unknown";
-  const latestAgeMin = latest?.date ? Math.max(0, Math.round((Date.now() - latest.date) / 60000)) : null;
+  const latestAgeMin = latest?.date
+    ? Math.max(0, Math.round((Date.now() - latest.date) / 60000))
+    : null;
   const latestLocalTime = latest?.date ? formatTimestampLocal(latest.date) : "unknown";
   const deltaParts = [];
   for (let i = 0; i < Math.min(values.length - 1, 6); i += 1) {
     deltaParts.push(values[i] - values[i + 1]);
   }
-  const avgDelta = deltaParts.length ? Math.round(deltaParts.reduce((sum, value) => sum + value, 0) / deltaParts.length) : 0;
-  const variability = values.length > 1
-    ? Math.round(Math.sqrt(values.reduce((sum, value) => sum + Math.pow(value - avgVal, 2), 0) / values.length))
+  const avgDelta = deltaParts.length
+    ? Math.round(deltaParts.reduce((sum, value) => sum + value, 0) / deltaParts.length)
     : 0;
-  const overnightValues = type === "daily"
-    ? readings.filter(r => {
-        const hr = getCentralDateParts(new Date(r.date)).hour;
-        return hr >= 0 && hr < 6;
-      }).map(r => r.sgv).filter(v => v > 0)
-    : [];
+  const variability =
+    values.length > 1
+      ? Math.round(
+          Math.sqrt(
+            values.reduce((sum, value) => sum + Math.pow(value - avgVal, 2), 0) / values.length
+          )
+        )
+      : 0;
+  const overnightValues =
+    type === "daily"
+      ? readings
+          .filter((r) => {
+            const hr = getCentralDateParts(new Date(r.date)).hour;
+            return hr >= 0 && hr < 6;
+          })
+          .map((r) => r.sgv)
+          .filter((v) => v > 0)
+      : [];
   const overnightAvg = overnightValues.length
     ? Math.round(overnightValues.reduce((sum, value) => sum + value, 0) / overnightValues.length)
     : null;
@@ -808,49 +1022,69 @@ async function generateDailyDigest(env, force = false, type = "daily") {
   // Fetch Dexcom sensor session age
   let sensorSession = null;
   if (config.dexcom_user && config.dexcom_pass) {
-    try { sensorSession = await fetchDexcomSensorSession(config, env); } catch {}
+    try {
+      sensorSession = await fetchDexcomSensorSession(config, env);
+    } catch {
+      /* no-op */
+    }
   }
-
-  const nowSec = Math.floor(Date.now() / 1000);
 
   // Build sensor context line for AI prompt
   let sensorContextLine = "";
-  if (sensorSession?.session_age_days != null) {
+  if (sensorSession?.session_age_days !== null && sensorSession?.session_age_days !== undefined) {
     const daysLeft = sensorSession.days_remaining;
     sensorContextLine = `Dexcom sensor: ${sensorSession.session_age_days.toFixed(1)} days old, ~${daysLeft.toFixed(1)} days remaining.`;
   }
 
   const configuredModel = String(config.ai_model || "").trim();
-  const aiCandidates = Array.from(new Set([
-    configuredModel,
-    AI_MODEL_ALIASES["llama-3.3-70b"],
-    DEFAULT_AI_MODEL,
-    AI_MODEL_ALIASES["llama-3.2-3b"],
-  ].filter(Boolean)));
+  const aiCandidates = Array.from(
+    new Set(
+      [
+        configuredModel,
+        AI_MODEL_ALIASES["llama-3.3-70b"],
+        DEFAULT_AI_MODEL,
+        AI_MODEL_ALIASES["llama-3.2-3b"],
+      ].filter(Boolean)
+    )
+  );
 
   let digestText = "AI digest unavailable — Workers AI binding not configured.";
   let aiModelUsed = configuredModel || DEFAULT_AI_MODEL;
 
   if (env.AI) {
     const fallbackText = buildDeterministicDigest(type, {
-      tir, low, high, aboveHigh, belowLow, urgLows, urgHighs,
-      overnightAvg, latest: latest?.sgv, latestTrend, latestAgeMin,
-      avgDelta, variability, latestLocalTime,
+      tir,
+      low,
+      high,
+      aboveHigh,
+      belowLow,
+      urgLows,
+      urgHighs,
+      overnightAvg,
+      latest: latest?.sgv,
+      latestTrend,
+      latestAgeMin,
+      avgDelta,
+      variability,
+      latestLocalTime,
     });
 
     try {
-      const systemPrompt = type === "hourly"
-        ? "You are a concise diabetes health assistant for a Type 2 diabetic using a Dexcom G7 CGM. Write exactly 2 plain-text sentences under 80 words. Sentence 1 must state current glucose and trend status. Sentence 2 must summarize the strongest one-hour pattern using only provided numbers. No bullets, no markdown, no disclaimers, no treatment advice."
-        : "You are a concise diabetes health assistant for a Type 2 diabetic using a Dexcom G7 CGM. Write exactly 4 plain-text sentences under 180 words. Sentence 1: time in range and notable highs/lows. Sentence 2: overnight pattern. Sentence 3: current reading and trend. Sentence 4: one concrete observation from short-term movement or variability. Use only provided data. No bullets, no markdown, no disclaimers, no treatment advice.";
+      const systemPrompt =
+        type === "hourly"
+          ? "You are a concise diabetes health assistant for a Type 2 diabetic using a Dexcom G7 CGM. Write exactly 2 plain-text sentences under 80 words. Sentence 1 must state current glucose and trend status. Sentence 2 must summarize the strongest one-hour pattern using only provided numbers. No bullets, no markdown, no disclaimers, no treatment advice."
+          : "You are a concise diabetes health assistant for a Type 2 diabetic using a Dexcom G7 CGM. Write exactly 4 plain-text sentences under 180 words. Sentence 1: time in range and notable highs/lows. Sentence 2: overnight pattern. Sentence 3: current reading and trend. Sentence 4: one concrete observation from short-term movement or variability. Use only provided data. No bullets, no markdown, no disclaimers, no treatment advice.";
 
       const userContent = [
         `Stats: ${statsLine}`,
         `Current reading: ${latest?.sgv ?? "unknown"} mg/dL at ${latestLocalTime}, trend ${latestTrend}, approximately ${latestAgeMin ?? "unknown"} minutes old.`,
-        `Short-term movement: average change ${avgDelta >= 0 ? "+" : ""}${avgDelta} mg/dL per 5-minute step over the latest samples. Variability estimate: ${variability} mg/dL.${overnightAvg != null ? ` Overnight average: ${overnightAvg} mg/dL.` : ""}`,
+        `Short-term movement: average change ${avgDelta >= 0 ? "+" : ""}${avgDelta} mg/dL per 5-minute step over the latest samples. Variability estimate: ${variability} mg/dL.${overnightAvg !== null && overnightAvg !== undefined ? ` Overnight average: ${overnightAvg} mg/dL.` : ""}`,
         `Most recent values (newest first): ${recentStr} mg/dL.`,
         sensorContextLine ? sensorContextLine : null,
         `Pump profile: ${JSON.stringify(pumpProfile)}.`,
-      ].filter(Boolean).join(" ");
+      ]
+        .filter(Boolean)
+        .join(" ");
 
       const maxDigestChars = type === "hourly" ? 900 : 980;
       let bestErr = null;
@@ -878,17 +1112,37 @@ async function generateDailyDigest(env, force = false, type = "daily") {
         digestText = truncateToSentence(fallbackText, type === "hourly" ? 900 : 980);
         aiModelUsed = "fallback:deterministic";
         if (bestErr) {
-          await appendChangeLog(env, `AI digest fallback used (${type}) due to model/run error: ${String(bestErr).slice(0, 80)}`);
+          await appendChangeLog(
+            env,
+            `AI digest fallback used (${type}) due to model/run error: ${String(bestErr).slice(0, 80)}`
+          );
         }
       }
     } catch (e) {
-      digestText = truncateToSentence(buildDeterministicDigest(type, {
-        tir, low, high, aboveHigh, belowLow, urgLows, urgHighs,
-        overnightAvg, latest: latest?.sgv, latestTrend, latestAgeMin,
-        avgDelta, variability, latestLocalTime,
-      }), type === "hourly" ? 900 : 980);
+      digestText = truncateToSentence(
+        buildDeterministicDigest(type, {
+          tir,
+          low,
+          high,
+          aboveHigh,
+          belowLow,
+          urgLows,
+          urgHighs,
+          overnightAvg,
+          latest: latest?.sgv,
+          latestTrend,
+          latestAgeMin,
+          avgDelta,
+          variability,
+          latestLocalTime,
+        }),
+        type === "hourly" ? 900 : 980
+      );
       aiModelUsed = "fallback:deterministic";
-      await appendChangeLog(env, `AI digest hard-fallback used (${type}): ${String(e).slice(0, 80)}`);
+      await appendChangeLog(
+        env,
+        `AI digest hard-fallback used (${type}): ${String(e).slice(0, 80)}`
+      );
     }
   }
 
@@ -901,7 +1155,10 @@ async function generateDailyDigest(env, force = false, type = "daily") {
     ai_model: aiModelUsed,
   };
   await env.BGDISPLAY_CONFIG.put(storage.key, JSON.stringify(digest));
-  const logMsg = type === "hourly" ? `Hourly AI digest generated (TIR ${tir}%, ${values.length} readings)` : `Daily AI digest generated (TIR ${tir}%, ${values.length} readings)`;
+  const logMsg =
+    type === "hourly"
+      ? `Hourly AI digest generated (TIR ${tir}%, ${values.length} readings)`
+      : `Daily AI digest generated (TIR ${tir}%, ${values.length} readings)`;
   await appendChangeLog(env, logMsg);
 }
 
@@ -919,15 +1176,17 @@ async function sendDigestPushover(env) {
       const raw = await kvDecrypt(enc, env.KV_ENCRYPT_KEY);
       if (raw) creds = JSON.parse(raw);
     }
-  } catch {}
+  } catch {
+    /* no-op */
+  }
   if (!creds?.user_key || !creds?.api_token) return;
 
   const centralNow = getCentralDateParts();
   const today = centralNow.date;
-  
+
   // Check for daily digest send (at configured hour)
   const currentHour = centralNow.hour;
-  
+
   if (currentHour === config.digest_pushover_hour) {
     const lastDailySent = await env.BGDISPLAY_CONFIG.get("last_digest_pushover");
     if (lastDailySent !== today) {
@@ -936,7 +1195,13 @@ async function sendDigestPushover(env) {
         const title = "BG MiniView - Daily Summary";
         const message = truncateToSentence(digest.text, 1024);
         // priority 0 = normal; daily summaries are informational, not urgent
-        const ok = await sendPushoverNotification(creds.user_key, creds.api_token, message, title, 0);
+        const ok = await sendPushoverNotification(
+          creds.user_key,
+          creds.api_token,
+          message,
+          title,
+          0
+        );
         if (ok) {
           await env.BGDISPLAY_CONFIG.put("last_digest_pushover", today);
           await appendChangeLog(env, "Daily digest sent via Pushover");
@@ -944,7 +1209,7 @@ async function sendDigestPushover(env) {
       }
     }
   }
-  
+
   // Check for hourly digest send — local hours 8–22 (8 AM – 10 PM inclusive)
   // currentHour is already in America/Chicago local time from toLocaleString above
   if (currentHour >= 8 && currentHour <= 22) {
@@ -958,7 +1223,13 @@ async function sendDigestPushover(env) {
           const title = "BG MiniView - Hourly Update";
           const message = truncateToSentence(digest.text, 1024);
           // priority 0 = normal (respects device quiet hours); digests are informational
-          const ok = await sendPushoverNotification(creds.user_key, creds.api_token, message, title, 0);
+          const ok = await sendPushoverNotification(
+            creds.user_key,
+            creds.api_token,
+            message,
+            title,
+            0
+          );
           if (ok) {
             await env.BGDISPLAY_CONFIG.put(`${hourlyKey}_pushover_sent`, today);
             await appendChangeLog(env, `Hourly digest sent via Pushover (hour ${currentHour})`);
@@ -996,7 +1267,9 @@ async function loadPushoverCreds(env) {
       const raw = await kvDecrypt(enc, env.KV_ENCRYPT_KEY);
       if (raw) return JSON.parse(raw);
     }
-  } catch {}
+  } catch {
+    /* no-op */
+  }
   return null;
 }
 
@@ -1028,18 +1301,19 @@ async function getPushoverStatus(env, config) {
 
 async function buildHealthSummary(env, config, auth) {
   const nowMs = Date.now();
-  const [deviceStatus, dailyDigest, pushoverStatus] = await Promise.all([
-    env.BGDISPLAY_CONFIG.get("device_status", { type: "json" }),
+  const [dailyDigest, pushoverStatus] = await Promise.all([
     env.BGDISPLAY_CONFIG.get("daily_digest", { type: "json" }),
     getPushoverStatus(env, config),
   ]);
-  const digestAgeMin = dailyDigest?.generatedAt ? Math.round((nowMs - dailyDigest.generatedAt) / 60000) : null;
+  const digestAgeMin = dailyDigest?.generatedAt
+    ? Math.round((nowMs - dailyDigest.generatedAt) / 60000)
+    : null;
   const nextDigestWindow = `Daily 7:00 AM US/Central; hourly 8:00 AM-11:00 PM US/Central`;
 
   return [
     `Worker health summary`,
     // Removed device online/offline summary
-    `Digest: ${dailyDigest ? `present for ${dailyDigest.date}, age ${digestAgeMin} min, model ${(dailyDigest.ai_model || config.ai_model || "@cf/meta/llama-3.1-8b-instruct")}` : "missing"}`,
+    `Digest: ${dailyDigest ? `present for ${dailyDigest.date}, age ${digestAgeMin} min, model ${dailyDigest.ai_model || config.ai_model || "@cf/meta/llama-3.1-8b-instruct"}` : "missing"}`,
     `Schedule: ${nextDigestWindow}`,
     `Pushover: ${pushoverStatus.configured ? "configured" : "not configured"}, alerts ${pushoverStatus.alerts_enabled ? "on" : "off"}, digest push ${pushoverStatus.digest_enabled ? `on at ${pushoverStatus.digest_hour_central}:00 Central` : "off"}`,
     `Auth: device key ${auth?.keyHash ? `active (*${auth.keyHash.slice(-4)})` : "missing"}, recovery ${auth?.recoveryKeyHash ? `enabled (*${auth.recoveryKeyHash.slice(-4)})` : "disabled"}`,
@@ -1070,17 +1344,17 @@ async function getKeyAuthStatus(auth, keyCandidate = "") {
 }
 
 async function buildFullReadinessReport(env, config, auth) {
-  const nowMs = Date.now();
   const centralNow = getCentralDateParts();
-  const [deviceStatus, dailyDigest, pushoverStatus, keyAuth] = await Promise.all([
-    env.BGDISPLAY_CONFIG.get("device_status", { type: "json" }),
+  const [dailyDigest, pushoverStatus, keyAuth] = await Promise.all([
     env.BGDISPLAY_CONFIG.get("daily_digest", { type: "json" }),
     getPushoverStatus(env, config),
     getKeyAuthStatus(auth),
   ]);
   // Removed device offline check from readiness report
   const digestFresh = !!dailyDigest && dailyDigest.date === centralNow.date;
-  const digestPushReady = !config.digest_pushover_enabled || (pushoverStatus.configured && Number(config.digest_pushover_hour) === 7);
+  const digestPushReady =
+    !config.digest_pushover_enabled ||
+    (pushoverStatus.configured && Number(config.digest_pushover_hour) === 7);
   const bgAlertsReady = !config.pushover_enabled || pushoverStatus.configured;
   const checks = {
     ai_binding: !!env.AI,
@@ -1098,7 +1372,9 @@ async function buildFullReadinessReport(env, config, auth) {
       central_date: centralNow.date,
       central_hour: centralNow.hour,
       digest_date: dailyDigest?.date || null,
-      digest_generated_at: dailyDigest?.generatedAt ? new Date(dailyDigest.generatedAt).toISOString() : null,
+      digest_generated_at: dailyDigest?.generatedAt
+        ? new Date(dailyDigest.generatedAt).toISOString()
+        : null,
       digest_pushover_hour: Number(config.digest_pushover_hour ?? 7),
       key_auth: keyAuth,
       pushover: pushoverStatus,
@@ -1106,7 +1382,6 @@ async function buildFullReadinessReport(env, config, auth) {
     summary: await buildHealthSummary(env, config, auth),
   };
 }
-
 
 async function runPushoverAlertCheck(env) {
   const config = normalizeConfig(await env.BGDISPLAY_CONFIG.get("config", { type: "json" }));
@@ -1120,7 +1395,9 @@ async function runPushoverAlertCheck(env) {
       const raw = await kvDecrypt(enc, env.KV_ENCRYPT_KEY);
       if (raw) creds = JSON.parse(raw);
     }
-  } catch {}
+  } catch {
+    /* no-op */
+  }
   if (!creds?.user_key || !creds?.api_token) return;
 
   // Cooldown check
@@ -1135,14 +1412,20 @@ async function runPushoverAlertCheck(env) {
   if (!entry?.sgv) return;
 
   const bg = entry.sgv;
-  const urgLow = config.urgent_low || 55, urgHigh = config.urgent_high || 250;
-  let alertMsg = null, isLow = false;
+  const urgLow = config.urgent_low || 55,
+    urgHigh = config.urgent_high || 250;
+  let alertMsg = null,
+    isLow = false;
 
-  if (bg <= urgLow) { isLow = true; alertMsg = `URGENT LOW: ${bg} mg/dL`; }
-  else if (bg >= urgHigh) { alertMsg = `URGENT HIGH: ${bg} mg/dL`; }
+  if (bg <= urgLow) {
+    isLow = true;
+    alertMsg = `URGENT LOW: ${bg} mg/dL`;
+  } else if (bg >= urgHigh) {
+    alertMsg = `URGENT HIGH: ${bg} mg/dL`;
+  }
   if (!alertMsg) return;
 
-  const trend = entry.direction ? directionToTrend(entry.direction) : (entry.trend || 5);
+  const trend = entry.direction ? directionToTrend(entry.direction) : entry.trend || 5;
   const fullMsg = `${alertMsg} • ${trendArrowText(trend)}`;
   const title = isLow ? "BG MiniView - Low Alert" : "BG MiniView - High Alert";
 
@@ -1160,12 +1443,14 @@ async function runPushoverAlertCheck(env) {
 const MCP_TOOLS = [
   {
     name: "get_current_bg",
-    description: "Fetch the latest blood glucose reading. Tries Dexcom Share first, then falls back to Nightscout. Returns value, trend direction as both numeric (Dexcom 0–8 scale) and human-readable string (e.g. \"Flat\", \"SingleUp\"), ISO timestamp, source used (\"dexcom\" or \"nightscout\"), and staleness in minutes.",
+    description:
+      'Fetch the latest blood glucose reading. Tries Dexcom Share first, then falls back to Nightscout. Returns value, trend direction as both numeric (Dexcom 0–8 scale) and human-readable string (e.g. "Flat", "SingleUp"), ISO timestamp, source used ("dexcom" or "nightscout"), and staleness in minutes.',
     inputSchema: { type: "object", properties: {}, required: [] },
   },
   {
     name: "get_device_status",
-    description: "Return device online/offline status, RSSI, firmware version, uptime, SD card, and last seen",
+    description:
+      "Return device online/offline status, RSSI, firmware version, uptime, SD card, and last seen",
     inputSchema: { type: "object", properties: {}, required: [] },
   },
   {
@@ -1175,7 +1460,8 @@ const MCP_TOOLS = [
   },
   {
     name: "update_config",
-    description: "Update one or more config fields (snake_case keys), increment version, and trigger device sync",
+    description:
+      "Update one or more config fields (snake_case keys), increment version, and trigger device sync",
     inputSchema: {
       type: "object",
       properties: {
@@ -1207,7 +1493,8 @@ const MCP_TOOLS = [
   },
   {
     name: "detect_timezone",
-    description: "Detect user's timezone from their geo IP location. Returns detected IANA timezone and mapped zone (US/Central, US/Eastern, etc). Can be used to auto-set timezone on first boot.",
+    description:
+      "Detect user's timezone from their geo IP location. Returns detected IANA timezone and mapped zone (US/Central, US/Eastern, etc). Can be used to auto-set timezone on first boot.",
     inputSchema: { type: "object", properties: {}, required: [] },
   },
   {
@@ -1217,12 +1504,14 @@ const MCP_TOOLS = [
   },
   {
     name: "get_pushover_status",
-    description: "Return Pushover configuration and recent delivery state for BG alerts, digest pushes, and offline alerts.",
+    description:
+      "Return Pushover configuration and recent delivery state for BG alerts, digest pushes, and offline alerts.",
     inputSchema: { type: "object", properties: {}, required: [] },
   },
   {
     name: "send_test_pushover",
-    description: "Send a controlled Pushover test message using the stored credentials. Use category='general' or 'digest'.",
+    description:
+      "Send a controlled Pushover test message using the stored credentials. Use category='general' or 'digest'.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1234,7 +1523,8 @@ const MCP_TOOLS = [
   },
   {
     name: "generate_digest",
-    description: "Force-generate today's AI blood glucose summary immediately, bypassing the once-per-day guard",
+    description:
+      "Force-generate today's AI blood glucose summary immediately, bypassing the once-per-day guard",
     inputSchema: { type: "object", properties: {}, required: [] },
   },
   {
@@ -1244,7 +1534,8 @@ const MCP_TOOLS = [
   },
   {
     name: "clear_cache",
-    description: "Clear one or more cached data entries from KV storage. Use target='digests' to clear all AI digest cache (daily + all hourly), 'alerts' to reset Pushover alert history/cooldowns, or 'all' for everything.",
+    description:
+      "Clear one or more cached data entries from KV storage. Use target='digests' to clear all AI digest cache (daily + all hourly), 'alerts' to reset Pushover alert history/cooldowns, or 'all' for everything.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1255,42 +1546,55 @@ const MCP_TOOLS = [
   },
   {
     name: "get_maintenance_status",
-    description: "Return a full health snapshot: digest freshness, Dexcom sensor cache, binding availability, and alert cooldown state.",
+    description:
+      "Return a full health snapshot: digest freshness, Dexcom sensor cache, binding availability, and alert cooldown state.",
     inputSchema: { type: "object", properties: {}, required: [] },
   },
   {
     name: "get_health_summary",
-    description: "Return a concise plain-text summary of worker health, digest state, Pushover readiness, and auth status.",
+    description:
+      "Return a concise plain-text summary of worker health, digest state, Pushover readiness, and auth status.",
     inputSchema: { type: "object", properties: {}, required: [] },
   },
   {
     name: "get_key_auth_status",
-    description: "Return key auth status. Optionally pass a key string to check whether it matches active, pending, or recovery key state.",
+    description:
+      "Return key auth status. Optionally pass a key string to check whether it matches active, pending, or recovery key state.",
     inputSchema: {
       type: "object",
       properties: {
-        key: { type: "string", description: "Optional key candidate to classify (active | pending | recovery | invalid)" },
+        key: {
+          type: "string",
+          description: "Optional key candidate to classify (active | pending | recovery | invalid)",
+        },
       },
       required: [],
     },
   },
   {
     name: "get_full_readiness",
-    description: "Return a single readiness report that combines auth, digest freshness, Pushover readiness, device recency, and binding health.",
+    description:
+      "Return a single readiness report that combines auth, digest freshness, Pushover readiness, device recency, and binding health.",
     inputSchema: { type: "object", properties: {}, required: [] },
   },
   {
     name: "run_maintenance",
-    description: "Run a maintenance sweep: force-regenerate the daily AI digest and clear hourly digest cache.",
+    description:
+      "Run a maintenance sweep: force-regenerate the daily AI digest and clear hourly digest cache.",
     inputSchema: { type: "object", properties: {}, required: [] },
   },
   {
     name: "set_ai_model",
-    description: "Change the Workers AI model used for digest generation. Available models: llama-3.1-8b (default, fast), llama-3.3-70b (higher quality, slower), llama-3.2-3b (fastest), mistral-7b, gemma-7b. Pass model alias or full @cf/ path.",
+    description:
+      "Change the Workers AI model used for digest generation. Available models: llama-3.1-8b (default, fast), llama-3.3-70b (higher quality, slower), llama-3.2-3b (fastest), mistral-7b, gemma-7b. Pass model alias or full @cf/ path.",
     inputSchema: {
       type: "object",
       properties: {
-        model: { type: "string", description: "Model alias: llama-3.1-8b | llama-3.3-70b | llama-3.2-3b | mistral-7b | gemma-7b, or full @cf/ path" },
+        model: {
+          type: "string",
+          description:
+            "Model alias: llama-3.1-8b | llama-3.3-70b | llama-3.2-3b | mistral-7b | gemma-7b, or full @cf/ path",
+        },
       },
       required: ["model"],
     },
@@ -1299,9 +1603,7 @@ const MCP_TOOLS = [
 
 function redactConfig(config) {
   const redacted = { ...config };
-  for (const k of [
-    "wifi_pass", "nightscout_secret", "dexcom_pass", "dexcom_user",
-  ]) {
+  for (const k of ["wifi_pass", "nightscout_secret", "dexcom_pass", "dexcom_user"]) {
     if (redacted[k]) redacted[k] = "••••••••";
   }
   return redacted;
@@ -1309,7 +1611,11 @@ function redactConfig(config) {
 
 async function handleMCP(request, env, config, auth) {
   let body;
-  try { body = await request.json(); } catch { return mcpError(null, -32700, "Parse error"); }
+  try {
+    body = await request.json();
+  } catch {
+    return mcpError(null, -32700, "Parse error");
+  }
 
   const { method, id, params } = body;
 
@@ -1347,18 +1653,33 @@ async function handleMCP(request, env, config, auth) {
       if (!rawEntry) {
         const nsEntry = await fetchNightscoutLatest(config);
         if (nsEntry) {
-          rawEntry = { value: nsEntry.sgv, trend: nsEntry.trend, direction: nsEntry.direction, timestamp: nsEntry.date };
+          rawEntry = {
+            value: nsEntry.sgv,
+            trend: nsEntry.trend,
+            direction: nsEntry.direction,
+            timestamp: nsEntry.date,
+          };
           source = "nightscout";
         }
       }
 
       if (!rawEntry) {
         return mcpResult(id, {
-          content: [{ type: "text", text: JSON.stringify({ error: "No BG reading available from Dexcom Share or Nightscout." }) }],
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                error: "No BG reading available from Dexcom Share or Nightscout.",
+              }),
+            },
+          ],
         });
       }
 
-      const { numeric: trendNumeric, name: trendName } = normalizeTrend(rawEntry.trend, rawEntry.direction);
+      const { numeric: trendNumeric, name: trendName } = normalizeTrend(
+        rawEntry.trend,
+        rawEntry.direction
+      );
       const nowMs = Date.now();
       const staleMin = rawEntry.timestamp ? Math.round((nowMs - rawEntry.timestamp) / 60000) : null;
 
@@ -1375,8 +1696,10 @@ async function handleMCP(request, env, config, auth) {
     }
 
     if (toolName === "get_device_status") {
-      const status = await env.BGDISPLAY_CONFIG.get("device_status", { type: "json" }) || {};
-      const uptimeTxt = status.uptime ? `${Math.floor(status.uptime / 86400)}d ${Math.floor((status.uptime % 86400) / 3600)}h` : "—";
+      const status = (await env.BGDISPLAY_CONFIG.get("device_status", { type: "json" })) || {};
+      const uptimeTxt = status.uptime
+        ? `${Math.floor(status.uptime / 86400)}d ${Math.floor((status.uptime % 86400) / 3600)}h`
+        : "—";
       const txt = [
         `Last seen: ${status.lastSeen ? new Date(status.lastSeen).toISOString() : "—"}`,
         `Firmware: ${status.firmware || "—"}`,
@@ -1404,11 +1727,17 @@ async function handleMCP(request, env, config, auth) {
       await env.BGDISPLAY_CONFIG.put("config", JSON.stringify(merged));
       await env.BGDISPLAY_CONFIG.put("config_updated_at", String(nowTs));
 
-      const secretMeta = await env.BGDISPLAY_CONFIG.get("secret_meta", { type: "json" }) || {};
-      if (typeof args.fields.nightscout_secret === "string" && args.fields.nightscout_secret !== config.nightscout_secret) {
+      const secretMeta = (await env.BGDISPLAY_CONFIG.get("secret_meta", { type: "json" })) || {};
+      if (
+        typeof args.fields.nightscout_secret === "string" &&
+        args.fields.nightscout_secret !== config.nightscout_secret
+      ) {
         secretMeta.nightscoutSecretUpdatedAt = nowTs;
       }
-      if (typeof args.fields.dexcom_pass === "string" && args.fields.dexcom_pass !== config.dexcom_pass) {
+      if (
+        typeof args.fields.dexcom_pass === "string" &&
+        args.fields.dexcom_pass !== config.dexcom_pass
+      ) {
         secretMeta.dexcomPassUpdatedAt = nowTs;
       }
       await env.BGDISPLAY_CONFIG.put("secret_meta", JSON.stringify(secretMeta));
@@ -1417,43 +1746,68 @@ async function handleMCP(request, env, config, auth) {
       await appendChangeLog(env, `Config updated via MCP (v${newVersion})`);
       await appendWorkerEvent(env, { type: "config-save", version: newVersion, via: "mcp" });
       if (merged.auto_backup) {
-        await env.BGDISPLAY_CONFIG.put(`backup:${Date.now()}`, JSON.stringify(merged), { expirationTtl: 30 * 86400 });
+        await env.BGDISPLAY_CONFIG.put(`backup:${Date.now()}`, JSON.stringify(merged), {
+          expirationTtl: 30 * 86400,
+        });
       }
       // Broadcast to any connected devices
       if (env.CONFIG_SYNC) {
         try {
           const stub = env.CONFIG_SYNC.get(env.CONFIG_SYNC.idFromName("global"));
-          await stub.fetch(new Request("https://do.internal/broadcast", {
-            method: "POST",
-            body: JSON.stringify({ type: "config-changed", version: newVersion, ts: nowTs }),
-          }));
-        } catch {}
+          await stub.fetch(
+            new Request("https://do.internal/broadcast", {
+              method: "POST",
+              body: JSON.stringify({ type: "config-changed", version: newVersion, ts: nowTs }),
+            })
+          );
+        } catch {
+          /* no-op */
+        }
       }
-      return mcpResult(id, { content: [{ type: "text", text: `Config updated. New version: v${newVersion}. Updated: ${new Date(nowTs).toISOString()}.` }] });
+      return mcpResult(id, {
+        content: [
+          {
+            type: "text",
+            text: `Config updated. New version: v${newVersion}. Updated: ${new Date(nowTs).toISOString()}.`,
+          },
+        ],
+      });
     }
 
     if (toolName === "force_sync") {
       const cmd = {
-        id: crypto.randomUUID(), type: "sync-now", args: {},
-        createdAt: Date.now(), expiresAt: Date.now() + 10 * 60000,
+        id: crypto.randomUUID(),
+        type: "sync-now",
+        args: {},
+        createdAt: Date.now(),
+        expiresAt: Date.now() + 10 * 60000,
       };
       await env.BGDISPLAY_CONFIG.put("command:all", JSON.stringify(cmd));
       await appendChangeLog(env, "Force sync queued via MCP");
-      return mcpResult(id, { content: [{ type: "text", text: "sync-now command queued. Device will fetch config on next poll." }] });
+      return mcpResult(id, {
+        content: [
+          { type: "text", text: "sync-now command queued. Device will fetch config on next poll." },
+        ],
+      });
     }
 
     if (toolName === "get_change_log") {
-      const log = await env.BGDISPLAY_CONFIG.get("changelog", { type: "json" }) || [];
-      const txt = log.slice(0, 20).map(e => `[${new Date(e.ts).toISOString()}] ${e.msg}`).join("\n") || "No entries.";
+      const log = (await env.BGDISPLAY_CONFIG.get("changelog", { type: "json" })) || [];
+      const txt =
+        log
+          .slice(0, 20)
+          .map((e) => `[${new Date(e.ts).toISOString()}] ${e.msg}`)
+          .join("\n") || "No entries.";
       return mcpResult(id, { content: [{ type: "text", text: txt }] });
     }
 
     if (toolName === "get_bg_history") {
       const count = Math.min(288, Math.max(1, Number(args.count || 24)));
       const readings = await fetchNightscoutHistory(config, count);
-      if (!readings.length) return mcpResult(id, { content: [{ type: "text", text: "No history available." }] });
-      const lines = readings.map(r => {
-        const trend = r.direction ? directionToTrend(r.direction) : (r.trend || 5);
+      if (!readings.length)
+        return mcpResult(id, { content: [{ type: "text", text: "No history available." }] });
+      const lines = readings.map((r) => {
+        const trend = r.direction ? directionToTrend(r.direction) : r.trend || 5;
         const ts = r.date ? new Date(r.date).toISOString() : "—";
         return `${ts}: ${r.sgv} mg/dL ${trendArrowText(trend)}`;
       });
@@ -1468,14 +1822,20 @@ async function handleMCP(request, env, config, auth) {
         source_iana: cfTimeZone,
         confidence: cfTimeZone !== "America/Chicago" ? "high" : "default",
         supported_zones: ["US/Central", "US/Eastern", "US/Mountain", "US/Pacific"],
-        description: "Use this 'detected' value to auto-set timezone on first boot. Once manually set, user can override in config.",
+        description:
+          "Use this 'detected' value to auto-set timezone on first boot. Once manually set, user can override in config.",
       };
       return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] });
     }
 
     if (toolName === "get_daily_digest") {
       const digest = await env.BGDISPLAY_CONFIG.get("daily_digest", { type: "json" });
-      if (!digest) return mcpResult(id, { content: [{ type: "text", text: "No digest generated yet. Runs daily at 7:00 AM US/Central." }] });
+      if (!digest)
+        return mcpResult(id, {
+          content: [
+            { type: "text", text: "No digest generated yet. Runs daily at 7:00 AM US/Central." },
+          ],
+        });
       const txt = `Date: ${digest.date}\nGenerated: ${new Date(digest.generatedAt).toISOString()}\n\n${digest.text}`;
       return mcpResult(id, { content: [{ type: "text", text: txt }] });
     }
@@ -1492,12 +1852,25 @@ async function handleMCP(request, env, config, auth) {
       }
       const creds = await loadPushoverCreds(env);
       if (!creds?.user_key || !creds?.api_token) {
-        return mcpResult(id, { content: [{ type: "text", text: JSON.stringify({ ok: false, error: "Pushover credentials not configured." }, null, 2) }] });
+        return mcpResult(id, {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                { ok: false, error: "Pushover credentials not configured." },
+                null,
+                2
+              ),
+            },
+          ],
+        });
       }
-      const title = category === "digest" ? "BG MiniView - Digest Test" : "BG MiniView - Test Alert";
-      const defaultMessage = category === "digest"
-        ? `Digest test from MCP at ${new Date().toISOString()}. This verifies stored credentials and delivery for scheduled summaries.`
-        : `Test alert from MCP at ${new Date().toISOString()}. This verifies stored credentials and delivery for BG alerts.`;
+      const title =
+        category === "digest" ? "BG MiniView - Digest Test" : "BG MiniView - Test Alert";
+      const defaultMessage =
+        category === "digest"
+          ? `Digest test from MCP at ${new Date().toISOString()}. This verifies stored credentials and delivery for scheduled summaries.`
+          : `Test alert from MCP at ${new Date().toISOString()}. This verifies stored credentials and delivery for BG alerts.`;
       const message = truncateToSentence(String(args.message || defaultMessage), 1024);
       const ok = await sendPushoverNotification(creds.user_key, creds.api_token, message, title, 0);
       const result = {
@@ -1516,8 +1889,11 @@ async function handleMCP(request, env, config, auth) {
     if (toolName === "generate_digest") {
       await generateDailyDigest(env, true);
       const digest = await env.BGDISPLAY_CONFIG.get("daily_digest", { type: "json" });
-      if (!digest) return mcpResult(id, { content: [{ type: "text", text: "Digest generation failed." }] });
-      return mcpResult(id, { content: [{ type: "text", text: `Generated: ${digest.date}\n\n${digest.text}` }] });
+      if (!digest)
+        return mcpResult(id, { content: [{ type: "text", text: "Digest generation failed." }] });
+      return mcpResult(id, {
+        content: [{ type: "text", text: `Generated: ${digest.date}\n\n${digest.text}` }],
+      });
     }
 
     if (toolName === "get_device_ages") {
@@ -1534,10 +1910,17 @@ async function handleMCP(request, env, config, auth) {
             age_days: sess.session_age_days,
             days_remaining: sess.days_remaining,
             pct_used: parseFloat(((sess.session_age_days / 10) * 100).toFixed(1)),
-            status: sess.days_remaining < 1 ? "expiring_soon" : sess.days_remaining < 2 ? "warning" : "ok",
+            status:
+              sess.days_remaining < 1
+                ? "expiring_soon"
+                : sess.days_remaining < 2
+                  ? "warning"
+                  : "ok",
           };
         } else {
-          result.dexcom_sensor = { error: "Could not fetch sensor session (Dexcom auth failed or no readings)" };
+          result.dexcom_sensor = {
+            error: "Could not fetch sensor session (Dexcom auth failed or no readings)",
+          };
         }
       } else {
         result.dexcom_sensor = { error: "Dexcom credentials not configured" };
@@ -1550,7 +1933,14 @@ async function handleMCP(request, env, config, auth) {
       const target = String(params?.arguments?.target || "").toLowerCase();
       const validTargets = ["digests", "alerts", "all"];
       if (!validTargets.includes(target)) {
-        return mcpResult(id, { content: [{ type: "text", text: JSON.stringify({ error: `Invalid target. Use: ${validTargets.join(" | ")}` }) }] });
+        return mcpResult(id, {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({ error: `Invalid target. Use: ${validTargets.join(" | ")}` }),
+            },
+          ],
+        });
       }
       const cleared = [];
       if (target === "digests" || target === "all") {
@@ -1569,13 +1959,28 @@ async function handleMCP(request, env, config, auth) {
         cleared.push("last_pushover_alert", "last_digest_pushover", "last_offline_alert");
       }
       await appendChangeLog(env, `MCP maintenance: cleared cache target=${target}`);
-      return mcpResult(id, { content: [{ type: "text", text: JSON.stringify({ cleared, note: "These KV keys have been deleted. Next relevant operation will regenerate them." }, null, 2) }] });
+      return mcpResult(id, {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(
+              {
+                cleared,
+                note: "These KV keys have been deleted. Next relevant operation will regenerate them.",
+              },
+              null,
+              2
+            ),
+          },
+        ],
+      });
     }
 
     if (toolName === "get_maintenance_status") {
-        const nowMs = Date.now();
-        const nowSec = Math.floor(nowMs / 1000);
-        const [sensorCacheRaw, dailyDigest, deviceStatus, lastAlert, lastDigestPush, lastOffline] = await Promise.all([
+      const nowMs = Date.now();
+      const nowSec = Math.floor(nowMs / 1000);
+      const [sensorCacheRaw, dailyDigest, deviceStatus, lastAlert, lastDigestPush, lastOffline] =
+        await Promise.all([
           env.BGDISPLAY_CONFIG.get(DEXCOM_SENSOR_CACHE_KEY, { type: "json" }),
           env.BGDISPLAY_CONFIG.get("daily_digest", { type: "json" }),
           env.BGDISPLAY_CONFIG.get("device_status", { type: "json" }),
@@ -1583,40 +1988,48 @@ async function handleMCP(request, env, config, auth) {
           env.BGDISPLAY_CONFIG.get("last_digest_pushover"),
           env.BGDISPLAY_CONFIG.get("last_offline_alert"),
         ]);
-        const status = {
-          bindings: {
-            ai: !!env.AI,
-            kv_encrypt: !!env.KV_ENCRYPT_KEY,
-          },
-          dexcom_sensor_cache: {
-            exists: !!sensorCacheRaw?.session_start_ts,
-            session_start: sensorCacheRaw?.session_start_iso || null,
-            age_days: sensorCacheRaw?.session_age_days ?? null,
-            days_remaining: sensorCacheRaw?.days_remaining ?? null,
-            cache_age_min: sensorCacheRaw?.fetchedAt ? Math.round((nowSec - sensorCacheRaw.fetchedAt) / 60) : null,
-          },
-          daily_digest: {
-            exists: !!dailyDigest,
-            date: dailyDigest?.date || null,
-            generated_at: dailyDigest?.generatedAt ? new Date(dailyDigest.generatedAt).toISOString() : null,
-            age_minutes: dailyDigest?.generatedAt ? Math.round((nowMs - dailyDigest.generatedAt) / 60000) : null,
-            tir: dailyDigest?.stats?.tir ?? null,
-            ai_model: dailyDigest?.ai_model || null,
-          },
-          device: {
-            last_seen: deviceStatus?.timestamp ? new Date(deviceStatus.timestamp * 1000).toISOString() : null,
-            online: deviceStatus?.online ?? null,
-            fw_version: deviceStatus?.fw_version || null,
-          },
-          alerts: {
-            last_bg_alert: lastAlert ? new Date(Number(lastAlert)).toISOString() : null,
-            last_bg_alert_age_min: lastAlert ? Math.round((nowMs - Number(lastAlert)) / 60000) : null,
-            last_digest_pushover: lastDigestPush || null,
-            last_offline_alert: lastOffline ? new Date(Number(lastOffline)).toISOString() : null,
-          },
-          ai_model: config.ai_model || "@cf/meta/llama-3.1-8b-instruct",
-        };
-        return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(status, null, 2) }] });
+      const status = {
+        bindings: {
+          ai: !!env.AI,
+          kv_encrypt: !!env.KV_ENCRYPT_KEY,
+        },
+        dexcom_sensor_cache: {
+          exists: !!sensorCacheRaw?.session_start_ts,
+          session_start: sensorCacheRaw?.session_start_iso || null,
+          age_days: sensorCacheRaw?.session_age_days ?? null,
+          days_remaining: sensorCacheRaw?.days_remaining ?? null,
+          cache_age_min: sensorCacheRaw?.fetchedAt
+            ? Math.round((nowSec - sensorCacheRaw.fetchedAt) / 60)
+            : null,
+        },
+        daily_digest: {
+          exists: !!dailyDigest,
+          date: dailyDigest?.date || null,
+          generated_at: dailyDigest?.generatedAt
+            ? new Date(dailyDigest.generatedAt).toISOString()
+            : null,
+          age_minutes: dailyDigest?.generatedAt
+            ? Math.round((nowMs - dailyDigest.generatedAt) / 60000)
+            : null,
+          tir: dailyDigest?.stats?.tir ?? null,
+          ai_model: dailyDigest?.ai_model || null,
+        },
+        device: {
+          last_seen: deviceStatus?.timestamp
+            ? new Date(deviceStatus.timestamp * 1000).toISOString()
+            : null,
+          online: deviceStatus?.online ?? null,
+          fw_version: deviceStatus?.fw_version || null,
+        },
+        alerts: {
+          last_bg_alert: lastAlert ? new Date(Number(lastAlert)).toISOString() : null,
+          last_bg_alert_age_min: lastAlert ? Math.round((nowMs - Number(lastAlert)) / 60000) : null,
+          last_digest_pushover: lastDigestPush || null,
+          last_offline_alert: lastOffline ? new Date(Number(lastOffline)).toISOString() : null,
+        },
+        ai_model: config.ai_model || "@cf/meta/llama-3.1-8b-instruct",
+      };
+      return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(status, null, 2) }] });
     }
 
     if (toolName === "get_health_summary") {
@@ -1641,30 +2054,67 @@ async function handleMCP(request, env, config, auth) {
       try {
         await generateDailyDigest(env, true);
         const digest = await env.BGDISPLAY_CONFIG.get("daily_digest", { type: "json" });
-        report.steps.push(`daily_digest: regenerated — TIR ${digest?.stats?.tir ?? "?"}%, "${(digest?.text || "").slice(0, 80)}..."`);
-      } catch (e) { report.errors.push(`daily_digest: ${e.message}`); }
+        report.steps.push(
+          `daily_digest: regenerated — TIR ${digest?.stats?.tir ?? "?"}%, "${(digest?.text || "").slice(0, 80)}..."`
+        );
+      } catch (e) {
+        report.errors.push(`daily_digest: ${e.message}`);
+      }
 
       // 2. Clear hourly digests (fresh set next cron cycle)
       try {
         for (let h = 0; h < 24; h++) await env.BGDISPLAY_CONFIG.delete(`hourly_digest_${h}`);
         report.steps.push("hourly_digests: cleared (24 slots reset, will regenerate on next cron)");
-      } catch (e) { report.errors.push(`hourly_digests: ${e.message}`); }
+      } catch (e) {
+        report.errors.push(`hourly_digests: ${e.message}`);
+      }
 
       await appendChangeLog(env, "MCP run_maintenance completed");
-      return mcpResult(id, { content: [{ type: "text", text: JSON.stringify({ ok: report.errors.length === 0, ...report }, null, 2) }] });
+      return mcpResult(id, {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({ ok: report.errors.length === 0, ...report }, null, 2),
+          },
+        ],
+      });
     }
 
     if (toolName === "set_ai_model") {
       const raw = String(params?.arguments?.model || "").trim();
       const resolved = AI_MODEL_ALIASES[raw] || (raw.startsWith("@cf/") ? raw : null);
       if (!resolved) {
-        return mcpResult(id, { content: [{ type: "text", text: JSON.stringify({ error: `Unknown model "${raw}". Valid aliases: ${Object.keys(AI_MODEL_ALIASES).join(", ")}, or full @cf/ path.` }) }] });
+        return mcpResult(id, {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                error: `Unknown model "${raw}". Valid aliases: ${Object.keys(AI_MODEL_ALIASES).join(", ")}, or full @cf/ path.`,
+              }),
+            },
+          ],
+        });
       }
       const existing = normalizeConfig(await env.BGDISPLAY_CONFIG.get("config", { type: "json" }));
       const updated = { ...existing, ai_model: resolved };
       await env.BGDISPLAY_CONFIG.put("config", JSON.stringify(updated));
       await appendChangeLog(env, `AI model set to ${resolved} via MCP`);
-      return mcpResult(id, { content: [{ type: "text", text: JSON.stringify({ ok: true, ai_model: resolved, previous: existing.ai_model || `${DEFAULT_AI_MODEL} (default)` }, null, 2) }] });
+      return mcpResult(id, {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(
+              {
+                ok: true,
+                ai_model: resolved,
+                previous: existing.ai_model || `${DEFAULT_AI_MODEL} (default)`,
+              },
+              null,
+              2
+            ),
+          },
+        ],
+      });
     }
 
     return mcpError(id, -32601, `Tool not found: ${toolName}`);
@@ -1681,7 +2131,8 @@ async function verifyDeviceSignature(request, env, keyHash, rawBody = "") {
   const bodyHdr = (request.headers.get("X-Sig-Body") || "").toLowerCase();
   const sigHdr = (request.headers.get("X-Signature") || "").toLowerCase();
 
-  if (!tsStr || !nonce || !bodyHdr || !sigHdr) return { ok: false, error: "Missing signature headers" };
+  if (!tsStr || !nonce || !bodyHdr || !sigHdr)
+    return { ok: false, error: "Missing signature headers" };
   const ts = Number(tsStr);
   if (!Number.isFinite(ts)) return { ok: false, error: "Invalid signature timestamp" };
   if (!/^[a-zA-Z0-9_-]{8,80}$/.test(nonce)) return { ok: false, error: "Invalid nonce format" };
@@ -1710,9 +2161,11 @@ async function signCommandEnvelope(cmd, keyHash) {
 
 function isDeviceKeyValid(auth, keyHash) {
   if (!auth || !keyHash) return false;
-  return keyHash === auth.keyHash
-    || (auth.pendingKeyHash && keyHash === auth.pendingKeyHash)
-    || (auth.recoveryKeyHash && keyHash === auth.recoveryKeyHash);
+  return (
+    keyHash === auth.keyHash ||
+    (auth.pendingKeyHash && keyHash === auth.pendingKeyHash) ||
+    (auth.recoveryKeyHash && keyHash === auth.recoveryKeyHash)
+  );
 }
 
 async function checkReplayToken(env, scope, token, ttlSec = 600) {
@@ -1729,8 +2182,9 @@ async function checkReplayToken(env, scope, token, ttlSec = 600) {
 async function checkRateLimit(env, bucket, limitPerMin) {
   const key = `ratelimit:${bucket}`;
   const now = Date.now();
-  let r = await env.BGDISPLAY_AUTH.get(key, { type: "json" }) || { count: 0, windowStart: now };
-  if (now - r.windowStart > 60000) r = { count: 1, windowStart: now }; else r.count++;
+  let r = (await env.BGDISPLAY_AUTH.get(key, { type: "json" })) || { count: 0, windowStart: now };
+  if (now - r.windowStart > 60000) r = { count: 1, windowStart: now };
+  else r.count++;
   await env.BGDISPLAY_AUTH.put(key, JSON.stringify(r), { expirationTtl: 120 });
   return r.count <= limitPerMin;
 }
@@ -1744,32 +2198,40 @@ async function checkLockout(env, ip) {
 
 async function recordFailedAuth(env, ip, maxAttempts, lockoutMin) {
   const key = `lockout:${ip}`;
-  let r = await env.BGDISPLAY_AUTH.get(key, { type: "json" }) || { attempts: 0 };
+  const r = (await env.BGDISPLAY_AUTH.get(key, { type: "json" })) || { attempts: 0 };
   r.attempts = (r.attempts || 0) + 1;
   if (r.attempts >= maxAttempts) r.lockedUntil = Date.now() + lockoutMin * 60000;
   await env.BGDISPLAY_AUTH.put(key, JSON.stringify(r), { expirationTtl: lockoutMin * 120 });
 }
 
-async function clearFailedAuth(env, ip) { await env.BGDISPLAY_AUTH.delete(`lockout:${ip}`); }
+async function clearFailedAuth(env, ip) {
+  await env.BGDISPLAY_AUTH.delete(`lockout:${ip}`);
+}
 
 async function incrementFailedAuthCount(env) {
   const key = "failed_auth_24h";
-  const r = await env.BGDISPLAY_AUTH.get(key, { type: "json" }) || { count: 0, resetAt: Date.now() + 86400000 };
-  if (Date.now() > r.resetAt) { r.count = 1; r.resetAt = Date.now() + 86400000; } else r.count++;
+  const r = (await env.BGDISPLAY_AUTH.get(key, { type: "json" })) || {
+    count: 0,
+    resetAt: Date.now() + 86400000,
+  };
+  if (Date.now() > r.resetAt) {
+    r.count = 1;
+    r.resetAt = Date.now() + 86400000;
+  } else r.count++;
   await env.BGDISPLAY_AUTH.put(key, JSON.stringify(r), { expirationTtl: 86400 });
 }
 
 // ─── Change Log ────────────────────────────────────────────────────────────────
 
 async function appendChangeLog(env, entry) {
-  let log = await env.BGDISPLAY_CONFIG.get("changelog", { type: "json" }) || [];
+  let log = (await env.BGDISPLAY_CONFIG.get("changelog", { type: "json" })) || [];
   log.unshift({ msg: entry, ts: Date.now() });
   if (log.length > 50) log = log.slice(0, 50);
   await env.BGDISPLAY_CONFIG.put("changelog", JSON.stringify(log));
 }
 
 async function appendWorkerEvent(env, event) {
-  let log = await env.BGDISPLAY_CONFIG.get("worker_events", { type: "json" }) || [];
+  let log = (await env.BGDISPLAY_CONFIG.get("worker_events", { type: "json" })) || [];
   log.unshift({ ...event, ts: Date.now() });
   if (log.length > 200) log = log.slice(0, 200);
   await env.BGDISPLAY_CONFIG.put("worker_events", JSON.stringify(log));
@@ -1780,7 +2242,9 @@ async function shouldEmitAlert(env, key, cooldownMs) {
   const k = `alert:${key}`;
   const last = await env.BGDISPLAY_AUTH.get(k);
   if (last && now - Number(last) < cooldownMs) return false;
-  await env.BGDISPLAY_AUTH.put(k, String(now), { expirationTtl: Math.max(60, Math.ceil(cooldownMs / 1000) * 2) });
+  await env.BGDISPLAY_AUTH.put(k, String(now), {
+    expirationTtl: Math.max(60, Math.ceil(cooldownMs / 1000) * 2),
+  });
   return true;
 }
 
@@ -1789,11 +2253,18 @@ async function shouldEmitAlert(env, key, cooldownMs) {
 function computeMetrics(status, telemetry, events) {
   const samples = Array.isArray(telemetry) ? telemetry : [];
   const ev = Array.isArray(events) ? events : [];
-  let avgRssi = null, minBattery = null, maxBattery = null, staleSamples = 0;
+  let avgRssi = null,
+    minBattery = null,
+    maxBattery = null,
+    staleSamples = 0;
   if (samples.length > 0) {
-    let sumRssi = 0, rssiCount = 0;
+    let sumRssi = 0,
+      rssiCount = 0;
     for (const s of samples) {
-      if (typeof s.rssi === "number") { sumRssi += s.rssi; rssiCount++; }
+      if (typeof s.rssi === "number") {
+        sumRssi += s.rssi;
+        rssiCount++;
+      }
       if (typeof s.batteryPct === "number") {
         minBattery = minBattery === null ? s.batteryPct : Math.min(minBattery, s.batteryPct);
         maxBattery = maxBattery === null ? s.batteryPct : Math.max(maxBattery, s.batteryPct);
@@ -1802,30 +2273,42 @@ function computeMetrics(status, telemetry, events) {
     }
     avgRssi = rssiCount ? Math.round(sumRssi / rssiCount) : null;
   }
-  const now = Date.now(), oneHourAgo = now - 3600000;
+  const now = Date.now(),
+    oneHourAgo = now - 3600000;
   const eventCounts1h = { alert: 0, commandAckOk: 0, commandAckFail: 0, configSave: 0 };
   for (const e of ev) {
     if (!e?.ts || e.ts < oneHourAgo) continue;
     if (e.type === "alert") eventCounts1h.alert++;
     if (e.type === "config-save") eventCounts1h.configSave++;
-    if (e.type === "command-ack") { if (e.ok) eventCounts1h.commandAckOk++; else eventCounts1h.commandAckFail++; }
+    if (e.type === "command-ack") {
+      if (e.ok) eventCounts1h.commandAckOk++;
+      else eventCounts1h.commandAckFail++;
+    }
   }
   return {
-    samples: samples.length, avgRssi, minBattery, maxBattery,
+    samples: samples.length,
+    avgRssi,
+    minBattery,
+    maxBattery,
     staleSamplePct: samples.length ? Math.round((staleSamples / samples.length) * 100) : 0,
     lastSeenTs: status?.lastSeen || null,
     lastBgValue: typeof status?.bgValue === "number" ? status.bgValue : null,
     eventCounts1h,
     sourceHealth: {
-      nsOk: Number(status?.nsOk || 0), nsFail: Number(status?.nsFail || 0),
-      dexOk: Number(status?.dexOk || 0), dexFail: Number(status?.dexFail || 0),
-      failStreak: Number(status?.bgPollFailStreak || 0), activeSource: status?.source || "none",
+      nsOk: Number(status?.nsOk || 0),
+      nsFail: Number(status?.nsFail || 0),
+      dexOk: Number(status?.dexOk || 0),
+      dexFail: Number(status?.dexFail || 0),
+      failStreak: Number(status?.bgPollFailStreak || 0),
+      activeSource: status?.source || "none",
     },
     confidence: {
       score: (() => {
         let score = 100;
-        if (typeof status?.lastReadingAgeSec === "number" && status.lastReadingAgeSec > 20 * 60) score -= 35;
-        if (typeof status?.bgPollFailStreak === "number") score -= Math.min(40, status.bgPollFailStreak * 6);
+        if (typeof status?.lastReadingAgeSec === "number" && status.lastReadingAgeSec > 20 * 60)
+          score -= 35;
+        if (typeof status?.bgPollFailStreak === "number")
+          score -= Math.min(40, status.bgPollFailStreak * 6);
         if (typeof avgRssi === "number" && avgRssi < -82) score -= 10;
         return Math.max(0, Math.min(100, score));
       })(),
@@ -1837,9 +2320,13 @@ function computeMetrics(status, telemetry, events) {
 
 async function issueAdminSession(env, ip) {
   const token = crypto.randomUUID();
-  await env.BGDISPLAY_AUTH.put(`admin_session:${token}`, JSON.stringify({ ip, createdAt: Date.now() }), {
-    expirationTtl: ADMIN_SESSION_TTL_SEC,
-  });
+  await env.BGDISPLAY_AUTH.put(
+    `admin_session:${token}`,
+    JSON.stringify({ ip, createdAt: Date.now() }),
+    {
+      expirationTtl: ADMIN_SESSION_TTL_SEC,
+    }
+  );
   return token;
 }
 
@@ -1847,9 +2334,10 @@ async function validateAdminSession(env, request) {
   let token = request.headers.get("X-Admin-Session") || "";
   if (!token) {
     const u = new URL(request.url);
-    const allowQuerySession = request.method === "GET"
-      && u.pathname === "/api/admin/logs/latest"
-      && u.searchParams.get("download") === "1";
+    const allowQuerySession =
+      request.method === "GET" &&
+      u.pathname === "/api/admin/logs/latest" &&
+      u.searchParams.get("download") === "1";
     if (allowQuerySession) token = u.searchParams.get("session") || "";
   }
   if (!token) return false;
@@ -1875,19 +2363,30 @@ async function incrementConfigVersion(env) {
 
 async function handleAutoRotation(env, auth) {
   const now = Date.now();
-  if (auth.pendingKeyHash && auth.pendingKeyExpiry && now < auth.pendingKeyExpiry) return auth.pendingKey || null;
-  if (auth.pendingKeyHash) { delete auth.pendingKey; delete auth.pendingKeyHash; delete auth.pendingKeyExpiry; }
+  if (auth.pendingKeyHash && auth.pendingKeyExpiry && now < auth.pendingKeyExpiry)
+    return auth.pendingKey || null;
+  if (auth.pendingKeyHash) {
+    delete auth.pendingKey;
+    delete auth.pendingKeyHash;
+    delete auth.pendingKeyExpiry;
+  }
   if (now - (auth.lastRotated || 0) < KEY_ROTATE_MS) return null;
   const newKey = generateKey();
-  auth.pendingKey = newKey; auth.pendingKeyHash = await sha256(newKey); auth.pendingKeyExpiry = now + PENDING_KEY_TTL_MS;
+  auth.pendingKey = newKey;
+  auth.pendingKeyHash = await sha256(newKey);
+  auth.pendingKeyExpiry = now + PENDING_KEY_TTL_MS;
   await env.BGDISPLAY_CONFIG.put("auth", JSON.stringify(auth));
   await appendChangeLog(env, "Auto-rotation initiated — awaiting device ACK");
   return newKey;
 }
 
 async function promoteKey(env, auth) {
-  auth.keyHash = auth.pendingKeyHash; auth.lastRotated = Date.now(); auth.lastRotatedReason = "auto";
-  delete auth.pendingKey; delete auth.pendingKeyHash; delete auth.pendingKeyExpiry;
+  auth.keyHash = auth.pendingKeyHash;
+  auth.lastRotated = Date.now();
+  auth.lastRotatedReason = "auto";
+  delete auth.pendingKey;
+  delete auth.pendingKeyHash;
+  delete auth.pendingKeyExpiry;
   await env.BGDISPLAY_CONFIG.put("auth", JSON.stringify(auth));
   await appendChangeLog(env, "API key auto-rotated — device confirmed");
 }
@@ -1898,30 +2397,47 @@ async function updateDeviceRegistry(env, chipId, patch) {
   if (!chipId || !/^[0-9a-f]{8,16}$/i.test(chipId)) return;
   const existing = await env.BGDISPLAY_AUTH.get(`device_registry:${chipId}`, { type: "json" });
   if (!existing) return;
-  await env.BGDISPLAY_AUTH.put(`device_registry:${chipId}`, JSON.stringify({ ...existing, ...patch }));
+  await env.BGDISPLAY_AUTH.put(
+    `device_registry:${chipId}`,
+    JSON.stringify({ ...existing, ...patch })
+  );
 }
 
 // ─── Device Status Update ─────────────────────────────────────────────────────
 
 async function updateDeviceStatus(env, ip, body, config) {
   const status = {
-    lastSeen: Date.now(), ip: maskIP(ip),
-    connection: body.connection || "wifi", uptime: body.uptime || 0,
-    firmware: body.firmware || "unknown", freeMemory: body.freeMemory || 0,
-    rssi: body.rssi || 0, ssid: body.ssid || "", deviceIP: body.ip || "",
-    sdAvailable: body.sdAvailable || false, batteryPct: body.batteryPct ?? null,
-    bgValue: body.bgValue ?? null, lastReadingAgeSec: body.lastReadingAgeSec ?? null,
-    resetReason: body.resetReason || "", source: body.source || "none",
-    nsOk: body.nsOk ?? 0, nsFail: body.nsFail ?? 0,
-    dexOk: body.dexOk ?? 0, dexFail: body.dexFail ?? 0,
+    lastSeen: Date.now(),
+    ip: maskIP(ip),
+    connection: body.connection || "wifi",
+    uptime: body.uptime || 0,
+    firmware: body.firmware || "unknown",
+    freeMemory: body.freeMemory || 0,
+    rssi: body.rssi || 0,
+    ssid: body.ssid || "",
+    deviceIP: body.ip || "",
+    sdAvailable: body.sdAvailable || false,
+    batteryPct: body.batteryPct ?? null,
+    bgValue: body.bgValue ?? null,
+    lastReadingAgeSec: body.lastReadingAgeSec ?? null,
+    resetReason: body.resetReason || "",
+    source: body.source || "none",
+    nsOk: body.nsOk ?? 0,
+    nsFail: body.nsFail ?? 0,
+    dexOk: body.dexOk ?? 0,
+    dexFail: body.dexFail ?? 0,
     bgPollFailStreak: body.bgPollFailStreak ?? 0,
   };
   await env.BGDISPLAY_CONFIG.put("device_status", JSON.stringify(status));
 
-  let telemetry = await env.BGDISPLAY_CONFIG.get("telemetry_recent", { type: "json" }) || [];
+  let telemetry = (await env.BGDISPLAY_CONFIG.get("telemetry_recent", { type: "json" })) || [];
   telemetry.unshift({
-    ts: Date.now(), uptime: status.uptime, rssi: status.rssi,
-    batteryPct: status.batteryPct, bgValue: status.bgValue, lastReadingAgeSec: status.lastReadingAgeSec,
+    ts: Date.now(),
+    uptime: status.uptime,
+    rssi: status.rssi,
+    batteryPct: status.batteryPct,
+    bgValue: status.bgValue,
+    lastReadingAgeSec: status.lastReadingAgeSec,
   });
   if (telemetry.length > 720) telemetry = telemetry.slice(0, 720);
   await env.BGDISPLAY_CONFIG.put("telemetry_recent", JSON.stringify(telemetry));
@@ -1930,16 +2446,33 @@ async function updateDeviceStatus(env, ip, body, config) {
   const staleMin = Number(config?.alert_stale_min || 30);
   const cooldownMs = Number(config?.alert_cooldown_min || 60) * 60 * 1000;
 
-  if (typeof status.batteryPct === "number" && status.batteryPct >= 0 && status.batteryPct <= batteryLowPct) {
+  if (
+    typeof status.batteryPct === "number" &&
+    status.batteryPct >= 0 &&
+    status.batteryPct <= batteryLowPct
+  ) {
     if (await shouldEmitAlert(env, "low-battery", cooldownMs)) {
       await appendChangeLog(env, `Alert: battery low (${status.batteryPct}%)`);
-      await appendWorkerEvent(env, { type: "alert", level: "warning", msg: "low-battery", batteryPct: status.batteryPct });
+      await appendWorkerEvent(env, {
+        type: "alert",
+        level: "warning",
+        msg: "low-battery",
+        batteryPct: status.batteryPct,
+      });
     }
   }
   if (typeof status.lastReadingAgeSec === "number" && status.lastReadingAgeSec > staleMin * 60) {
     if (await shouldEmitAlert(env, "stale-data", cooldownMs)) {
-      await appendChangeLog(env, `Alert: stale data (${Math.floor(status.lastReadingAgeSec / 60)} min old)`);
-      await appendWorkerEvent(env, { type: "alert", level: "warning", msg: "stale-data", ageSec: status.lastReadingAgeSec });
+      await appendChangeLog(
+        env,
+        `Alert: stale data (${Math.floor(status.lastReadingAgeSec / 60)} min old)`
+      );
+      await appendWorkerEvent(env, {
+        type: "alert",
+        level: "warning",
+        msg: "stale-data",
+        ageSec: status.lastReadingAgeSec,
+      });
     }
   }
 }
@@ -1948,14 +2481,16 @@ async function updateDeviceStatus(env, ip, body, config) {
 
 export default {
   async fetch(request, env, ctx) {
-    const url = new URL(request.url), path = url.pathname, method = request.method;
+    const url = new URL(request.url),
+      path = url.pathname,
+      method = request.method;
     const ip = getClientIP(request);
 
     if (method === "OPTIONS") return new Response(null, { headers: CORS_HEADERS });
 
     // Feature 1: WebSocket upgrade — handle before rate limiting to avoid breaking WS handshake
     if (path === "/api/ws" && request.headers.get("Upgrade") === "websocket") {
-      let auth = await env.BGDISPLAY_CONFIG.get("auth", { type: "json" });
+      const auth = await env.BGDISPLAY_CONFIG.get("auth", { type: "json" });
       if (!auth) return json({ error: "Not initialized" }, 503);
       const deviceKey = request.headers.get("X-Device-Key");
       if (!deviceKey) return json({ error: "Missing key" }, 401);
@@ -1966,7 +2501,8 @@ export default {
       const stub = env.CONFIG_SYNC.get(doId);
       // Forward the upgrade request to the DO, rewriting path to /ws
       const doReq = new Request(new URL("/ws", "https://do.internal"), {
-        method: "GET", headers: request.headers,
+        method: "GET",
+        headers: request.headers,
       });
       return stub.fetch(doReq);
     }
@@ -1977,7 +2513,11 @@ export default {
       const initialKey = generateKey();
       auth = { keyHash: await sha256(initialKey), lastRotated: Date.now(), initialized: true };
       await env.BGDISPLAY_CONFIG.put("auth", JSON.stringify(auth));
-      if (path === "/api/init") return json({ initialKey, message: "Store this key in firmware. It will not be shown again." });
+      if (path === "/api/init")
+        return json({
+          initialKey,
+          message: "Store this key in firmware. It will not be shown again.",
+        });
     }
 
     const configRaw = await env.BGDISPLAY_CONFIG.get("config", { type: "json" });
@@ -1999,7 +2539,12 @@ export default {
         return json({ ok: true, keyConfirmed: true });
       }
       if (!isDeviceKeyValid(auth, keyHash)) {
-        await recordFailedAuth(env, ip, config.lockout_attempts || 5, config.lockout_duration_min || 15);
+        await recordFailedAuth(
+          env,
+          ip,
+          config.lockout_attempts || 5,
+          config.lockout_duration_min || 15
+        );
         await incrementFailedAuthCount(env);
         return json({ error: "Invalid key" }, 401);
       }
@@ -2014,18 +2559,32 @@ export default {
     // ── GET /api/config ──────────────────────────────────────────────────────
     if (path === "/api/config" && method === "GET") {
       const deviceKey = request.headers.get("X-Device-Key");
-      if (!deviceKey) { await incrementFailedAuthCount(env); return json({ error: "Missing key" }, 401); }
+      if (!deviceKey) {
+        await incrementFailedAuthCount(env);
+        return json({ error: "Missing key" }, 401);
+      }
       const lockStatus = await checkLockout(env, ip);
       if (lockStatus.locked) return json({ error: "Locked", until: lockStatus.until }, 403);
       const keyHash = await sha256(deviceKey);
       if (auth.pendingKeyHash && keyHash === auth.pendingKeyHash) {
-        await promoteKey(env, auth); await clearFailedAuth(env, ip);
+        await promoteKey(env, auth);
+        await clearFailedAuth(env, ip);
         const version = await getConfigVersion(env);
         const deviceConfig = { ...config };
-        return json({ config: deviceConfig, config_version: version, ts: Date.now(), keyConfirmed: true });
+        return json({
+          config: deviceConfig,
+          config_version: version,
+          ts: Date.now(),
+          keyConfirmed: true,
+        });
       }
       if (!isDeviceKeyValid(auth, keyHash)) {
-        await recordFailedAuth(env, ip, config.lockout_attempts || 5, config.lockout_duration_min || 15);
+        await recordFailedAuth(
+          env,
+          ip,
+          config.lockout_attempts || 5,
+          config.lockout_duration_min || 15
+        );
         await incrementFailedAuthCount(env);
         return json({ error: "Invalid key" }, 401);
       }
@@ -2043,17 +2602,29 @@ export default {
         // Save the auto-detected timezone back to config for persistence
         config.timezone = deviceConfig.timezone;
         await env.BGDISPLAY_CONFIG.put("config", JSON.stringify(config));
-        await appendChangeLog(env, `Timezone auto-detected: ${deviceConfig.timezone} (from geo IP)`);
+        await appendChangeLog(
+          env,
+          `Timezone auto-detected: ${deviceConfig.timezone} (from geo IP)`
+        );
       }
       // Apply per-device config overrides if device sends X-Device-Id
       const configChipId = request.headers.get("X-Device-Id") || "";
       if (configChipId && /^[0-9a-f]{8,16}$/i.test(configChipId)) {
-        const perDevice = await env.BGDISPLAY_CONFIG.get(`device_config:${configChipId.toLowerCase()}`, { type: "json" });
+        const perDevice = await env.BGDISPLAY_CONFIG.get(
+          `device_config:${configChipId.toLowerCase()}`,
+          { type: "json" }
+        );
         if (perDevice) Object.assign(deviceConfig, perDevice);
-        await updateDeviceRegistry(env, configChipId.toLowerCase(), { lastSeen: Date.now(), lastSeenPath: "/api/config" });
+        await updateDeviceRegistry(env, configChipId.toLowerCase(), {
+          lastSeen: Date.now(),
+          lastSeenPath: "/api/config",
+        });
       }
       const resp = { config: deviceConfig, config_version: version, ts: Date.now() };
-      if (pendingKey) { resp.newKey = pendingKey; resp.rotateNow = true; }
+      if (pendingKey) {
+        resp.newKey = pendingKey;
+        resp.rotateNow = true;
+      }
       return json(resp);
     }
 
@@ -2065,7 +2636,10 @@ export default {
       const rawBody = await request.text();
       const sig = await verifyDeviceSignature(request, env, keyHash, rawBody);
       if (!sig.ok) return json({ error: sig.error }, 401);
-      if (auth.pendingKeyHash && keyHash === auth.pendingKeyHash) { await promoteKey(env, auth); return json({ ok: true }); }
+      if (auth.pendingKeyHash && keyHash === auth.pendingKeyHash) {
+        await promoteKey(env, auth);
+        return json({ ok: true });
+      }
       if (isDeviceKeyValid(auth, keyHash)) return json({ ok: true });
       return json({ error: "Key mismatch" }, 401);
     }
@@ -2081,7 +2655,12 @@ export default {
       if (lockStatus.locked) return json({ error: "Locked", until: lockStatus.until }, 403);
       const keyHash = await sha256(deviceKey);
       if (!isDeviceKeyValid(auth, keyHash)) {
-        await recordFailedAuth(env, ip, config.lockout_attempts || 5, config.lockout_duration_min || 15);
+        await recordFailedAuth(
+          env,
+          ip,
+          config.lockout_attempts || 5,
+          config.lockout_duration_min || 15
+        );
         await incrementFailedAuthCount(env);
         return json({ error: "Invalid key" }, 401);
       }
@@ -2089,31 +2668,43 @@ export default {
       const sig = await verifyDeviceSignature(request, env, keyHash, rawBody);
       if (!sig.ok) return json({ error: sig.error }, 401);
       let body = {};
-      try { body = rawBody ? JSON.parse(rawBody) : {}; } catch { return json({ error: "Invalid JSON" }, 400); }
+      try {
+        body = rawBody ? JSON.parse(rawBody) : {};
+      } catch {
+        return json({ error: "Invalid JSON" }, 400);
+      }
       const chipId = (typeof body.chipId === "string" ? body.chipId : "").toLowerCase().trim();
       if (!chipId || !/^[0-9a-f]{8,16}$/.test(chipId)) {
         return json({ error: "Invalid chipId — expected 8–16 hex chars" }, 400);
       }
       const existing = await env.BGDISPLAY_AUTH.get(`device_registry:${chipId}`, { type: "json" });
       if (existing && existing.keyHash !== keyHash) {
-        return json({ error: "Already enrolled", hint: "Use admin to revoke and re-enroll this device." }, 409);
+        return json(
+          { error: "Already enrolled", hint: "Use admin to revoke and re-enroll this device." },
+          409
+        );
       }
       const newKey = generateKey();
       const newKeyHash = await sha256(newKey);
-      await env.BGDISPLAY_AUTH.put(`device_registry:${chipId}`, JSON.stringify({
-        chipId,
-        keyHash: newKeyHash,
-        keyTail: newKeyHash.slice(-4),
-        enrolledAt: Date.now(),
-        enrolledFrom: "api",
-        previousKeyHash: keyHash,
-        lastSeen: Date.now(),
-        lastSeenPath: "/api/enroll",
-      }));
+      await env.BGDISPLAY_AUTH.put(
+        `device_registry:${chipId}`,
+        JSON.stringify({
+          chipId,
+          keyHash: newKeyHash,
+          keyTail: newKeyHash.slice(-4),
+          enrolledAt: Date.now(),
+          enrolledFrom: "api",
+          previousKeyHash: keyHash,
+          lastSeen: Date.now(),
+          lastSeenPath: "/api/enroll",
+        })
+      );
       auth.keyHash = newKeyHash;
       auth.lastRotated = Date.now();
       auth.lastRotatedReason = "enrollment";
-      delete auth.pendingKey; delete auth.pendingKeyHash; delete auth.pendingKeyExpiry;
+      delete auth.pendingKey;
+      delete auth.pendingKeyHash;
+      delete auth.pendingKeyExpiry;
       await env.BGDISPLAY_CONFIG.put("auth", JSON.stringify(auth));
       await clearFailedAuth(env, ip);
       await appendChangeLog(env, `Device enrolled: chip ...${chipId.slice(-4)}`);
@@ -2122,7 +2713,13 @@ export default {
 
     // ── POST /api/status ─────────────────────────────────────────────────────
     if (path === "/api/status" && method === "POST") {
-      if (!(await checkRateLimit(env, `device-write:${ip}`, config.device_write_rate_limit_per_min || 20))) {
+      if (
+        !(await checkRateLimit(
+          env,
+          `device-write:${ip}`,
+          config.device_write_rate_limit_per_min || 20
+        ))
+      ) {
         return json({ error: "Device write rate limit exceeded" }, 429);
       }
       const deviceKey = request.headers.get("X-Device-Key");
@@ -2136,23 +2733,38 @@ export default {
       const sig = await verifyDeviceSignature(request, env, keyHash, rawBody);
       if (!sig.ok) return json({ error: sig.error }, 401);
       let parsed = {};
-      try { parsed = rawBody ? JSON.parse(rawBody) : {}; } catch { return json({ error: "Invalid JSON" }, 400); }
+      try {
+        parsed = rawBody ? JSON.parse(rawBody) : {};
+      } catch {
+        return json({ error: "Invalid JSON" }, 400);
+      }
       await updateDeviceStatus(env, ip, parsed, config);
       const chipId = request.headers.get("X-Device-Id") || "";
-      if (chipId) await updateDeviceRegistry(env, chipId, { lastSeen: Date.now(), lastSeenPath: "/api/status" });
+      if (chipId)
+        await updateDeviceRegistry(env, chipId, {
+          lastSeen: Date.now(),
+          lastSeenPath: "/api/status",
+        });
       return json({ ok: true });
     }
 
     // ── POST /api/log-upload ─────────────────────────────────────────────────
     if (path === "/api/log-upload" && method === "POST") {
-      if (!(await checkRateLimit(env, `device-write:${ip}`, config.device_write_rate_limit_per_min || 20))) {
+      if (
+        !(await checkRateLimit(
+          env,
+          `device-write:${ip}`,
+          config.device_write_rate_limit_per_min || 20
+        ))
+      ) {
         return json({ error: "Device write rate limit exceeded" }, 429);
       }
       const deviceKey = request.headers.get("X-Device-Key");
       if (!deviceKey) return json({ error: "Missing key" }, 401);
       const keyHash = await sha256(deviceKey);
       if (!isDeviceKeyValid(auth, keyHash)) return json({ error: "Invalid key" }, 401);
-      const reqId = request.headers.get("X-Request-Id") || request.headers.get("X-Command-Id") || "";
+      const reqId =
+        request.headers.get("X-Request-Id") || request.headers.get("X-Command-Id") || "";
       const replay = await checkReplayToken(env, `log-upload:${keyHash.slice(0, 12)}`, reqId, 1800);
       if (!replay.ok) return json({ error: replay.error }, 409);
       const text = await request.text();
@@ -2161,13 +2773,24 @@ export default {
       if (!text || !text.trim()) return json({ error: "Empty log payload" }, 400);
       if (text.length > 200000) return json({ error: "Log payload too large" }, 413);
       const lineCountHeader = Number(request.headers.get("X-Log-Lines") || 0);
-      const lines = Number.isFinite(lineCountHeader) && lineCountHeader > 0
-        ? lineCountHeader : text.split("\n").filter(Boolean).length;
-      const meta = { uploadedAt: Date.now(), commandId: request.headers.get("X-Command-Id") || "", lineCount: lines, bytes: text.length };
+      const lines =
+        Number.isFinite(lineCountHeader) && lineCountHeader > 0
+          ? lineCountHeader
+          : text.split("\n").filter(Boolean).length;
+      const meta = {
+        uploadedAt: Date.now(),
+        commandId: request.headers.get("X-Command-Id") || "",
+        lineCount: lines,
+        bytes: text.length,
+      };
       await env.BGDISPLAY_CONFIG.put("sdlog:last_text", text);
       await env.BGDISPLAY_CONFIG.put("sdlog:last_meta", JSON.stringify(meta));
       await appendChangeLog(env, `SD logs uploaded (${meta.lineCount} lines)`);
-      await appendWorkerEvent(env, { type: "sd-log-upload", lines: meta.lineCount, bytes: meta.bytes });
+      await appendWorkerEvent(env, {
+        type: "sd-log-upload",
+        lines: meta.lineCount,
+        bytes: meta.bytes,
+      });
       return json({ ok: true, meta });
     }
 
@@ -2186,12 +2809,29 @@ export default {
         return json({ pending: false, ts: Date.now() });
       }
       const cmdSig = await signCommandEnvelope(cmd, keyHash);
-      return json({ pending: true, command: { id: cmd.id, type: cmd.type, args: cmd.args || {}, createdAt: cmd.createdAt, expiresAt: cmd.expiresAt, sig: cmdSig }, ts: Date.now() });
+      return json({
+        pending: true,
+        command: {
+          id: cmd.id,
+          type: cmd.type,
+          args: cmd.args || {},
+          createdAt: cmd.createdAt,
+          expiresAt: cmd.expiresAt,
+          sig: cmdSig,
+        },
+        ts: Date.now(),
+      });
     }
 
     // ── POST /api/command-ack ────────────────────────────────────────────────
     if (path === "/api/command-ack" && method === "POST") {
-      if (!(await checkRateLimit(env, `device-write:${ip}`, config.device_write_rate_limit_per_min || 20))) {
+      if (
+        !(await checkRateLimit(
+          env,
+          `device-write:${ip}`,
+          config.device_write_rate_limit_per_min || 20
+        ))
+      ) {
         return json({ error: "Device write rate limit exceeded" }, 429);
       }
       const deviceKey = request.headers.get("X-Device-Key");
@@ -2202,19 +2842,39 @@ export default {
       const sig = await verifyDeviceSignature(request, env, keyHash, rawBody);
       if (!sig.ok) return json({ error: sig.error }, 401);
       let body = {};
-      try { body = rawBody ? JSON.parse(rawBody) : {}; } catch { return json({ error: "Invalid JSON" }, 400); }
+      try {
+        body = rawBody ? JSON.parse(rawBody) : {};
+      } catch {
+        return json({ error: "Invalid JSON" }, 400);
+      }
       const reqId = request.headers.get("X-Request-Id") || "";
-      const replay = await checkReplayToken(env, `command-ack:${keyHash.slice(0, 12)}`, reqId || (body?.id || ""), 1800);
+      const replay = await checkReplayToken(
+        env,
+        `command-ack:${keyHash.slice(0, 12)}`,
+        reqId || body?.id || "",
+        1800
+      );
       if (!replay.ok) return json({ error: replay.error }, 409);
       const cmdId = body?.id;
       if (!cmdId) return json({ error: "Missing command id" }, 400);
       const cmd = await env.BGDISPLAY_CONFIG.get("command:all", { type: "json" });
       if (!cmd || cmd.id !== cmdId) return json({ ok: true, ignored: true });
-      const ack = { id: cmdId, type: cmd.type, ok: !!body.ok, message: body.message || "", ts: Date.now() };
+      const ack = {
+        id: cmdId,
+        type: cmd.type,
+        ok: !!body.ok,
+        message: body.message || "",
+        ts: Date.now(),
+      };
       await env.BGDISPLAY_CONFIG.put("command:last_ack", JSON.stringify(ack));
       await env.BGDISPLAY_CONFIG.delete("command:all");
       await appendChangeLog(env, `Command ${cmd.type} ${ack.ok ? "ACK" : "failed"}`);
-      await appendWorkerEvent(env, { type: "command-ack", command: cmd.type, ok: ack.ok, message: ack.message });
+      await appendWorkerEvent(env, {
+        type: "command-ack",
+        command: cmd.type,
+        ok: ack.ok,
+        message: ack.message,
+      });
       return json({ ok: true });
     }
 
@@ -2227,7 +2887,9 @@ export default {
       const sig = await verifyDeviceSignature(request, env, keyHash, "");
       if (!sig.ok) return json({ error: sig.error }, 401);
 
-      const channel = String(url.searchParams.get("channel") || config.ota_channel || "stable").trim().toLowerCase();
+      const channel = String(url.searchParams.get("channel") || config.ota_channel || "stable")
+        .trim()
+        .toLowerCase();
       const release = await getOtaRelease(env, channel);
       return json(await buildOtaManifestResponse(request, env, auth, release));
     }
@@ -2235,12 +2897,19 @@ export default {
     // ── GET /api/ota/download/:channel/:version ─────────────────────────────
     if (path.startsWith("/api/ota/download/") && method === "GET") {
       const parts = path.split("/").filter(Boolean);
-      const channel = decodeURIComponent(parts[3] || "").trim().toLowerCase();
+      const channel = decodeURIComponent(parts[3] || "")
+        .trim()
+        .toLowerCase();
       const version = decodeURIComponent(parts[4] || "").trim();
       const expiresAt = Number(url.searchParams.get("exp") || 0);
-      const sig = String(url.searchParams.get("sig") || "").trim().toLowerCase();
-      const chipId = String(url.searchParams.get("chip") || "").trim().toLowerCase();
-      if (!channel || !version || !expiresAt || !sig) return json({ error: "Invalid OTA download request" }, 400);
+      const sig = String(url.searchParams.get("sig") || "")
+        .trim()
+        .toLowerCase();
+      const chipId = String(url.searchParams.get("chip") || "")
+        .trim()
+        .toLowerCase();
+      if (!channel || !version || !expiresAt || !sig)
+        return json({ error: "Invalid OTA download request" }, 400);
       if (Date.now() > expiresAt) return json({ error: "OTA download link expired" }, 410);
 
       const release = await getOtaRelease(env, channel);
@@ -2248,7 +2917,8 @@ export default {
 
       const expected = await buildOtaDownloadSignature(auth, channel, version, expiresAt, chipId);
       if (expected !== sig) return json({ error: "Invalid OTA download signature" }, 401);
-      if (!env.FIRMWARE_BUCKET) return json({ error: "Firmware bucket binding not configured" }, 503);
+      if (!env.FIRMWARE_BUCKET)
+        return json({ error: "Firmware bucket binding not configured" }, 503);
 
       const object = await env.FIRMWARE_BUCKET.get(release.r2Key);
       if (!object) return json({ error: "Firmware artifact missing" }, 404);
@@ -2276,7 +2946,13 @@ export default {
       if (!sig.ok) return json({ error: sig.error }, 401);
       const digest = await env.BGDISPLAY_CONFIG.get("daily_digest", { type: "json" });
       if (!digest) return json({ available: false });
-      return json({ available: true, text: digest.text, generatedAt: digest.generatedAt, date: digest.date, stats: digest.stats || null });
+      return json({
+        available: true,
+        text: digest.text,
+        generatedAt: digest.generatedAt,
+        date: digest.date,
+        stats: digest.stats || null,
+      });
     }
 
     // ── /api/detect-timezone — Auto-detect timezone from geo IP (no auth required) ──
@@ -2301,10 +2977,11 @@ export default {
         if (!isDeviceKeyValid(auth, mcpKeyHash)) return json({ error: "Invalid device key" }, 401);
         if (method === "GET") {
           return json({
-            name: "bg-miniview-mcp", version: "1.0.0",
+            name: "bg-miniview-mcp",
+            version: "1.0.0",
             description: "BG MiniView Model Context Protocol server",
             endpoint: `${url.origin}/mcp`,
-            tools: MCP_TOOLS.map(t => ({ name: t.name, description: t.description })),
+            tools: MCP_TOOLS.map((t) => ({ name: t.name, description: t.description })),
           });
         }
         return handleMCP(request, env, config, auth);
@@ -2331,36 +3008,50 @@ export default {
     }
 
     if (path === "/api/admin/config" && method === "GET") {
-      const status     = await env.BGDISPLAY_CONFIG.get("device_status",    { type: "json" }) || {};
-      const changelog  = await env.BGDISPLAY_CONFIG.get("changelog",         { type: "json" }) || [];
-      const events     = await env.BGDISPLAY_CONFIG.get("worker_events",     { type: "json" }) || [];
-      const telemetry  = await env.BGDISPLAY_CONFIG.get("telemetry_recent",  { type: "json" }) || [];
-      const lastLogUpload = await env.BGDISPLAY_CONFIG.get("sdlog:last_meta",{ type: "json" }) || null;
-      const secretMeta = await env.BGDISPLAY_CONFIG.get("secret_meta",       { type: "json" }) || {};
-      const pendingCmd = await env.BGDISPLAY_CONFIG.get("command:all",       { type: "json" });
-      const lastCmdAck = await env.BGDISPLAY_CONFIG.get("command:last_ack",  { type: "json" });
-      const failedAuth = await env.BGDISPLAY_AUTH.get("failed_auth_24h",     { type: "json" }) || { count: 0 };
-      const version    = await getConfigVersion(env);
-      const digest     = await env.BGDISPLAY_CONFIG.get("daily_digest",      { type: "json" }) || null;
+      const status = (await env.BGDISPLAY_CONFIG.get("device_status", { type: "json" })) || {};
+      const changelog = (await env.BGDISPLAY_CONFIG.get("changelog", { type: "json" })) || [];
+      const events = (await env.BGDISPLAY_CONFIG.get("worker_events", { type: "json" })) || [];
+      const telemetry =
+        (await env.BGDISPLAY_CONFIG.get("telemetry_recent", { type: "json" })) || [];
+      const lastLogUpload =
+        (await env.BGDISPLAY_CONFIG.get("sdlog:last_meta", { type: "json" })) || null;
+      const secretMeta = (await env.BGDISPLAY_CONFIG.get("secret_meta", { type: "json" })) || {};
+      const pendingCmd = await env.BGDISPLAY_CONFIG.get("command:all", { type: "json" });
+      const lastCmdAck = await env.BGDISPLAY_CONFIG.get("command:last_ack", { type: "json" });
+      const failedAuth = (await env.BGDISPLAY_AUTH.get("failed_auth_24h", { type: "json" })) || {
+        count: 0,
+      };
+      const version = await getConfigVersion(env);
+      const digest = (await env.BGDISPLAY_CONFIG.get("daily_digest", { type: "json" })) || null;
       const otaRelease = await getOtaRelease(env, config.ota_channel || "stable");
       const pushoverConfigured = !!(await env.BGDISPLAY_CONFIG.get("pushover_creds"));
 
       const metrics = computeMetrics(status, telemetry, events);
-      const now = Date.now(); const reminders = [];
-      if (secretMeta.nightscoutSecretUpdatedAt && now - secretMeta.nightscoutSecretUpdatedAt > 30 * 86400000) {
+      const now = Date.now();
+      const reminders = [];
+      if (
+        secretMeta.nightscoutSecretUpdatedAt &&
+        now - secretMeta.nightscoutSecretUpdatedAt > 30 * 86400000
+      ) {
         reminders.push({ key: "nightscout_secret", msg: "Nightscout secret older than 30 days" });
       }
       if (secretMeta.dexcomPassUpdatedAt && now - secretMeta.dexcomPassUpdatedAt > 30 * 86400000) {
         reminders.push({ key: "dexcom_pass", msg: "Dexcom password older than 30 days" });
       }
 
-      const configUpdatedAt = Number(await env.BGDISPLAY_CONFIG.get("config_updated_at") || 0) || null;
+      const configUpdatedAt =
+        Number((await env.BGDISPLAY_CONFIG.get("config_updated_at")) || 0) || null;
 
       return json({
-        config, status, changelog, metrics,
+        config,
+        status,
+        changelog,
+        metrics,
         workerEvents: events.slice(0, 20),
         telemetryRecent: telemetry.slice(0, 120),
-        secretMeta, reminders, lastLogUpload,
+        secretMeta,
+        reminders,
+        lastLogUpload,
         pendingCommand: pendingCmd || null,
         lastCommandAck: lastCmdAck || null,
         failedAuthCount: failedAuth.count,
@@ -2371,7 +3062,7 @@ export default {
         recoveryKeyTail: auth.recoveryKeyHash ? auth.recoveryKeyHash.slice(-4) : "",
         recoveryKeyUpdatedAt: auth.recoveryKeyUpdatedAt || null,
         rotateDays: 7,
-        pendingRotation: !!(auth.pendingKeyHash),
+        pendingRotation: !!auth.pendingKeyHash,
         config_version: version,
         config_updated_at: configUpdatedAt,
         device_config_version: status?.config_version || 0,
@@ -2382,7 +3073,13 @@ export default {
     }
 
     if (path === "/api/admin/config" && method === "POST") {
-      if (!(await checkRateLimit(env, `admin-write:${ip}`, config.admin_write_rate_limit_per_min || 15))) {
+      if (
+        !(await checkRateLimit(
+          env,
+          `admin-write:${ip}`,
+          config.admin_write_rate_limit_per_min || 15
+        ))
+      ) {
         return json({ error: "Admin write rate limit exceeded" }, 429);
       }
       const adminReqId = request.headers.get("X-Request-Id") || "";
@@ -2393,20 +3090,34 @@ export default {
       if (!body) return json({ error: "Invalid JSON" }, 400);
 
       // Extract and encrypt Pushover credentials before merging into main config
-      const pushoverUserKey = typeof body.pushover_user_key === "string" ? body.pushover_user_key.trim() : null;
-      const pushoverApiToken = typeof body.pushover_api_token === "string" ? body.pushover_api_token.trim() : null;
-      delete body.pushover_user_key; delete body.pushover_api_token;
+      const pushoverUserKey =
+        typeof body.pushover_user_key === "string" ? body.pushover_user_key.trim() : null;
+      const pushoverApiToken =
+        typeof body.pushover_api_token === "string" ? body.pushover_api_token.trim() : null;
+      delete body.pushover_user_key;
+      delete body.pushover_api_token;
 
       if (pushoverUserKey || pushoverApiToken) {
         if (!env.KV_ENCRYPT_KEY) {
-          return json({ error: "KV_ENCRYPT_KEY worker secret is required to store Pushover credentials. Set it in Cloudflare dashboard under Worker → Settings → Variables." }, 400);
+          return json(
+            {
+              error:
+                "KV_ENCRYPT_KEY worker secret is required to store Pushover credentials. Set it in Cloudflare dashboard under Worker → Settings → Variables.",
+            },
+            400
+          );
         }
         // Read existing creds to merge (don't overwrite one key if only the other was sent)
         let existing = {};
         try {
           const enc = await env.BGDISPLAY_CONFIG.get("pushover_creds");
-          if (enc) { const dec = await kvDecrypt(enc, env.KV_ENCRYPT_KEY); if (dec) existing = JSON.parse(dec); }
-        } catch {}
+          if (enc) {
+            const dec = await kvDecrypt(enc, env.KV_ENCRYPT_KEY);
+            if (dec) existing = JSON.parse(dec);
+          }
+        } catch {
+          /* no-op */
+        }
         const merged = {
           user_key: pushoverUserKey || existing.user_key || "",
           api_token: pushoverApiToken || existing.api_token || "",
@@ -2417,8 +3128,11 @@ export default {
 
       const merged = normalizeConfig({ ...config, ...body });
 
-      const secretMeta = await env.BGDISPLAY_CONFIG.get("secret_meta", { type: "json" }) || {};
-      if (typeof body.nightscout_secret === "string" && body.nightscout_secret !== config.nightscout_secret) {
+      const secretMeta = (await env.BGDISPLAY_CONFIG.get("secret_meta", { type: "json" })) || {};
+      if (
+        typeof body.nightscout_secret === "string" &&
+        body.nightscout_secret !== config.nightscout_secret
+      ) {
         secretMeta.nightscoutSecretUpdatedAt = Date.now();
       }
       if (typeof body.dexcom_pass === "string" && body.dexcom_pass !== config.dexcom_pass) {
@@ -2432,42 +3146,67 @@ export default {
       const newVersion = await incrementConfigVersion(env);
       await appendChangeLog(env, `Config updated (v${newVersion})`);
       if (merged.auto_backup) {
-        await env.BGDISPLAY_CONFIG.put(`backup:${Date.now()}`, JSON.stringify(merged), { expirationTtl: 30 * 86400 });
+        await env.BGDISPLAY_CONFIG.put(`backup:${Date.now()}`, JSON.stringify(merged), {
+          expirationTtl: 30 * 86400,
+        });
       }
       await appendWorkerEvent(env, { type: "config-save", version: newVersion });
 
       // Broadcast to any connected device WebSockets (non-fatal if DO not available)
       if (env.CONFIG_SYNC) {
-        ctx.waitUntil((async () => {
-          try {
-            const stub = env.CONFIG_SYNC.get(env.CONFIG_SYNC.idFromName("global"));
-            await stub.fetch(new Request("https://do.internal/broadcast", {
-              method: "POST",
-              body: JSON.stringify({ type: "config-changed", version: newVersion, ts: Date.now() }),
-              headers: { "Content-Type": "application/json" },
-            }));
-          } catch {}
-        })());
+        ctx.waitUntil(
+          (async () => {
+            try {
+              const stub = env.CONFIG_SYNC.get(env.CONFIG_SYNC.idFromName("global"));
+              await stub.fetch(
+                new Request("https://do.internal/broadcast", {
+                  method: "POST",
+                  body: JSON.stringify({
+                    type: "config-changed",
+                    version: newVersion,
+                    ts: Date.now(),
+                  }),
+                  headers: { "Content-Type": "application/json" },
+                })
+              );
+            } catch {
+              /* no-op */
+            }
+          })()
+        );
       }
 
       return json({ ok: true, config_version: newVersion, config_updated_at: nowTs });
     }
 
     if (path === "/api/admin/metrics" && method === "GET") {
-      const status = await env.BGDISPLAY_CONFIG.get("device_status", { type: "json" }) || {};
-      const telemetry = await env.BGDISPLAY_CONFIG.get("telemetry_recent", { type: "json" }) || [];
-      const events = await env.BGDISPLAY_CONFIG.get("worker_events", { type: "json" }) || [];
-      return json({ metrics: computeMetrics(status, telemetry, events), telemetryRecent: telemetry.slice(0, 120), workerEvents: events.slice(0, 40) });
+      const status = (await env.BGDISPLAY_CONFIG.get("device_status", { type: "json" })) || {};
+      const telemetry =
+        (await env.BGDISPLAY_CONFIG.get("telemetry_recent", { type: "json" })) || [];
+      const events = (await env.BGDISPLAY_CONFIG.get("worker_events", { type: "json" })) || [];
+      return json({
+        metrics: computeMetrics(status, telemetry, events),
+        telemetryRecent: telemetry.slice(0, 120),
+        workerEvents: events.slice(0, 40),
+      });
     }
 
     if (path === "/api/admin/ota" && method === "GET") {
-      const channel = String(url.searchParams.get("channel") || config.ota_channel || "stable").trim().toLowerCase();
+      const channel = String(url.searchParams.get("channel") || config.ota_channel || "stable")
+        .trim()
+        .toLowerCase();
       const otaRelease = await getOtaRelease(env, channel);
       return json({ channel, otaRelease, bucketConfigured: !!env.FIRMWARE_BUCKET });
     }
 
     if (path === "/api/admin/ota" && method === "POST") {
-      if (!(await checkRateLimit(env, `admin-write:${ip}`, config.admin_write_rate_limit_per_min || 15))) {
+      if (
+        !(await checkRateLimit(
+          env,
+          `admin-write:${ip}`,
+          config.admin_write_rate_limit_per_min || 15
+        ))
+      ) {
         return json({ error: "Admin write rate limit exceeded" }, 429);
       }
       const body = await request.json().catch(() => null);
@@ -2476,15 +3215,27 @@ export default {
       if (!release) return json({ error: "Missing or invalid OTA release metadata" }, 400);
       await env.BGDISPLAY_CONFIG.put(`ota_release:${release.channel}`, JSON.stringify(release));
       await appendChangeLog(env, `OTA release prepared: ${release.channel} ${release.version}`);
-      await appendWorkerEvent(env, { type: "ota-release", channel: release.channel, version: release.version });
+      await appendWorkerEvent(env, {
+        type: "ota-release",
+        channel: release.channel,
+        version: release.version,
+      });
       return json({ ok: true, otaRelease: release, bucketConfigured: !!env.FIRMWARE_BUCKET });
     }
 
     if (path === "/api/admin/ota" && method === "DELETE") {
-      if (!(await checkRateLimit(env, `admin-write:${ip}`, config.admin_write_rate_limit_per_min || 15))) {
+      if (
+        !(await checkRateLimit(
+          env,
+          `admin-write:${ip}`,
+          config.admin_write_rate_limit_per_min || 15
+        ))
+      ) {
         return json({ error: "Admin write rate limit exceeded" }, 429);
       }
-      const channel = String(url.searchParams.get("channel") || config.ota_channel || "stable").trim().toLowerCase();
+      const channel = String(url.searchParams.get("channel") || config.ota_channel || "stable")
+        .trim()
+        .toLowerCase();
       await env.BGDISPLAY_CONFIG.delete(`ota_release:${channel}`);
       await appendChangeLog(env, `OTA release cleared: ${channel}`);
       return json({ ok: true, channel });
@@ -2509,36 +3260,51 @@ export default {
       const q = (url.searchParams.get("q") || "").toLowerCase();
       const lvl = (url.searchParams.get("lvl") || "").toUpperCase();
       const limit = Math.max(1, Math.min(400, Number(url.searchParams.get("limit") || 80)));
-      const filtered = text.split("\n").filter(Boolean)
-        .filter(line => !q || line.toLowerCase().includes(q))
-        .filter(line => !lvl || line.includes(`"lvl":"${lvl}"`));
+      const filtered = text
+        .split("\n")
+        .filter(Boolean)
+        .filter((line) => !q || line.toLowerCase().includes(q))
+        .filter((line) => !lvl || line.includes(`"lvl":"${lvl}"`));
       if (url.searchParams.get("download") === "1") {
         const ts = new Date(meta.uploadedAt || Date.now()).toISOString().replace(/[:.]/g, "-");
         return new Response(text, {
           status: 200,
-          headers: { ...CORS_HEADERS, "Content-Type": "text/plain; charset=utf-8",
-            "Content-Disposition": `attachment; filename="bg-miniview-sd-logs-${ts}.log"` },
+          headers: {
+            ...CORS_HEADERS,
+            "Content-Type": "text/plain; charset=utf-8",
+            "Content-Disposition": `attachment; filename="bg-miniview-sd-logs-${ts}.log"`,
+          },
         });
       }
       return json({ meta, total: filtered.length, preview: filtered.slice(0, limit) });
     }
 
     if (path === "/api/admin/maintenance" && method === "GET") {
-      const status = await env.BGDISPLAY_CONFIG.get("device_status", { type: "json" }) || {};
-      const secretMeta = await env.BGDISPLAY_CONFIG.get("secret_meta", { type: "json" }) || {};
+      const status = (await env.BGDISPLAY_CONFIG.get("device_status", { type: "json" })) || {};
+      const secretMeta = (await env.BGDISPLAY_CONFIG.get("secret_meta", { type: "json" })) || {};
       const now = Date.now();
       return json({
         rebootSchedule: "Daily 03:00 local",
         lastResetReason: status.resetReason || "unknown",
         sourceFailStreak: Number(status.bgPollFailStreak || 0),
-        keyRotationDueInMs: Math.max(0, ((auth.lastRotated || 0) + KEY_ROTATE_MS) - now),
-        nightscoutSecretAgeDays: secretMeta.nightscoutSecretUpdatedAt ? Math.floor((now - secretMeta.nightscoutSecretUpdatedAt) / 86400000) : null,
-        dexcomPassAgeDays: secretMeta.dexcomPassUpdatedAt ? Math.floor((now - secretMeta.dexcomPassUpdatedAt) / 86400000) : null,
+        keyRotationDueInMs: Math.max(0, (auth.lastRotated || 0) + KEY_ROTATE_MS - now),
+        nightscoutSecretAgeDays: secretMeta.nightscoutSecretUpdatedAt
+          ? Math.floor((now - secretMeta.nightscoutSecretUpdatedAt) / 86400000)
+          : null,
+        dexcomPassAgeDays: secretMeta.dexcomPassUpdatedAt
+          ? Math.floor((now - secretMeta.dexcomPassUpdatedAt) / 86400000)
+          : null,
       });
     }
 
     if (path === "/api/admin/command" && method === "POST") {
-      if (!(await checkRateLimit(env, `admin-write:${ip}`, config.admin_write_rate_limit_per_min || 15))) {
+      if (
+        !(await checkRateLimit(
+          env,
+          `admin-write:${ip}`,
+          config.admin_write_rate_limit_per_min || 15
+        ))
+      ) {
         return json({ error: "Admin write rate limit exceeded" }, 429);
       }
       const adminReqId = request.headers.get("X-Request-Id") || "";
@@ -2546,9 +3312,24 @@ export default {
       if (!adminReplay.ok) return json({ error: adminReplay.error }, 409);
       const body = await request.json().catch(() => null);
       if (!body?.type) return json({ error: "Missing command type" }, 400);
-      const allowed = ["reboot", "sync-now", "upload-logs", "factory-reset", "fetch-digest", "display-message", "ota-check", "ota-apply"];
+      const allowed = [
+        "reboot",
+        "sync-now",
+        "upload-logs",
+        "factory-reset",
+        "fetch-digest",
+        "display-message",
+        "ota-check",
+        "ota-apply",
+      ];
       if (!allowed.includes(body.type)) return json({ error: "Unsupported command" }, 400);
-      const cmd = { id: crypto.randomUUID(), type: body.type, args: body.args || {}, createdAt: Date.now(), expiresAt: Date.now() + 10 * 60 * 1000 };
+      const cmd = {
+        id: crypto.randomUUID(),
+        type: body.type,
+        args: body.args || {},
+        createdAt: Date.now(),
+        expiresAt: Date.now() + 10 * 60 * 1000,
+      };
       await env.BGDISPLAY_CONFIG.put("command:all", JSON.stringify(cmd));
       await appendChangeLog(env, `Command queued: ${cmd.type}`);
       await appendWorkerEvent(env, { type: "command-queue", command: cmd.type });
@@ -2556,25 +3337,45 @@ export default {
     }
 
     if (path === "/api/admin/recovery-key" && method === "POST") {
-      if (!(await checkRateLimit(env, `admin-write:${ip}`, config.admin_write_rate_limit_per_min || 15))) {
+      if (
+        !(await checkRateLimit(
+          env,
+          `admin-write:${ip}`,
+          config.admin_write_rate_limit_per_min || 15
+        ))
+      ) {
         return json({ error: "Admin write rate limit exceeded" }, 429);
       }
       const body = await request.json().catch(() => null);
-      if (!body || typeof body.recovery_device_key !== "string") return json({ error: "Missing recovery_device_key" }, 400);
+      if (!body || typeof body.recovery_device_key !== "string")
+        return json({ error: "Missing recovery_device_key" }, 400);
       const key = body.recovery_device_key.trim();
-      if (!key || key.length < 16 || key.length > 96 || !key.startsWith("bg_ro_")) return json({ error: "Invalid recovery key format" }, 400);
-      auth.recoveryKeyHash = await sha256(key); auth.recoveryKeyUpdatedAt = Date.now();
+      if (!key || key.length < 16 || key.length > 96 || !key.startsWith("bg_ro_"))
+        return json({ error: "Invalid recovery key format" }, 400);
+      auth.recoveryKeyHash = await sha256(key);
+      auth.recoveryKeyUpdatedAt = Date.now();
       await env.BGDISPLAY_CONFIG.put("auth", JSON.stringify(auth));
       await appendChangeLog(env, "Recovery firmware key updated");
       await appendWorkerEvent(env, { type: "recovery-key-update" });
-      return json({ ok: true, recoveryKeyTail: auth.recoveryKeyHash.slice(-4), recoveryKeyUpdatedAt: auth.recoveryKeyUpdatedAt });
+      return json({
+        ok: true,
+        recoveryKeyTail: auth.recoveryKeyHash.slice(-4),
+        recoveryKeyUpdatedAt: auth.recoveryKeyUpdatedAt,
+      });
     }
 
     if (path === "/api/admin/recovery-key" && method === "DELETE") {
-      if (!(await checkRateLimit(env, `admin-write:${ip}`, config.admin_write_rate_limit_per_min || 15))) {
+      if (
+        !(await checkRateLimit(
+          env,
+          `admin-write:${ip}`,
+          config.admin_write_rate_limit_per_min || 15
+        ))
+      ) {
         return json({ error: "Admin write rate limit exceeded" }, 429);
       }
-      delete auth.recoveryKeyHash; delete auth.recoveryKeyUpdatedAt;
+      delete auth.recoveryKeyHash;
+      delete auth.recoveryKeyUpdatedAt;
       await env.BGDISPLAY_CONFIG.put("auth", JSON.stringify(auth));
       await appendChangeLog(env, "Recovery firmware key cleared");
       await appendWorkerEvent(env, { type: "recovery-key-clear" });
@@ -2588,7 +3389,9 @@ export default {
       for (const key of list.keys) {
         const rec = await env.BGDISPLAY_AUTH.get(key.name, { type: "json" });
         if (rec) {
-          const hasPerDeviceConfig = !!(await env.BGDISPLAY_CONFIG.get(`device_config:${rec.chipId}`));
+          const hasPerDeviceConfig = !!(await env.BGDISPLAY_CONFIG.get(
+            `device_config:${rec.chipId}`
+          ));
           devices.push({
             chipId: rec.chipId,
             keyTail: rec.keyTail || rec.keyHash?.slice(-4) || "????",
@@ -2605,11 +3408,18 @@ export default {
 
     // ── DELETE /api/admin/devices/:chipId ─────────────────────────────────────
     if (path.startsWith("/api/admin/devices/") && method === "DELETE") {
-      if (!(await checkRateLimit(env, `admin-write:${ip}`, config.admin_write_rate_limit_per_min || 15))) {
+      if (
+        !(await checkRateLimit(
+          env,
+          `admin-write:${ip}`,
+          config.admin_write_rate_limit_per_min || 15
+        ))
+      ) {
         return json({ error: "Admin write rate limit exceeded" }, 429);
       }
       const chipId = path.slice("/api/admin/devices/".length).trim();
-      if (!chipId || !/^[0-9a-f]{8,16}$/i.test(chipId)) return json({ error: "Invalid chipId" }, 400);
+      if (!chipId || !/^[0-9a-f]{8,16}$/i.test(chipId))
+        return json({ error: "Invalid chipId" }, 400);
       const rec = await env.BGDISPLAY_AUTH.get(`device_registry:${chipId}`, { type: "json" });
       if (!rec) return json({ error: "Device not found" }, 404);
       await env.BGDISPLAY_AUTH.delete(`device_registry:${chipId}`);
@@ -2627,18 +3437,27 @@ export default {
     // ── GET /api/admin/device-config/:chipId ─────────────────────────────────
     if (path.startsWith("/api/admin/device-config/") && method === "GET") {
       const chipId = path.slice("/api/admin/device-config/".length).trim().toLowerCase();
-      if (!chipId || !/^[0-9a-f]{8,16}$/.test(chipId)) return json({ error: "Invalid chipId" }, 400);
-      const overrides = await env.BGDISPLAY_CONFIG.get(`device_config:${chipId}`, { type: "json" }) || {};
+      if (!chipId || !/^[0-9a-f]{8,16}$/.test(chipId))
+        return json({ error: "Invalid chipId" }, 400);
+      const overrides =
+        (await env.BGDISPLAY_CONFIG.get(`device_config:${chipId}`, { type: "json" })) || {};
       return json({ chipId, overrides });
     }
 
     // ── POST /api/admin/device-config/:chipId ────────────────────────────────
     if (path.startsWith("/api/admin/device-config/") && method === "POST") {
-      if (!(await checkRateLimit(env, `admin-write:${ip}`, config.admin_write_rate_limit_per_min || 15))) {
+      if (
+        !(await checkRateLimit(
+          env,
+          `admin-write:${ip}`,
+          config.admin_write_rate_limit_per_min || 15
+        ))
+      ) {
         return json({ error: "Admin write rate limit exceeded" }, 429);
       }
       const chipId = path.slice("/api/admin/device-config/".length).trim().toLowerCase();
-      if (!chipId || !/^[0-9a-f]{8,16}$/.test(chipId)) return json({ error: "Invalid chipId" }, 400);
+      if (!chipId || !/^[0-9a-f]{8,16}$/.test(chipId))
+        return json({ error: "Invalid chipId" }, 400);
       const body = await request.json().catch(() => null);
       if (!body || typeof body !== "object") return json({ error: "Invalid JSON" }, 400);
       // Only allow known config field keys — strip unknown fields
@@ -2653,28 +3472,41 @@ export default {
       await appendChangeLog(env, `Per-device config updated: chip ...${chipId.slice(-4)}`);
       // Broadcast so device pulls updated config
       if (env.CONFIG_SYNC) {
-        ctx.waitUntil((async () => {
-          try {
-            const version = await getConfigVersion(env);
-            const stub = env.CONFIG_SYNC.get(env.CONFIG_SYNC.idFromName("global"));
-            await stub.fetch(new Request("https://do.internal/broadcast", {
-              method: "POST",
-              body: JSON.stringify({ type: "config-changed", version, ts: Date.now() }),
-              headers: { "Content-Type": "application/json" },
-            }));
-          } catch {}
-        })());
+        ctx.waitUntil(
+          (async () => {
+            try {
+              const version = await getConfigVersion(env);
+              const stub = env.CONFIG_SYNC.get(env.CONFIG_SYNC.idFromName("global"));
+              await stub.fetch(
+                new Request("https://do.internal/broadcast", {
+                  method: "POST",
+                  body: JSON.stringify({ type: "config-changed", version, ts: Date.now() }),
+                  headers: { "Content-Type": "application/json" },
+                })
+              );
+            } catch {
+              /* no-op */
+            }
+          })()
+        );
       }
       return json({ ok: true, chipId, overrideCount: Object.keys(overrides).length });
     }
 
     // ── DELETE /api/admin/device-config/:chipId ───────────────────────────────
     if (path.startsWith("/api/admin/device-config/") && method === "DELETE") {
-      if (!(await checkRateLimit(env, `admin-write:${ip}`, config.admin_write_rate_limit_per_min || 15))) {
+      if (
+        !(await checkRateLimit(
+          env,
+          `admin-write:${ip}`,
+          config.admin_write_rate_limit_per_min || 15
+        ))
+      ) {
         return json({ error: "Admin write rate limit exceeded" }, 429);
       }
       const chipId = path.slice("/api/admin/device-config/".length).trim().toLowerCase();
-      if (!chipId || !/^[0-9a-f]{8,16}$/.test(chipId)) return json({ error: "Invalid chipId" }, 400);
+      if (!chipId || !/^[0-9a-f]{8,16}$/.test(chipId))
+        return json({ error: "Invalid chipId" }, 400);
       await env.BGDISPLAY_CONFIG.delete(`device_config:${chipId}`);
       await appendChangeLog(env, `Per-device config cleared: chip ...${chipId.slice(-4)}`);
       return json({ ok: true });
@@ -2687,10 +3519,20 @@ export default {
 
     if (path === "/api/admin/export" && method === "GET") {
       const version = await getConfigVersion(env);
-      return new Response(JSON.stringify({ config, exportedAt: Date.now(), version: "3.0.0", config_version: version }, null, 2), {
-        headers: { ...CORS_HEADERS, "Content-Type": "application/json",
-          "Content-Disposition": `attachment; filename="bg-miniview-config-${Date.now()}.json"` },
-      });
+      return new Response(
+        JSON.stringify(
+          { config, exportedAt: Date.now(), version: "3.0.0", config_version: version },
+          null,
+          2
+        ),
+        {
+          headers: {
+            ...CORS_HEADERS,
+            "Content-Type": "application/json",
+            "Content-Disposition": `attachment; filename="bg-miniview-config-${Date.now()}.json"`,
+          },
+        }
+      );
     }
 
     if (path === "/api/admin/import" && method === "POST") {
@@ -2755,7 +3597,12 @@ export class ConfigSyncRelay {
       const sockets = this.state.getWebSockets();
       let sent = 0;
       for (const ws of sockets) {
-        try { ws.send(msg); sent++; } catch {}
+        try {
+          ws.send(msg);
+          sent++;
+        } catch {
+          /* no-op */
+        }
       }
       return new Response(JSON.stringify({ ok: true, sent, total: sockets.length }), {
         headers: { "Content-Type": "application/json" },
@@ -2775,7 +3622,9 @@ export class ConfigSyncRelay {
     try {
       const msg = JSON.parse(message);
       if (msg.type === "ping") ws.send(JSON.stringify({ type: "pong", ts: Date.now() }));
-    } catch {}
+    } catch {
+      /* no-op */
+    }
   }
 
   webSocketClose() {}

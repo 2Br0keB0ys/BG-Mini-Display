@@ -1,7 +1,9 @@
 import { WORKER_URL } from './constants';
 
 let _session = '';
-export const setSession = t => { _session = t; };
+export const setSession = (t) => {
+  _session = t;
+};
 export const getSession = () => _session;
 
 function headers(extra = {}) {
@@ -36,7 +38,11 @@ export async function apiPost(path, data) {
 }
 
 export async function apiDelete(path) {
-  const r = await fetch(WORKER_URL + path, { method: 'DELETE', headers: headers(), cache: 'no-store' });
+  const r = await fetch(WORKER_URL + path, {
+    method: 'DELETE',
+    headers: headers(),
+    cache: 'no-store',
+  });
   if (!r.ok) throw new Error(r.status);
   return r.json();
 }

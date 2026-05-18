@@ -3,10 +3,19 @@ export function fmtTs(ts) {
   const diff = Date.now() - ts;
   if (diff < 60000) return 'Just now';
   if (diff < 3600000) return Math.floor(diff / 60000) + ' min ago';
-  const d = new Date(ts), now = new Date();
+  const d = new Date(ts),
+    now = new Date();
   if (d.toDateString() === now.toDateString())
-    return 'Today ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
-  return d.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
+    return (
+      'Today ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })
+    );
+  return d.toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
 }
 
 export function fmtUptime(s) {
@@ -16,16 +25,21 @@ export function fmtUptime(s) {
 
 export function fmtCountdown(ms) {
   if (ms <= 0) return 'Overdue';
-  const d = Math.floor(ms / 86400000), h = Math.floor((ms % 86400000) / 3600000);
+  const d = Math.floor(ms / 86400000),
+    h = Math.floor((ms % 86400000) / 3600000);
   return d > 0 ? `${d}d ${h}h remaining` : `${h}h remaining`;
 }
 
 export function to12h(hhmm) {
-  const m = String(hhmm || '').trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+  const m = String(hhmm || '')
+    .trim()
+    .match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
   if (!m) return hhmm || '';
   let h = parseInt(m[1], 10);
-  const min = m[2], ap = h >= 12 ? 'PM' : 'AM';
-  h = h % 12; if (h === 0) h = 12;
+  const min = m[2],
+    ap = h >= 12 ? 'PM' : 'AM';
+  h = h % 12;
+  if (h === 0) h = 12;
   return `${h}:${min} ${ap}`;
 }
 
@@ -43,17 +57,21 @@ export function to24h(v, fallback = '23:00') {
 }
 
 export function rotateProgress(lastRotated) {
-  const total = 7 * 86400000, elapsed = Date.now() - (lastRotated || 0);
+  const total = 7 * 86400000,
+    elapsed = Date.now() - (lastRotated || 0);
   const pct = Math.min(elapsed / total, 1);
-  const r = 15, circ = 2 * Math.PI * r;
-  const used = circ * pct, remain = circ - used;
+  const r = 15,
+    circ = 2 * Math.PI * r;
+  const used = circ * pct,
+    remain = circ - used;
   const label = Math.max(0, 7 - Math.floor(elapsed / 86400000)) + 'd';
   const color = pct > 0.85 ? '#E24B4A' : pct > 0.6 ? '#f59e0b' : '#16a34a';
   return { used, remain, label, color };
 }
 
 export function validateConfig(c) {
-  const errors = [], n = k => Number(c[k]);
+  const errors = [],
+    n = (k) => Number(c[k]);
   if (c.urgent_low && c.low && n('urgent_low') >= n('low'))
     errors.push(`Urgent low (${c.urgent_low}) must be less than Low (${c.low}).`);
   if (c.low && c.high && n('low') >= n('high'))
@@ -66,4 +84,12 @@ export function validateConfig(c) {
 }
 
 export const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-export const DAY_LABELS = { sun: 'Sunday', mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday', thu: 'Thursday', fri: 'Friday', sat: 'Saturday' };
+export const DAY_LABELS = {
+  sun: 'Sunday',
+  mon: 'Monday',
+  tue: 'Tuesday',
+  wed: 'Wednesday',
+  thu: 'Thursday',
+  fri: 'Friday',
+  sat: 'Saturday',
+};
