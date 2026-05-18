@@ -128,7 +128,7 @@ const DEFAULT_CONFIG = {
   admin_write_rate_limit_per_min: 15,
   session_timeout_min: 30, ip_allowlist_enabled: false, ip_allowlist: [],
   // Alerts / Monitoring
-  alert_offline_min: 15,
+  // alert_offline_min: 15, // Removed device offline alert
   alert_stale_min: 30,
   alert_battery_low_pct: 15,
   alert_cooldown_min: 60,
@@ -161,7 +161,7 @@ function normalizeConfig(cfg) {
   // Pushover credentials are stored encrypted, never in the main config blob
   delete out.pushover_user_key; delete out.pushover_api_token;
 
-  out.alert_offline_min = Math.max(5, Math.min(240, Number(out.alert_offline_min || 15)));
+  // out.alert_offline_min = Math.max(5, Math.min(240, Number(out.alert_offline_min || 15))); // Removed device offline alert
   out.alert_stale_min = Math.max(5, Math.min(240, Number(out.alert_stale_min || 30)));
   out.alert_battery_low_pct = Math.max(5, Math.min(40, Number(out.alert_battery_low_pct || 15)));
   out.alert_cooldown_min = Math.max(5, Math.min(360, Number(out.alert_cooldown_min || 60)));
@@ -183,6 +183,16 @@ function normalizeConfig(cfg) {
   out.insulin_pump_notes = String(out.insulin_pump_notes || "").trim().slice(0, 180);
 
   return out;
+}
+
+// Load Dexcom & Nightscout credentials from worker secrets if not already in KV config
+function loadSecretsIntoConfig(env, cfg) {
+  // Only fill empty fields from env secrets (don't override user-saved values)
+  if (!cfg.dexcom_user && env.DEXCOM_EMAIL) cfg.dexcom_user = env.DEXCOM_EMAIL;
+  if (!cfg.dexcom_pass && env.DEXCOM_PASSWORD) cfg.dexcom_pass = env.DEXCOM_PASSWORD;
+  if (!cfg.nightscout_url && env.NIGHTSCOUT_URL) cfg.nightscout_url = env.NIGHTSCOUT_URL;
+  if (!cfg.nightscout_secret && env.NIGHTSCOUT_API_TOKEN) cfg.nightscout_secret = env.NIGHTSCOUT_API_TOKEN;
+  return cfg
 }
 
 // ─── Core Helpers ─────────────────────────────────────────────────────────────
@@ -1025,15 +1035,12 @@ async function buildHealthSummary(env, config, auth) {
     env.BGDISPLAY_CONFIG.get("daily_digest", { type: "json" }),
     getPushoverStatus(env, config),
   ]);
-  const offlineMin = Number(config.alert_offline_min || 15);
-  const lastSeenMs = Number(deviceStatus?.lastSeen || 0);
-  const deviceOnline = !!lastSeenMs && (nowMs - lastSeenMs) < offlineMin * 60000;
   const digestAgeMin = dailyDigest?.generatedAt ? Math.round((nowMs - dailyDigest.generatedAt) / 60000) : null;
   const nextDigestWindow = `Daily 7:00 AM US/Central; hourly 8:00 AM-11:00 PM US/Central`;
 
   return [
     `Worker health summary`,
-    `Device: ${deviceOnline ? "online" : "offline"}${lastSeenMs ? `, last seen ${new Date(lastSeenMs).toISOString()}` : ""}`,
+    // Removed device online/offline summary
     `Digest: ${dailyDigest ? `present for ${dailyDigest.date}, age ${digestAgeMin} min, model ${(dailyDigest.ai_model || config.ai_model || "@cf/meta/llama-3.1-8b-instruct")}` : "missing"}`,
     `Schedule: ${nextDigestWindow}`,
     `Pushover: ${pushoverStatus.configured ? "configured" : "not configured"}, alerts ${pushoverStatus.alerts_enabled ? "on" : "off"}, digest push ${pushoverStatus.digest_enabled ? `on at ${pushoverStatus.digest_hour_central}:00 Central` : "off"}`,
@@ -1073,9 +1080,7 @@ async function buildFullReadinessReport(env, config, auth) {
     getPushoverStatus(env, config),
     getKeyAuthStatus(auth),
   ]);
-  const offlineMin = Number(config.alert_offline_min || 15);
-  const deviceSeen = Number(deviceStatus?.lastSeen || 0);
-  const deviceOnline = !!deviceSeen && (nowMs - deviceSeen) < offlineMin * 60000;
+  // Removed device offline check from readiness report
   const digestFresh = !!dailyDigest && dailyDigest.date === centralNow.date;
   const digestPushReady = !config.digest_pushover_enabled || (pushoverStatus.configured && Number(config.digest_pushover_hour) === 7);
   const bgAlertsReady = !config.pushover_enabled || pushoverStatus.configured;
@@ -1083,7 +1088,6 @@ async function buildFullReadinessReport(env, config, auth) {
     ai_binding: !!env.AI,
     kv_encrypt_key: !!env.KV_ENCRYPT_KEY,
     auth_key_present: !!auth?.keyHash,
-    device_recently_seen: deviceOnline,
     digest_present_today: digestFresh,
     digest_push_ready: digestPushReady,
     bg_alerts_ready: bgAlertsReady,
@@ -1098,7 +1102,6 @@ async function buildFullReadinessReport(env, config, auth) {
       digest_date: dailyDigest?.date || null,
       digest_generated_at: dailyDigest?.generatedAt ? new Date(dailyDigest.generatedAt).toISOString() : null,
       digest_pushover_hour: Number(config.digest_pushover_hour ?? 7),
-      device_last_seen: deviceSeen ? new Date(deviceSeen).toISOString() : null,
       key_auth: keyAuth,
       pushover: pushoverStatus,
     },
@@ -1106,42 +1109,6 @@ async function buildFullReadinessReport(env, config, auth) {
   };
 }
 
-// ─── Feature 4c: Device Offline Alert ────────────────────────────────────────
-
-async function runDeviceOfflineCheck(env) {
-  const config = normalizeConfig(await env.BGDISPLAY_CONFIG.get("config", { type: "json" }));
-  if (!config.pushover_enabled) return;
-
-  let creds = null;
-  try {
-    const enc = await env.BGDISPLAY_CONFIG.get("pushover_creds");
-    if (enc && env.KV_ENCRYPT_KEY) {
-      const raw = await kvDecrypt(enc, env.KV_ENCRYPT_KEY);
-      if (raw) creds = JSON.parse(raw);
-    }
-  } catch {}
-  if (!creds?.user_key || !creds?.api_token) return;
-
-  // Only fire if device has been silent longer than alert_offline_min
-  const offlineThresholdMs = Math.max(5, Number(config.alert_offline_min || 15)) * 60 * 1000;
-  const status = await env.BGDISPLAY_CONFIG.get("device_status", { type: "json" }) || {};
-  if (!status.lastSeen) return;
-  const silentMs = Date.now() - Number(status.lastSeen);
-  if (silentMs < offlineThresholdMs) return;
-
-  // Cooldown: don't repeat the offline alert more than once per cooldown window
-  const cooldownMs = Math.max(5, Number(config.alert_cooldown_min || 60)) * 60 * 1000;
-  const lastOfflineStr = await env.BGDISPLAY_CONFIG.get("last_offline_alert");
-  if (lastOfflineStr && Date.now() - Number(lastOfflineStr) < cooldownMs) return;
-
-  const silentMinutes = Math.round(silentMs / 60000);
-  const message = `BG MiniView has not checked in for ${silentMinutes} minutes. Device may be offline or unreachable.`;
-  const ok = await sendPushoverNotification(creds.user_key, creds.api_token, message, "BG MiniView - Device Offline", 1);
-  if (ok) {
-    await env.BGDISPLAY_CONFIG.put("last_offline_alert", String(Date.now()));
-    await appendChangeLog(env, `Device offline alert sent (silent ${silentMinutes}m)`);
-  }
-}
 
 async function runPushoverAlertCheck(env) {
   const config = normalizeConfig(await env.BGDISPLAY_CONFIG.get("config", { type: "json" }));
@@ -2019,7 +1986,8 @@ export default {
     }
 
     const configRaw = await env.BGDISPLAY_CONFIG.get("config", { type: "json" });
-    const config = normalizeConfig(configRaw);
+    let config = normalizeConfig(configRaw);
+    config = loadSecretsIntoConfig(env, config);
     if (!(await checkRateLimit(env, `ip:${ip}`, config.rate_limit_per_min || 45))) {
       return json({ error: "Rate limit exceeded" }, 429);
     }
@@ -2767,7 +2735,7 @@ export default {
     } else if (event.cron === "*/5 * * * *") {
       ctx.waitUntil(runPushoverAlertCheck(env));
       ctx.waitUntil(sendDigestPushover(env));
-      ctx.waitUntil(runDeviceOfflineCheck(env));
+      // Removed device offline check
     } else {
       // Fallback: handle both
       ctx.waitUntil(generateDailyDigest(env, false, "daily"));
