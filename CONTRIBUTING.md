@@ -27,6 +27,20 @@ Run the checks that match your changes:
   - `npm ci`
   - `npm run build`
 
+## Code style quick rules
+
+- Keep formatting consistent with Prettier and lint clean with ESLint.
+- For JavaScript/React changes, run lint in the affected app(s):
+  - `cd apps/cloudflare && npm run lint`
+  - `cd apps/ui && npm run lint`
+- If formatting drifts, run:
+  - `cd apps/cloudflare && npm run format`
+  - `cd apps/ui && npm run format`
+- Line endings are enforced by repository `.gitattributes`:
+  - Source/docs/config use `LF`
+  - PowerShell scripts (`*.ps1`) use `CRLF`
+- Avoid introducing unrelated reformat-only diffs outside the files you touched.
+
 ## Pull request expectations
 
 - Keep changes focused and minimal.
