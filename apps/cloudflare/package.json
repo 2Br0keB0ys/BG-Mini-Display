@@ -20,7 +20,7 @@
   },
   "devDependencies": {
     "wrangler": "^4.90.0",
-    "eslint": "^8.57.0",
+    "eslint": "^10.4.0",
     "prettier": "^3.2.5"
   }
 }
