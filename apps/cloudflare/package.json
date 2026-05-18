@@ -13,9 +13,14 @@
     "test:mcp:admin": "powershell -ExecutionPolicy Bypass -File ./scripts/test_mcp.ps1 -UseAdminSession",
     "test:mcp:health": "powershell -ExecutionPolicy Bypass -File ./scripts/test_mcp.ps1 -UseAdminSession -RunHealth",
     "test:mcp:pushover": "powershell -ExecutionPolicy Bypass -File ./scripts/test_mcp.ps1 -RunPushover",
-    "test:mcp:pushover:live": "powershell -ExecutionPolicy Bypass -File ./scripts/test_mcp.ps1 -RunPushover -SendLivePushover"
+    "test:mcp:pushover:live": "powershell -ExecutionPolicy Bypass -File ./scripts/test_mcp.ps1 -RunPushover -SendLivePushover",
+    "lint": "eslint src --max-warnings 0",
+    "format": "prettier --write src",
+    "format:check": "prettier --check src"
   },
   "devDependencies": {
-    "wrangler": "^4.90.0"
+    "wrangler": "^4.90.0",
+    "eslint": "^8.57.0",
+    "prettier": "^3.2.5"
   }
 }

@@ -53,13 +53,13 @@ function collectConfig(form) {
 
   const nums = ['poll_interval_min', 'stale_data_warn_min', 'config_ping_min', 'brightness',
     'urgent_low', 'low', 'high', 'urgent_high', 'rate_limit_per_min', 'lockout_attempts',
-    'lockout_duration_min', 'session_timeout_min', 'alert_offline_min', 'alert_stale_min',
+    'lockout_duration_min', 'session_timeout_min', 'alert_stale_min',
     'alert_battery_low_pct', 'alert_cooldown_min', 'pushover_alert_cooldown_min', 'digest_pushover_hour', 'ota_check_min'];
   nums.forEach(k => { if (form[k] !== undefined) c[k] = Number(form[k]); });
 
   const bools = ['show_trend_arrow', 'show_last_reading_time', 'clock_24hr', 'dnd_enabled',
     'pushover_enabled', 'digest_pushover_enabled', 'ip_allowlist_enabled', 'lockout_enabled',
-    'auto_backup', 'alert_offline_enabled', 'ota_enabled'];
+    'auto_backup', 'ota_enabled'];
   bools.forEach(k => { if (form[k] !== undefined) c[k] = !!form[k]; });
 
   const dndSchedule = {};
@@ -186,8 +186,6 @@ export default function App() {
     } catch(e) { showToast('✕ Failed to queue command'); }
   }
 
-  const offlineMin = Math.max(5, Number(config.alert_offline_min || 15));
-  const online = meta.status?.lastSeen && (Date.now() - meta.status.lastSeen < offlineMin * 60000);
   const sourceLabel = config.dexcom_user ? 'Dexcom + Nightscout' : (config.nightscout_url ? 'Nightscout only' : 'Not configured');
 
   if (loading) {
@@ -209,7 +207,7 @@ export default function App() {
 
   return (
     <>
-      <Header meta={meta} online={online} saving={saving} onSave={saveConfig} />
+      <Header meta={meta} saving={saving} onSave={saveConfig} />
 
       {/* Mobile nav tabs */}
       <nav className="mobnav">
@@ -247,7 +245,6 @@ export default function App() {
             {/* Status strip */}
             <div className="stat-strip">
               {[
-                ['Device', online ? 'Online' : 'Offline', online ? 'var(--green)' : 'var(--red)'],
                 ['Connection', meta.status?.connection || '—', null],
                 ['Last seen', fmtTs(meta.status?.lastSeen), null],
                 ['Data source', sourceLabel, null],

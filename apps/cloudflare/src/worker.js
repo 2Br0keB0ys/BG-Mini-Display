@@ -128,7 +128,6 @@ const DEFAULT_CONFIG = {
   admin_write_rate_limit_per_min: 15,
   session_timeout_min: 30, ip_allowlist_enabled: false, ip_allowlist: [],
   // Alerts / Monitoring
-  // alert_offline_min: 15, // Removed device offline alert
   alert_stale_min: 30,
   alert_battery_low_pct: 15,
   alert_cooldown_min: 60,
@@ -161,7 +160,6 @@ function normalizeConfig(cfg) {
   // Pushover credentials are stored encrypted, never in the main config blob
   delete out.pushover_user_key; delete out.pushover_api_token;
 
-  // out.alert_offline_min = Math.max(5, Math.min(240, Number(out.alert_offline_min || 15))); // Removed device offline alert
   out.alert_stale_min = Math.max(5, Math.min(240, Number(out.alert_stale_min || 30)));
   out.alert_battery_low_pct = Math.max(5, Math.min(40, Number(out.alert_battery_low_pct || 15)));
   out.alert_cooldown_min = Math.max(5, Math.min(360, Number(out.alert_cooldown_min || 60)));
@@ -1378,11 +1376,8 @@ async function handleMCP(request, env, config, auth) {
 
     if (toolName === "get_device_status") {
       const status = await env.BGDISPLAY_CONFIG.get("device_status", { type: "json" }) || {};
-      const offlineMin = Number(config?.alert_offline_min || 15);
-      const online = status.lastSeen && Date.now() - status.lastSeen < offlineMin * 60000;
       const uptimeTxt = status.uptime ? `${Math.floor(status.uptime / 86400)}d ${Math.floor((status.uptime % 86400) / 3600)}h` : "—";
       const txt = [
-        `Status: ${online ? "ONLINE" : "OFFLINE"}`,
         `Last seen: ${status.lastSeen ? new Date(status.lastSeen).toISOString() : "—"}`,
         `Firmware: ${status.firmware || "—"}`,
         `RSSI: ${status.rssi ?? "—"} dBm`,
@@ -2349,15 +2344,6 @@ export default {
       const digest     = await env.BGDISPLAY_CONFIG.get("daily_digest",      { type: "json" }) || null;
       const otaRelease = await getOtaRelease(env, config.ota_channel || "stable");
       const pushoverConfigured = !!(await env.BGDISPLAY_CONFIG.get("pushover_creds"));
-
-      const offlineMin = Number(config?.alert_offline_min || 15);
-      const cooldownMs = Number(config?.alert_cooldown_min || 60) * 60 * 1000;
-      if (status?.lastSeen && Date.now() - status.lastSeen > offlineMin * 60 * 1000) {
-        if (await shouldEmitAlert(env, "device-offline", cooldownMs)) {
-          await appendChangeLog(env, `Alert: device offline (>${offlineMin} min)`);
-          await appendWorkerEvent(env, { type: "alert", level: "warning", msg: "device-offline" });
-        }
-      }
 
       const metrics = computeMetrics(status, telemetry, events);
       const now = Date.now(); const reminders = [];

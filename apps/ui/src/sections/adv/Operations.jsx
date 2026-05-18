@@ -47,14 +47,6 @@ export function DeviceActions({ meta, onCommand, showToast }) {
 export function AlertTuning({ form, onChange }) {
   return (
     <Card iconClass="ic-alert" icon={alertIcon} title="Worker alert tuning" sub="Server-side thresholds and cooldowns">
-      <Field label="Offline device alert" desc="Send alert when device hasn't checked in.">
-        <label className="toggle"><input type="checkbox" checked={form.alert_offline_enabled !== false} onChange={e => onChange('alert_offline_enabled', e.target.checked)} /><span className="track" /></label>
-      </Field>
-      <Field label="Offline alert threshold">
-        <select className="inp" value={form.alert_offline_min || 15} onChange={e => onChange('alert_offline_min', Number(e.target.value))}>
-          {[[10,'10 min'],[15,'15 min'],[30,'30 min'],[60,'60 min']].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
-        </select>
-      </Field>
       <Field label="Stale data alert threshold">
         <select className="inp" value={form.alert_stale_min || 30} onChange={e => onChange('alert_stale_min', Number(e.target.value))}>
           {[[15,'15 min'],[30,'30 min'],[45,'45 min'],[60,'60 min']].map(([v,l]) => <option key={v} value={v}>{l}</option>)}

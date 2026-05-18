@@ -1,7 +1,7 @@
 import { UI_VERSION } from '../constants';
 import { fmtTs } from '../helpers';
 
-export default function Header({ meta, online, saving, onSave }) {
+export default function Header({ meta, saving, onSave }) {
   return (
     <header className="app-header">
       <div className="header-inner">
@@ -13,9 +13,6 @@ export default function Header({ meta, online, saving, onSave }) {
             BG MiniView <span className="header-ver">v{UI_VERSION}</span>
           </div>
           <div className="header-meta">Last update: {fmtTs(meta.configUpdatedAt)}</div>
-        </div>
-        <div className={`status-pill ${online ? 'pill-online' : 'pill-offline'}`}>
-          <span className="dot" />{online ? 'Device online' : 'Device offline'}
         </div>
         <button className="btn-save" onClick={onSave} disabled={saving} style={{ marginLeft: 8, flexShrink: 0 }}>
           {saving ? 'Saving…' : 'Save changes'}
