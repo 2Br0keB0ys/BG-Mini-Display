@@ -56,6 +56,8 @@ Line endings are normalized via repository-level `.gitattributes`:
 - Most source/docs/config files use `LF`
 - PowerShell scripts (`*.ps1`) use `CRLF`
 
+`main` is protected by repository rules that require `firmware-build`, `label`, and `worker-validate` before merge.
+
 For first-time users, see:
 - `docs/setup-for-beginners.md` (full step-by-step onboarding)
 - `scripts/bootstrap_windows.ps1` (guided Windows setup helper)
