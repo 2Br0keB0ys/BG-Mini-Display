@@ -21,7 +21,7 @@ Archived/retired optional surfaces now live under `archive/`.
 
 ```text
 bg-display-mini/
-├── archive/               # archived NAS MCP, n8n workflow material, legacy workspace files
+├── archive/               # legacy workspace/config reference files
 ├── apps/
 │   ├── cloudflare/        # Worker + wrangler config
 │   ├── ui/                # Production React/Vite UI (deployed to Cloudflare Pages)
@@ -194,7 +194,6 @@ High-level release flow:
 ### Main Screen
 - **Large BG value** with trend arrow (updated every 5 minutes)
 - **Sparkline history** (24-point glucose trend chart)
-- **Insulin profile line** (if pump data sync enabled)
 - **Status bar** with connection indicators and timestamp
 - **EndoAI digest delivery:** summaries are sent via Pushover notifications (display rendering removed in firmware v4.0.1-S)
 
@@ -222,9 +221,6 @@ High-level release flow:
 > Pricing changes over time — always verify at GitHub/Cloudflare before purchasing.
 
 - GitHub Team: about **$4/user/month**
-- GitHub Enterprise Cloud: about **$21/user/month**
-- GitHub Secret Protection (private repos): about **$19/active committer/month**
-- GitHub Code Security (private repos): about **$30/active committer/month**
 - Dependabot alerts: generally available without separate per-alert charge
 - Public repositories can use core code scanning/secret scanning features without Advanced Security add-on licensing
 
@@ -243,16 +239,8 @@ This project is for educational and informational purposes only.
 
 - OTA supports both local LAN (`ArduinoOTA`) and Cloudflare-managed signed update flow.
 - Cellular fallback is a planned hardware path and not currently active.
-- **Pump data sources:** Direct integrations with Glooko, Tandem, Medtronic, and Tidepool APIs
 - **EndoAI:** Daily summaries generated at 7:00 AM US/Central; hourly summaries every hour 8 AM–11 PM. Both can push to Pushover if credentials configured.
 - **Build profile:** Firmware uses a conservative/stable profile (`-O2`, `-DCORE_DEBUG_LEVEL=0`, `-DARDUINO_LOOP_STACK_SIZE=16384`, `-Wall -Wextra -Wno-unused-parameter`).
-- See `CLAUDE.md` for endpoint lists, auth model, pump provider details, and full architecture.
-
-## Archived Components
-
-- `archive/apps/nas-control-mcp/` contains the retired NAS MCP control surface.
-- `archive/n8n/cloudflare-n8n/` contains archived import-ready n8n workflow templates.
-- `archive/n8n/workflows/` contains the archived n8n-as-code sync workspace and `archive/n8n/n8nac-config.json`.
 
 ## License
 
