@@ -61,6 +61,11 @@ Line endings are normalized via repository-level `.gitattributes`:
 - Most source/docs/config files use `LF`
 - PowerShell scripts (`*.ps1`) use `CRLF`
 
+CodeQL scope note:
+- JavaScript CodeQL is intentionally scoped to production surfaces only (`apps/cloudflare/` and `apps/ui/`).
+- `apps/pages/` and `archive/` are excluded because they are legacy/retired surfaces and can create non-actionable security noise.
+- See `.github/codeql/codeql-config.yml` for the exact paths.
+
 For first-time users, see:
 - `docs/setup-for-beginners.md` (zero-to-running walkthrough)
 - `scripts/bootstrap_windows.ps1` (guided Windows setup helper)
@@ -248,7 +253,6 @@ This project is for educational and informational purposes only.
 - `archive/apps/nas-control-mcp/` contains the retired NAS MCP control surface.
 - `archive/n8n/cloudflare-n8n/` contains archived import-ready n8n workflow templates.
 - `archive/n8n/workflows/` contains the archived n8n-as-code sync workspace and `archive/n8n/n8nac-config.json`.
-- `archive/checkly/` contains retired Checkly automation scripts.
 
 ## License
 

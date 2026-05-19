@@ -2521,8 +2521,7 @@ export default {
     }
 
     const configRaw = await env.BGDISPLAY_CONFIG.get("config", { type: "json" });
-    let config = normalizeConfig(configRaw);
-    config = loadSecretsIntoConfig(env, config);
+    const config = loadSecretsIntoConfig(env, normalizeConfig(configRaw));
     if (!(await checkRateLimit(env, `ip:${ip}`, config.rate_limit_per_min || 45))) {
       return json({ error: "Rate limit exceeded" }, 429);
     }

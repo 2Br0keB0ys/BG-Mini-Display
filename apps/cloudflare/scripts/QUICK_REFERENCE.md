@@ -26,7 +26,3 @@
 2. Upload to R2 `bgdisplay-firmware/<channel>/<artifact>.bin`
 3. Register release metadata with `POST /api/admin/ota`
 4. Queue `ota-check` and then `ota-apply` via admin command endpoint/UI
-
-## Historical Archive
-
-Legacy monitor automation references are stored under `archive/checkly/`.

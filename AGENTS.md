@@ -13,7 +13,6 @@
 
 - `archive/n8n/` — archived n8n materials.
 - `archive/apps/nas-control-mcp/` — retired NAS MCP automation.
-- `archive/checkly/` — retired Checkly scripts.
 - `apps/pages/` — legacy static UI retained for historical reference.
 
 ## Working rules

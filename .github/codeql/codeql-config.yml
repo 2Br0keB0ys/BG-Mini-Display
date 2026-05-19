@@ -1,0 +1,9 @@
+name: "BG Display Mini CodeQL config"
+
+paths:
+  - apps/cloudflare
+  - apps/ui
+
+paths-ignore:
+  - archive
+  - apps/pages
