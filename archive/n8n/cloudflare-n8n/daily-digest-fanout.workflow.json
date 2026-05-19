@@ -1,5 +1,5 @@
 {
-  "name": "BG MiniView - Daily Digest Fan-out",
+  "name": "BG Display Mini - Daily Digest Fan-out",
   "active": false,
   "settings": {
     "executionOrder": "v1"
@@ -89,7 +89,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const cfg = $item(0).$node['Config'].json;\nconst text = $json?.result?.content?.[0]?.text || '';\nconst cleaned = String(text).trim();\nconst noDigest = cleaned.toLowerCase().includes('no digest generated yet');\nlet message = cleaned;\n\nif (noDigest || !cleaned) {\n  message = 'No daily digest was available at send time.';\n}\n\nconst header = 'BG MiniView - Daily Summary';\nconst ts = new Date().toISOString();\nconst finalMessage = `${message}\n\nSent by n8n at ${ts}`;\n\nreturn [{\n  hasDigest: !noDigest && !!cleaned,\n  title: header,\n  message: finalMessage,\n  archiveWebhook: cfg.archiveWebhook\n}];"
+        "jsCode": "const cfg = $item(0).$node['Config'].json;\nconst text = $json?.result?.content?.[0]?.text || '';\nconst cleaned = String(text).trim();\nconst noDigest = cleaned.toLowerCase().includes('no digest generated yet');\nlet message = cleaned;\n\nif (noDigest || !cleaned) {\n  message = 'No daily digest was available at send time.';\n}\n\nconst header = 'BG Display Mini - Daily Summary';\nconst ts = new Date().toISOString();\nconst finalMessage = `${message}\n\nSent by n8n at ${ts}`;\n\nreturn [{\n  hasDigest: !noDigest && !!cleaned,\n  title: header,\n  message: finalMessage,\n  archiveWebhook: cfg.archiveWebhook\n}];"
       },
       "id": "code-format",
       "name": "Format Digest",

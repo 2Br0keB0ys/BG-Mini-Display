@@ -1,4 +1,4 @@
-# BG MiniView monitor-key rotation helper
+# BG Display Mini monitor-key rotation helper
 # Rotates CHECKLY_MONITOR_KEY across Cloudflare Worker and Checkly monitor definitions.
 
 param(

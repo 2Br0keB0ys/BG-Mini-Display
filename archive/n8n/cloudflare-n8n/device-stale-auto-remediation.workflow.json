@@ -1,5 +1,5 @@
 {
-  "name": "BG MiniView - Device Stale Auto-remediation",
+  "name": "BG Display Mini - Device Stale Auto-remediation",
   "active": false,
   "settings": {
     "executionOrder": "v1"
@@ -212,7 +212,7 @@
             },
             {
               "name": "title",
-              "value": "={{$json.action === 'critical' ? 'BG MiniView - CRITICAL STALE' : 'BG MiniView - Stale Warning'}}"
+              "value": "={{$json.action === 'critical' ? 'BG Display Mini - CRITICAL STALE' : 'BG Display Mini - Stale Warning'}}"
             },
             {
               "name": "message",

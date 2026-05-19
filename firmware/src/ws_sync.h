@@ -52,7 +52,7 @@ static void _wsEventHandler(WStype_t type, uint8_t* payload, size_t length) {
 void wsInit(AppConfig& cfg) {
   if (!strlen(cfg.workerUrl) || !strlen(cfg.deviceKey)) return;
 
-  // Parse host from workerUrl (e.g. "https://bgdisplay-worker.zanebaize.workers.dev")
+  // Parse host from workerUrl (e.g. "https://bgdisplay-worker.example.workers.dev")
   String url = String(cfg.workerUrl);
   bool secure = url.startsWith("https://");
   String rest = url.substring(secure ? 8 : 7);

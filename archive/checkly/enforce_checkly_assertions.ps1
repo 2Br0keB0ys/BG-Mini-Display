@@ -13,10 +13,10 @@ if ($UseInfisical) {
     exit 1
   }
   if (-not $ApiKey) {
-    $ApiKey = infisical secrets get CHECKLY_API_KEY --projectId bg-miniview --env production 2>&1 | Select-Object -Last 1
+    $ApiKey = infisical secrets get CHECKLY_API_KEY --projectId bg-display-mini --env production 2>&1 | Select-Object -Last 1
   }
   if (-not $AccountId) {
-    $AccountId = infisical secrets get CHECKLY_ACCOUNT_ID --projectId bg-miniview --env production 2>&1 | Select-Object -Last 1
+    $AccountId = infisical secrets get CHECKLY_ACCOUNT_ID --projectId bg-display-mini --env production 2>&1 | Select-Object -Last 1
   }
 }
 

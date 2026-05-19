@@ -796,7 +796,7 @@ void showSettingsMenu(AppConfig& cfg, Preferences& prefs) {
     canvas.setTextDatum(middle_left);
     canvas.drawString("Setup at", 12, 202);
     canvas.setTextColor(CLR_GREEN);
-    canvas.drawString("setup.2brokeboys.uk", 12, 220);
+    canvas.drawString("setup.example.com", 12, 220);
 
     canvas.setTextColor(CLR_DIM);
     canvas.setTextDatum(middle_center);
