@@ -2591,7 +2591,6 @@ export default {
       if (!sig.ok) return json({ error: sig.error }, 401);
       await clearFailedAuth(env, ip);
       const pendingKey = await handleAutoRotation(env, auth);
-      auth = await env.BGDISPLAY_CONFIG.get("auth", { type: "json" });
       const version = await getConfigVersion(env);
       const deviceConfig = { ...config };
       // Auto-detect timezone on first config pull if empty
