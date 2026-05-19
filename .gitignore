@@ -43,7 +43,6 @@ CLAUDE.md
 **/.aider*
 **/.copilot*
 **/.continue/
-.n8nac/ai-context.json
 apps/cloudflare/scripts/.infisical.json
 **/.infisical.json
 
