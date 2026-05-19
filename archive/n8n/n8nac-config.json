@@ -1,30 +1,30 @@
 {
   "version": 2,
-  "activeInstanceId": "instance-3a7be276",
+  "activeInstanceId": "instance-example",
   "instances": [
     {
-      "id": "instance-3a7be276",
-      "name": "n8n.2brokeboys.uk · Zane Baize",
-      "host": "https://n8n.2brokeboys.uk",
+      "id": "instance-example",
+      "name": "n8n.example.com · Example User",
+      "host": "https://n8n.example.com",
       "syncFolder": "workflows",
       "projectId": "personal",
       "projectName": "Personal",
-      "instanceIdentifier": "n8n_2brokeboys_uk_zane_b",
-      "workflowDir": "workflows/n8n_2brokeboys_uk_zane_b/personal",
+      "instanceIdentifier": "n8n_example_com_example_user",
+      "workflowDir": "workflows/n8n_example_com_example_user/personal",
       "verification": {
         "status": "verified",
-        "normalizedHost": "https://n8n.2brokeboys.uk",
-        "userId": "3f60cf85-557a-4f78-92b8-9bd0a2778b4e",
-        "userName": "Zane Baize",
-        "userEmail": "zaneokc@icloud.com",
-        "lastCheckedAt": "2026-04-29T19:12:23.972Z"
+        "normalizedHost": "https://n8n.example.com",
+        "userId": "00000000-0000-0000-0000-000000000000",
+        "userName": "Example User",
+        "userEmail": "example@example.com",
+        "lastCheckedAt": "2026-01-01T00:00:00.000Z"
       }
     }
   ],
-  "host": "https://n8n.2brokeboys.uk",
+  "host": "https://n8n.example.com",
   "syncFolder": "workflows",
   "projectId": "personal",
   "projectName": "Personal",
-  "instanceIdentifier": "n8n_2brokeboys_uk_zane_b",
-  "workflowDir": "workflows/n8n_2brokeboys_uk_zane_b/personal"
+  "instanceIdentifier": "n8n_example_com_example_user",
+  "workflowDir": "workflows/n8n_example_com_example_user/personal"
 }

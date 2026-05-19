@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>BG MiniView — Settings</title>
+  <title>BG Display Mini — Settings</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -384,7 +384,7 @@ input[type=text]:disabled,input[type=password]:disabled{opacity:.45;cursor:not-a
 <header class="topbar">
   <div class="brand">
     <div class="brand-icon"><svg viewBox="0 0 24 24"><path d="M12 2a7 7 0 017 7c0 5-7 13-7 13S5 14 5 9a7 7 0 017-7zm0 4a3 3 0 100 6 3 3 0 000-6z"/></svg></div>
-    <span class="brand-name">BG MiniView<span id="uiVersionBadge" class="brand-version"></span></span>
+    <span class="brand-name">BG Display Mini<span id="uiVersionBadge" class="brand-version"></span></span>
   </div>
   <div id="configMeta"></div>
   <div id="statusPill" class="status-pill offline"><span class="dot"></span>Loading…</div>
@@ -444,7 +444,7 @@ input[type=text]:disabled,input[type=password]:disabled{opacity:.45;cursor:not-a
 <div class="toast" id="toast"></div>
 
 <script>
-const WORKER_URL = "https://bgdisplay-worker.zanebaize.workers.dev";
+const WORKER_URL = "https://example-worker.your-domain.workers.dev";
 const UI_VERSION = "2.0.0";
 (function(){ const el=document.getElementById('uiVersionBadge'); if(el) el.textContent='v'+UI_VERSION; })();
 
@@ -934,7 +934,7 @@ function render(){
     row('Cloudflare Access','All admin routes are protected by Cloudflare Access JWT.',badge('Active','green'))+
     row('Session timeout','',sel('session_timeout_min',[[15,'15 min'],[30,'30 min'],[60,'1 hour'],[240,'4 hours']],c.session_timeout_min))+
     row('IP allowlist','Restrict Worker access to approved IPs only.',tog('ip_allowlist_enabled',c.ip_allowlist_enabled))+
-    row('Device API key','Primary key used by the BG MiniView hardware.',`<span class="kv">bg_ro_••••••••${m.keyTail||'????'}</span>`)+
+    row('Device API key','Primary key used by the BG Display Mini hardware.',`<span class="kv">bg_ro_••••••••${m.keyTail||'????'}</span>`)+
     row('Recovery key','Accepted by firmware after a local flash wipe when the primary key is gone.',
       `<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
         <div style="display:flex;gap:8px;align-items:center">

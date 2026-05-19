@@ -82,9 +82,9 @@ import_file "$stale_file"
 echo "[list] fetching workflows"
 wf_json=$(list_workflows_json)
 
-critical_id=$(echo "$wf_json" | jq -r '.data.data[] | select(.name=="BG MiniView - Critical BG Escalation") | .id' | head -n1)
-digest_id=$(echo "$wf_json" | jq -r '.data.data[] | select(.name=="BG MiniView - Daily Digest Fan-out") | .id' | head -n1)
-stale_id=$(echo "$wf_json" | jq -r '.data.data[] | select(.name=="BG MiniView - Device Stale Auto-remediation") | .id' | head -n1)
+critical_id=$(echo "$wf_json" | jq -r '.data.data[] | select(.name=="BG Display Mini - Critical BG Escalation") | .id' | head -n1)
+digest_id=$(echo "$wf_json" | jq -r '.data.data[] | select(.name=="BG Display Mini - Daily Digest Fan-out") | .id' | head -n1)
+stale_id=$(echo "$wf_json" | jq -r '.data.data[] | select(.name=="BG Display Mini - Device Stale Auto-remediation") | .id' | head -n1)
 
 echo "Imported workflow IDs:"
 echo "  Critical: ${critical_id:-<not found>}"

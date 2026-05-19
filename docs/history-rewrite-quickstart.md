@@ -6,7 +6,7 @@ Use this only when you are ready to rewrite published git history.
 
 - Source repo: `N:\vsCode\bgdisplay`
 - Mirror repo (new): `N:\vsCode\bgdisplay-rewrite.git`
-- Remote: `https://github.com/2Br0keB0ys/bgdisplay.git`
+- Remote: `https://github.com/example/bg-display-mini.git`
 
 ## 1) Pre-check
 

@@ -38,6 +38,11 @@ apps/cloudflare/.dev.vars
 
 # Local Claude/Copilot permission overrides
 **/.claude/settings.local.json
+**/.claude/
+**/.aider*
+**/.copilot*
+**/.continue/
+.n8nac/ai-context.json
 apps/cloudflare/scripts/.infisical.json
 **/.infisical.json
 

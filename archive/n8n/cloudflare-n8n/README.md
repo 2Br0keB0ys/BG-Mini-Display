@@ -1,4 +1,4 @@
-# BG MiniView n8n Workflows
+# BG Display Mini n8n Workflows
 
 These workflows are import-ready templates for:
 
@@ -14,7 +14,7 @@ These workflows are import-ready templates for:
 
 ## Required environment variables (n8n container)
 
-- BG_MCP_BASE_URL=https://bgdisplay-worker.zanebaize.workers.dev
+- BG_MCP_BASE_URL=https://example-worker.your-domain.workers.dev
 - BG_MCP_KEY=bg_ro_REDACTED_POSSIBLE_SECRET
 - PUSHOVER_USER_KEY=your_user_key
 - PUSHOVER_API_TOKEN=your_api_token
@@ -32,7 +32,7 @@ services:
   n8n:
     image: n8nio/n8n:latest
     environment:
-      - BG_MCP_BASE_URL=https://bgdisplay-worker.zanebaize.workers.dev
+      - BG_MCP_BASE_URL=https://example-worker.your-domain.workers.dev
       - BG_MCP_KEY=bg_ro_replace_me
       - PUSHOVER_USER_KEY=replace_me
       - PUSHOVER_API_TOKEN=replace_me

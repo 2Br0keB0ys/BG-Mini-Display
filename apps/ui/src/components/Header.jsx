@@ -12,7 +12,7 @@ export default function Header({ meta, saving, onSave }) {
         </div>
         <div>
           <div className="header-title">
-            BG MiniView <span className="header-ver">v{UI_VERSION}</span>
+            BG Display Mini <span className="header-ver">v{UI_VERSION}</span>
           </div>
           <div className="header-meta">Last update: {fmtTs(meta.configUpdatedAt)}</div>
         </div>

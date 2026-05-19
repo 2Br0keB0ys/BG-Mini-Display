@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for contributing to BG MiniView.
+Thanks for contributing to BG Display Mini.
 
 ## Scope to prioritize
 
@@ -61,6 +61,7 @@ Run the checks that match your changes:
 
 - Beginner walkthrough: `docs/setup-for-beginners.md`
 - Guided Windows helper: `scripts/bootstrap_windows.ps1`
+- Fast path command: `pwsh ./scripts/bootstrap_windows.ps1`
 
 ## OTA-related changes
 

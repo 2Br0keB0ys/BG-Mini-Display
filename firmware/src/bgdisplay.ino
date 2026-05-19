@@ -1,4 +1,4 @@
-// BG MiniView v4.0.1-S — Dexcom primary, Nightscout fallback, encrypted, smart config sync
+// BG Display Mini v4.0.1-S — Dexcom primary, Nightscout fallback, encrypted, smart config sync
 #include <M5Unified.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
@@ -343,7 +343,7 @@ void setup() {
   M5.begin(cfg);
   M5.Display.setRotation(1);
   Serial.begin(115200);
-  Serial.println("BG MiniView v" FIRMWARE_VERSION " booting...");
+  Serial.println("BG Display Mini v" FIRMWARE_VERSION " booting...");
   strlcpy(gResetReason, resetReasonStr(esp_reset_reason()), sizeof(gResetReason));
 
   // Keep legacy NVS namespace for seamless upgrades from previous firmware.
@@ -391,7 +391,7 @@ void setup() {
     sdLogError("WiFi connect failed, entering AP setup");
     if (!hasStoredWifi) {
       sdLog("NET", "No saved WiFi; entering initial setup AP");
-      bootProgress(25, "WiFi setup — connect to BG_MiniView_XXXX");
+      bootProgress(25, "WiFi setup — connect to BG_Display_Mini_XXXX");
       startAPMode(appConfig, prefs);
     } else if (setupUnlockPressedDuringBoot()) {
       bootProgress(25, "WiFi setup mode...");
@@ -667,7 +667,7 @@ void loop() {
     }
   }
 
-  // Omnipod / pump proxy poll — only when Glooko integration enabled
+  // Pump proxy poll — only when integration is enabled
   if (appConfig.glookoEnabled && WiFi.status() == WL_CONNECTED) {
     unsigned long podPollMs = (unsigned long)appConfig.glookoPollMin * 60000UL;
     if (podPollMs < 1800000UL) podPollMs = 1800000UL; // hard floor 30 min
@@ -1078,7 +1078,7 @@ bool pushStatus(AppConfig& cfg) {
     if (gDigestFetchDay >= 0) doc["digestFetchDay"] = gDigestFetchDay;
     doc["otaEnabled"]       = cfg.otaEnabled;
     doc["otaChannel"]       = cfg.otaChannel;
-    // Omnipod / pump proxy status (only when enabled and valid data available)
+    // Pump proxy status (only when enabled and valid data available)
     if (cfg.glookoEnabled) {
       doc["glookoEnabled"] = true;
       if (lastOmnipod.valid) {

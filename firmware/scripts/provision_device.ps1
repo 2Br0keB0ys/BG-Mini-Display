@@ -87,7 +87,7 @@ function Step-Fail([string]$name, [string]$msg = "") {
 }
 
 Write-Host ""
-Write-Host "BG MiniView Device Provisioning" -ForegroundColor Cyan
+Write-Host "BG Display Mini Device Provisioning" -ForegroundColor Cyan
 Write-Host "Port: $Port | Repo: $repoRoot" -ForegroundColor Gray
 Write-Host "Started: $($startTime.ToString('yyyy-MM-dd HH:mm:ss'))" -ForegroundColor Gray
 Write-Host ""

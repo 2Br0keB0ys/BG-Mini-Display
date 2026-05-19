@@ -1,4 +1,4 @@
-// BG MiniView Cloudflare Worker v3.0
+// BG Display Mini Cloudflare Worker v3.0
 // Features: WebSocket relay (DO), Workers AI digest, MCP server, Pushover alerts
 
 const CORS_HEADERS = {
@@ -46,7 +46,7 @@ function normalizeDndSchedule(sched, fallbackFrom, fallbackTo) {
 }
 
 // â”€â”€â”€ Geo IP Timezone Detection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// Maps Cloudflare's IANA timezone to BG MiniView's supported zones (US only for now)
+// Maps Cloudflare's IANA timezone to BG Display Mini's supported zones (US only for now)
 function detectTimezoneFromIANA(ianaName) {
   const mapping = {
     // Central Time
@@ -331,7 +331,7 @@ function parseHost(urlLike) {
 function isTrustedAdminOrigin(request, env) {
   const originHost = parseHost(request.headers.get("Origin") || "");
   const refererHost = parseHost(request.headers.get("Referer") || "");
-  const defaults = ["bgdisplay-ui.pages.dev", "setup.2brokeboys.uk", "localhost", "127.0.0.1"];
+  const defaults = ["bgdisplay-ui.pages.dev", "setup.example.com", "localhost", "127.0.0.1"];
   const extra = String(env.ADMIN_ALLOWED_ORIGINS || "")
     .split(",")
     .map((s) => s.trim().toLowerCase())
@@ -1192,7 +1192,7 @@ async function sendDigestPushover(env) {
     if (lastDailySent !== today) {
       const digest = await env.BGDISPLAY_CONFIG.get("daily_digest", { type: "json" });
       if (digest && digest.date === today) {
-        const title = "BG MiniView - Daily Summary";
+        const title = "BG Display Mini - Daily Summary";
         const message = truncateToSentence(digest.text, 1024);
         // priority 0 = normal; daily summaries are informational, not urgent
         const ok = await sendPushoverNotification(
@@ -1220,7 +1220,7 @@ async function sendDigestPushover(env) {
       if (lastHourlySent !== today) {
         const digest = await env.BGDISPLAY_CONFIG.get(hourlyKey, { type: "json" });
         if (digest && digest.date === today) {
-          const title = "BG MiniView - Hourly Update";
+          const title = "BG Display Mini - Hourly Update";
           const message = truncateToSentence(digest.text, 1024);
           // priority 0 = normal (respects device quiet hours); digests are informational
           const ok = await sendPushoverNotification(
@@ -1427,7 +1427,7 @@ async function runPushoverAlertCheck(env) {
 
   const trend = entry.direction ? directionToTrend(entry.direction) : entry.trend || 5;
   const fullMsg = `${alertMsg} • ${trendArrowText(trend)}`;
-  const title = isLow ? "BG MiniView - Low Alert" : "BG MiniView - High Alert";
+  const title = isLow ? "BG Display Mini - Low Alert" : "BG Display Mini - High Alert";
 
   // priority 1 = high (bypasses quiet hours on device) for urgent BG alerts
   const ok = await sendPushoverNotification(creds.user_key, creds.api_token, fullMsg, title, 1);
@@ -1623,7 +1623,7 @@ async function handleMCP(request, env, config, auth) {
     return mcpResult(id, {
       protocolVersion: "2024-11-05",
       capabilities: { tools: {} },
-      serverInfo: { name: "bg-miniview-mcp", version: "1.0.0" },
+      serverInfo: { name: "bg-display-mini-mcp", version: "1.0.0" },
     });
   }
 
@@ -1866,7 +1866,7 @@ async function handleMCP(request, env, config, auth) {
         });
       }
       const title =
-        category === "digest" ? "BG MiniView - Digest Test" : "BG MiniView - Test Alert";
+        category === "digest" ? "BG Display Mini - Digest Test" : "BG Display Mini - Test Alert";
       const defaultMessage =
         category === "digest"
           ? `Digest test from MCP at ${new Date().toISOString()}. This verifies stored credentials and delivery for scheduled summaries.`
@@ -2926,7 +2926,7 @@ export default {
       const headers = new Headers({
         "Content-Type": "application/octet-stream",
         "Cache-Control": "private, max-age=60",
-        "Content-Disposition": `attachment; filename="bg-miniview-${release.version}.bin"`,
+        "Content-Disposition": `attachment; filename="bg-display-mini-${release.version}.bin"`,
         "X-BG-Release-Version": release.version,
       });
       if (release.md5) headers.set("x-MD5", release.md5);
@@ -2977,9 +2977,9 @@ export default {
         if (!isDeviceKeyValid(auth, mcpKeyHash)) return json({ error: "Invalid device key" }, 401);
         if (method === "GET") {
           return json({
-            name: "bg-miniview-mcp",
+            name: "bg-display-mini-mcp",
             version: "1.0.0",
-            description: "BG MiniView Model Context Protocol server",
+            description: "BG Display Mini Model Context Protocol server",
             endpoint: `${url.origin}/mcp`,
             tools: MCP_TOOLS.map((t) => ({ name: t.name, description: t.description })),
           });
@@ -3272,7 +3272,7 @@ export default {
           headers: {
             ...CORS_HEADERS,
             "Content-Type": "text/plain; charset=utf-8",
-            "Content-Disposition": `attachment; filename="bg-miniview-sd-logs-${ts}.log"`,
+            "Content-Disposition": `attachment; filename="bg-display-mini-sd-logs-${ts}.log"`,
           },
         });
       }
@@ -3529,7 +3529,7 @@ export default {
           headers: {
             ...CORS_HEADERS,
             "Content-Type": "application/json",
-            "Content-Disposition": `attachment; filename="bg-miniview-config-${Date.now()}.json"`,
+            "Content-Disposition": `attachment; filename="bg-display-mini-config-${Date.now()}.json"`,
           },
         }
       );

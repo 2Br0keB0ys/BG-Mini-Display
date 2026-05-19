@@ -71,7 +71,7 @@ struct AppConfig {
   // Last known config version from Worker
   int  lastConfigVersion=0;
 
-  // Glooko / Omnipod pump proxy (credentials are worker-side, device uses /api/omnipod)
+  // Pump data proxy (credentials are worker-side)
   bool glookoEnabled=false;
   int  glookoPollMin=30;
 };

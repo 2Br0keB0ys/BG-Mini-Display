@@ -1,13 +1,11 @@
-# BG MiniView Setup Guide (Beginner-Friendly, Windows)
+# BG Display Mini Setup Guide (Beginner-Friendly, Windows)
 
 This guide is for someone with little to no technical background.
 
 You will:
-1. Install required tools
-2. Create accounts
-3. Set secrets in Infisical
-4. Deploy cloud services
-5. Build/flash firmware
+1. Run one guided setup command
+2. Sign in to required services
+3. Build and flash firmware
 
 ---
 
@@ -25,13 +23,13 @@ Optional:
 
 ---
 
-## Part 1 — Install Software
+## Part 1 — One-Command Guided Setup (Recommended)
 
-### Option A (recommended): one helper script
+### Run from repo root
 
 From PowerShell in the repo root, run:
 
-- `scripts/bootstrap_windows.ps1`
+- `pwsh ./scripts/bootstrap_windows.ps1`
 
 This script:
 - Installs Git, Node.js, Python, Wrangler CLI, Infisical CLI
@@ -39,7 +37,9 @@ This script:
 - Prompts for required setup values
 - Runs build/deploy checks
 
-### Option B (manual)
+If you can follow prompts and press Enter when asked, you can complete setup.
+
+## Part 2 — Manual Setup (Optional)
 
 Install these one by one:
 - Git
@@ -52,7 +52,7 @@ Install these one by one:
 
 ---
 
-## Part 2 — Create/Connect Accounts
+## Part 3 — Create/Connect Accounts
 
 1. GitHub: create account and sign in.
 2. Cloudflare: create account and sign in.
@@ -65,7 +65,7 @@ Then in terminal:
 
 ---
 
-## Part 3 — Configure Secrets (Infisical)
+## Part 4 — Configure Secrets (Infisical)
 
 Create these keys in your Infisical project/environment:
 
@@ -88,7 +88,7 @@ Important:
 
 ---
 
-## Part 4 — Deploy Cloudflare Services
+## Part 5 — Deploy Cloudflare Services
 
 From `apps/cloudflare`:
 
@@ -103,7 +103,7 @@ From `apps/cloudflare`:
 
 ---
 
-## Part 5 — Build and Flash Firmware
+## Part 6 — Build and Flash Firmware
 
 From repository root:
 
@@ -116,7 +116,7 @@ If `pio` is not found in plain terminal, use VS Code + PlatformIO extension term
 
 ---
 
-## Part 6 — First Boot and Device Setup
+## Part 7 — First Boot and Device Setup
 
 1. Power device.
 2. If no WiFi saved, connect phone/laptop to `BG_MiniView_XXXX`.
@@ -126,7 +126,7 @@ If `pio` is not found in plain terminal, use VS Code + PlatformIO extension term
 
 ---
 
-## Part 7 — Public Repo Safety Rules
+## Part 8 — Public Repo Safety Rules
 
 Always keep private data out of git:
 - No real keys/tokens/passwords in commits
@@ -152,3 +152,11 @@ Use:
 ## Next Step
 
 After setup works once, create a short private note with your project IDs and process so you can repeat setup quickly.
+
+## Hardware Link
+
+- M5Stack Core2 on Amazon: https://www.amazon.com/s?k=M5Stack+Core2
+
+## Medical Disclaimer
+
+This project is not a medical device and does not provide medical advice. Always verify readings and treatment decisions with approved medical equipment and a licensed clinician.

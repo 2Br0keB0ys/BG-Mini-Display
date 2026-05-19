@@ -1,4 +1,4 @@
-export const WORKER_URL = 'https://bgdisplay-worker.zanebaize.workers.dev';
+export const WORKER_URL = 'https://example-worker.your-domain.workers.dev';
 export const UI_VERSION = '2.0.0';
 
 export const PUMP_CATALOG = [

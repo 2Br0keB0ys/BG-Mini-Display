@@ -1,6 +1,6 @@
-# BG MiniView
+# BG Display Mini
 
-BG MiniView is an ESP32-based blood glucose display for M5Stack Core2.
+BG Display Mini is an ESP32-based blood glucose display for M5Stack Core2.
 
 Current architecture:
 - Dexcom Share is the primary data source
@@ -20,23 +20,28 @@ Archived/retired optional surfaces now live under `archive/`.
 ## Repository Layout
 
 ```text
-bg-miniview/
+bg-display-mini/
 ├── archive/               # archived NAS MCP, n8n workflow material, legacy workspace files
 ├── apps/
 │   ├── cloudflare/        # Worker + wrangler config
 │   ├── ui/                # Production React/Vite UI (deployed to Cloudflare Pages)
 │   └── pages/             # Legacy single-file UI snapshot
-├── firmware/              # PlatformIO firmware for BG MiniView on M5Stack Core2
+├── firmware/              # PlatformIO firmware for BG Display Mini on M5Stack Core2
 ├── CLAUDE.md              # Deep architecture and ops reference
 └── docs/                  # Operational runbooks and public-repo guides
 ```
+
+## Hardware
+
+- M5Stack Core2 (Amazon): https://www.amazon.com/s?k=M5Stack+Core2
+- USB-C data cable
 
 ## Prerequisites
 
 - Node.js 18+
 - Wrangler CLI
 - VS Code with PlatformIO extension
-- M5Stack Core2 with USB-C cable
+- M5Stack Core2 with USB-C data cable
 
 ## Code Quality & Formatting
 
@@ -57,7 +62,7 @@ Line endings are normalized via repository-level `.gitattributes`:
 - PowerShell scripts (`*.ps1`) use `CRLF`
 
 For first-time users, see:
-- `docs/setup-for-beginners.md` (full step-by-step onboarding)
+- `docs/setup-for-beginners.md` (zero-to-running walkthrough)
 - `scripts/bootstrap_windows.ps1` (guided Windows setup helper)
 - `docs/public-repo-safety.md` (what is private vs safe to commit)
 
@@ -65,6 +70,22 @@ Security helpers:
 - `scripts/security/generate_bootstrap_key.ps1` (generate a new `bg_ro_` bootstrap key for rotation)
 - `scripts/security/secret_guard.ps1` (scan tracked files for blocked secret-like literals)
 - `scripts/security/install_git_hooks.ps1` (enable local pre-commit secret guard via `.githooks/pre-commit`)
+
+## Quick Start (beginner-friendly)
+
+### Windows (recommended)
+
+Run this from the repository root:
+
+```powershell
+pwsh ./scripts/bootstrap_windows.ps1
+```
+
+This is the main guided path for non-technical users. It installs required tools, walks through login/setup, deploys cloud services, and builds firmware.
+
+### Manual path (advanced)
+
+If you prefer manual setup, follow sections 1-4 below.
 
 ## 1) Deploy Cloudflare Worker
 
@@ -146,7 +167,7 @@ From plain Windows shell, `pio` may need full path:
 Use the Cloudflare Pages UI for:
 - Display preferences
 - Dexcom and Nightscout credentials
-- **Pump data source** (Glooko, Tandem, Medtronic, Tidepool) with 30+ minute polling
+- **Insulin profile / pump data source** (Glooko, Tandem, Medtronic, Tidepool) with 30+ minute polling
 - Alert thresholds and DND
 - **Pushover phone alerts** and digest push
 - **EndoAI** — AI-powered glucose summaries (daily at 7:00 AM, hourly 8 AM–11 PM)
@@ -168,15 +189,7 @@ High-level release flow:
 ### Main Screen
 - **Large BG value** with trend arrow (updated every 5 minutes)
 - **Sparkline history** (24-point glucose trend chart)
-- **Pump status line** (if pump data sync enabled):
-    - Format: `Pod ON/OFF IOB X.XU Res X.XU Exp XhYZm`
-    - Supports **Glooko, Tandem, Medtronic, Tidepool** data sources
-    - **Color-coded clinical thresholds:**
-        - **GREEN:** Healthy (Res >25U, Exp >8h)
-        - **YELLOW:** Warning (Res 15-25U, Exp 4-8h)
-        - **ORANGE:** Urgent (Res 5-15U, Exp 1-4h)
-        - **RED:** Critical (Res ≤5U, Exp <1h)
-    - Color reflects most critical condition (reservoir or expiry)
+- **Insulin profile line** (if pump data sync enabled)
 - **Status bar** with connection indicators and timestamp
 - **EndoAI digest delivery:** summaries are sent via Pushover notifications (display rendering removed in firmware v4.0.1-S)
 
@@ -198,6 +211,28 @@ High-level release flow:
 | Config changes delayed | WebSocket disconnected, device falls back to ping interval |
 | Setup portal does not open | Browse to `http://192.168.4.1` manually |
 | `KEY ERROR` overlay | Device key mismatch or invalid key in cloud |
+
+## Cost Overview (high-level)
+
+> Pricing changes over time — always verify at GitHub/Cloudflare before purchasing.
+
+- GitHub Team: about **$4/user/month**
+- GitHub Enterprise Cloud: about **$21/user/month**
+- GitHub Secret Protection (private repos): about **$19/active committer/month**
+- GitHub Code Security (private repos): about **$30/active committer/month**
+- Dependabot alerts: generally available without separate per-alert charge
+- Public repositories can use core code scanning/secret scanning features without Advanced Security add-on licensing
+
+Cloudflare and hardware costs depend on your exact usage and region.
+
+## Medical & Safety Disclaimer
+
+This project is for educational and informational purposes only.
+
+- It is **not** a medical device.
+- It does **not** provide medical advice, diagnosis, or treatment.
+- Do not make treatment decisions based solely on this software.
+- Always confirm with approved medical devices and your licensed clinician.
 
 ## Notes
 

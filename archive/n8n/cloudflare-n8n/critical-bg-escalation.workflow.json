@@ -32,7 +32,7 @@
           "string": [
             {
               "name": "workerUrl",
-              "value": "={{$env.BG_MCP_BASE_URL || 'https://bgdisplay-worker.zanebaize.workers.dev'}}"
+              "value": "={{$env.BG_MCP_BASE_URL || 'https://bgdisplay-worker.example.workers.dev'}}"
             },
             {
               "name": "mcpKey",

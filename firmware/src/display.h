@@ -293,7 +293,7 @@ static void drawBootFrame() {
   // Title + subtitle
   canvas.setFont(&fonts::FreeSansBold9pt7b);
   canvas.setTextColor(CLR_TEXT);
-  canvas.drawString("BG MiniView", cx, 114);
+  canvas.drawString("BG Display Mini", cx, 114);
   canvas.setFont(&fonts::FreeSans9pt7b);
   canvas.setTextColor(CLR_MUTED);
   canvas.drawString("Glucose Display", cx, 134);

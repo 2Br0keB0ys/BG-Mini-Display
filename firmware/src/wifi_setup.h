@@ -45,7 +45,7 @@ inline String fitToWidth(const String& text, int maxPx) {
 
 const char AP_HTML[] PROGMEM = R"(<!DOCTYPE html><html>
 <head><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>BG MiniView Setup</title>
+<title>BG Display Mini Setup</title>
 <style>*{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,sans-serif;background:#f5f5f5;padding:1.5rem}
 .card{background:white;border-radius:12px;padding:1.5rem;max-width:400px;margin:0 auto}
@@ -57,7 +57,7 @@ button{width:100%;padding:14px;background:#E24B4A;color:white;border:none;
 border-radius:8px;font-size:16px;font-weight:600;margin-top:24px;cursor:pointer}
 .note{font-size:12px;color:#999;margin-top:8px}</style></head>
 <body><div class="card">
-<h1>BG MiniView</h1>
+<h1>BG Display Mini</h1>
 <p><strong>Tip:</strong> Scan the QR code on the device screen to auto-join setup Wi-Fi.</p>
 <p>Enter your Wi-Fi credentials. All other settings are configured via the web UI after connecting.</p>
 <form action="/save" method="POST">
@@ -76,7 +76,7 @@ const char SAVED_HTML[] PROGMEM = R"(<!DOCTYPE html><html>
 .card{background:white;border-radius:12px;padding:2rem;max-width:360px;margin:0 auto}
 h1{color:#16a34a;font-size:20px}p{color:#666;margin-top:8px;font-size:14px}</style></head>
 <body><div class="card"><h1>Connecting...</h1>
-<p>BG MiniView is connecting to Wi-Fi. Disconnect from this hotspot now.</p>
+<p>BG Display Mini is connecting to Wi-Fi. Disconnect from this hotspot now.</p>
 <p style="margin-top:1rem;font-size:13px;color:#999">Device restarts automatically.</p>
 </div></body></html>)";
 
@@ -127,7 +127,7 @@ void startAPMode(AppConfig& cfg, Preferences& prefs) {
   uint64_t chipId = ESP.getEfuseMac();
   char apSsid[32];
   char apPass[20];
-  snprintf(apSsid, sizeof(apSsid), "BG_MiniView_%04X", (unsigned)(chipId & 0xFFFF));
+  snprintf(apSsid, sizeof(apSsid), "BG_Display_Mini_%04X", (unsigned)(chipId & 0xFFFF));
   snprintf(apPass, sizeof(apPass), "bgd%06X%02X", (unsigned)((chipId >> 8) & 0xFFFFFF), (unsigned)(esp_random() & 0xFF));
 
   WiFi.mode(WIFI_AP);

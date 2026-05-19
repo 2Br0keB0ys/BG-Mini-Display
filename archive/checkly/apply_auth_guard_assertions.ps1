@@ -6,10 +6,10 @@ param(
 )
 
 $targets = @(
-  @{ id = '61601332-4b8a-4755-b516-149364bf6ff2'; name = 'BG Config Reachability'; url = 'https://bgdisplay-worker.zanebaize.workers.dev/api/config?v=4'; freq = 60 },
-  @{ id = '351a9661-33b0-4ede-a625-a27d74fdc561'; name = 'BG WebSocket Reachability'; url = 'https://bgdisplay-worker.zanebaize.workers.dev/api/ws'; freq = 120 },
-  @{ id = '0776c29c-3725-41f4-9be8-836e62400a38'; name = 'BG Digest Reachability'; url = 'https://bgdisplay-worker.zanebaize.workers.dev/api/digest'; freq = 120 },
-  @{ id = 'bb2bad19-b072-455c-aa33-37a83b70632b'; name = 'BG Command Reachability'; url = 'https://bgdisplay-worker.zanebaize.workers.dev/api/command'; freq = 180 }
+  @{ id = '61601332-4b8a-4755-b516-149364bf6ff2'; name = 'BG Config Reachability'; url = 'https://bgdisplay-worker.example.workers.dev/api/config?v=4'; freq = 60 },
+  @{ id = '351a9661-33b0-4ede-a625-a27d74fdc561'; name = 'BG WebSocket Reachability'; url = 'https://bgdisplay-worker.example.workers.dev/api/ws'; freq = 120 },
+  @{ id = '0776c29c-3725-41f4-9be8-836e62400a38'; name = 'BG Digest Reachability'; url = 'https://bgdisplay-worker.example.workers.dev/api/digest'; freq = 120 },
+  @{ id = 'bb2bad19-b072-455c-aa33-37a83b70632b'; name = 'BG Command Reachability'; url = 'https://bgdisplay-worker.example.workers.dev/api/command'; freq = 180 }
 )
 
 foreach ($t in $targets) {

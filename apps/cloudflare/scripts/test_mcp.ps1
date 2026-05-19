@@ -1,12 +1,12 @@
 param(
-  [string]$McpUrl = $(if ($env:BGDISPLAY_MCP_URL) { $env:BGDISPLAY_MCP_URL } else { "https://bgdisplay-worker.zanebaize.workers.dev/mcp" }),
+  [string]$McpUrl = $(if ($env:BGDISPLAY_MCP_URL) { $env:BGDISPLAY_MCP_URL } else { "https://example-worker.your-domain.workers.dev/mcp" }),
   [string]$McpKey = $env:BGDISPLAY_MCP_KEY,
   [switch]$ShowBg,
   [switch]$RunHealth,
   [switch]$RunPushover,
   [switch]$SendLivePushover,
   [switch]$UseAdminSession,
-  [string]$AdminOrigin = $(if ($env:BGDISPLAY_ADMIN_ORIGIN) { $env:BGDISPLAY_ADMIN_ORIGIN } else { "https://setup.2brokeboys.uk" })
+  [string]$AdminOrigin = $(if ($env:BGDISPLAY_ADMIN_ORIGIN) { $env:BGDISPLAY_ADMIN_ORIGIN } else { "https://example-ui.your-domain.pages.dev" })
 )
 
 $endpoint = "${McpUrl}?key=$McpKey"

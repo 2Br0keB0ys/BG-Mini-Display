@@ -1,4 +1,4 @@
-// glooko.h — Omnipod status fetch via Worker proxy
+// glooko.h — Pump status fetch via Worker proxy
 #pragma once
 
 #include <HTTPClient.h>
@@ -60,7 +60,7 @@ inline bool fetchGlookoOmnipod(AppConfig& cfg, OmnipodStatus& out) {
   sdLogfEx("POD", "POD_SYNC", "proxy_http:%d", code);
   if (code != 200) {
     char msg[48];
-    snprintf(msg, sizeof(msg), "Omnipod proxy HTTP %d", code);
+    snprintf(msg, sizeof(msg), "Pump proxy HTTP %d", code);
     sdLogfEx("ERR", "POD_SYNC", "%s", msg);
     http.end();
     out.fetchedAtMs = millis();

@@ -10,6 +10,13 @@ Please report any vulnerability that may affect:
 - Secret storage or exposure
 - OTA artifact integrity or unauthorized update paths
 
+## Safety disclaimer
+
+This repository is not a medical device and is not a substitute for professional medical advice.
+
+- Do not use this software as your sole source for treatment decisions.
+- Always verify with approved medical equipment and a licensed clinician.
+
 ## Reporting a vulnerability
 
 Use GitHub private vulnerability reporting for this repository:
@@ -26,6 +33,7 @@ Please include:
 
 - Initial triage acknowledgement: within 72 hours
 - Confirmed issues are prioritized by severity and exploitability
+- High-risk auth/secret/update-chain issues are handled with urgent priority
 
 ## Safe disclosure
 

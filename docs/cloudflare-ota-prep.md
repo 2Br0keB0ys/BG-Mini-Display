@@ -39,7 +39,7 @@ PlatformIO build -> firmware .bin
   - `pio run`
 2. Compute artifact hashes (`md5`, `sha256`) and size
 3. Upload artifact to R2 (remote)
-  - Example key: `stable/bg-miniview-4.1.1.bin`
+  - Example key: `stable/bg-display-mini-4.1.1.bin`
 4. Register release metadata
   - `POST /api/admin/ota`
 5. Queue validation command
@@ -53,7 +53,7 @@ PlatformIO build -> firmware .bin
 {
   "channel": "stable",
   "version": "4.1.1",
-  "r2_key": "stable/bg-miniview-4.1.1.bin",
+  "r2_key": "stable/bg-display-mini-4.1.1.bin",
   "size_bytes": 1319520,
   "md5": "5435983217e346a7d701e4979313051a",
   "sha256": "f7715a703e043cd02ebcde1ad9063531010022df506154fccf511e1806b0bbab",

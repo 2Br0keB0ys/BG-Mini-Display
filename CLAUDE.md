@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-BG MiniView is an ESP32-based medical blood glucose display built on the M5Stack Core2. It shows real-time Dexcom G7 readings sourced from Dexcom Share (primary) with Nightscout as fallback. The system has three components: Arduino firmware, a Cloudflare Worker backend, and a single-page config UI hosted on Cloudflare Pages.
+BG Display Mini is an ESP32-based medical blood glucose display built on the M5Stack Core2. It shows real-time Dexcom G7 readings sourced from Dexcom Share (primary) with Nightscout as fallback. The system has three components: Arduino firmware, a Cloudflare Worker backend, and a single-page config UI hosted on Cloudflare Pages.
 
 **Data flow:**
 ```
@@ -23,7 +23,7 @@ pio device monitor              # serial monitor
 ```
 `platformio.ini` at the workspace root sets `src_dir`, `build_dir`, and `libdeps_dir` — all pointing into `firmware/`. Run PlatformIO from the workspace root.
 
-Flash requires USB-C connection to M5Stack Core2 at 1500000 baud. OTA is implemented via `ArduinoOTA` — hostname `bg-miniview-{last4-chip-id}.local`, password = device key.
+Flash requires USB-C connection to M5Stack Core2 at 1500000 baud. OTA is implemented via `ArduinoOTA` — hostname `bg-display-mini-{last4-chip-id}.local`, password = device key.
 
 `pio` is installed inside VS Code's PlatformIO extension. From a plain shell use the full path: `~/.platformio/penv/Scripts/pio.exe` (Windows).
 
@@ -77,7 +77,7 @@ The main sketch is `bgdisplay.ino`. All modules are header-only files included b
 | File | Responsibility |
 |------|---------------|
 | `config.h` | `AppConfig` struct (~40 fields), NVS save/load with AES-128-CBC encryption for sensitive fields |
-| `display.h` | Off-screen rendering via M5Canvas (double-buffering), dirty tracking, BG color coding, trend arrows, BG sparkline (24-pt history), battery meter, **Omnipod clinical thresholds** (severity-based color evaluation for reservoir 5U/15U/25U and expiry 1h/4h/8h) |
+| `display.h` | Off-screen rendering via M5Canvas (double-buffering), dirty tracking, BG color coding, trend arrows, BG sparkline (24-pt history), battery meter, pump/insulin-profile threshold color evaluation for reservoir 5U/15U/25U and expiry 1h/4h/8h |
 | `crypto.h` | AES-128-CBC via mbedTLS; key derived from unique ESP32 chip ID — stolen device = unreadable data |
 | `nightscout.h` | Polls `/api/v1/entries.json`, extracts sgv + trend + timestamp |
 | `dexcom.h` | Two-step Share API auth (email or phone), 4h session TTL, US/international regions |
@@ -144,7 +144,6 @@ All adapters follow a common interface: authenticate, fetch latest pump data, re
 | POST | `/api/command-ack` | ACK command execution |
 | POST | `/api/log-upload` | Upload decrypted SD logs |
 | GET | `/api/digest` | Fetch today's AI digest text (204 = none yet) |
-| GET | `/api/omnipod` | Fetch proxied Omnipod status from Worker-side Glooko integration |
 | GET | `/api/ota/manifest` | OTA release discovery (signed device auth) |
 | GET | `/api/ota/download/:channel/:version` | Signed short-lived firmware download URL target |
 
@@ -191,7 +190,7 @@ Security features: replay protection (nonce + ±5min timestamp), IP-based rate l
 
 ### AI Architecture (Workers AI Integration)
 
-**Overview:** BG MiniView uses Cloudflare Workers AI to generate contextual glucose summary text via a configurable model (`ai_model` in config). Digests are generated on a cron schedule and delivered to the user via Pushover notifications (no device display). The system supports both daily summaries (24-hour window) and hourly summaries (rolling 1-hour window).
+**Overview:** BG Display Mini uses Cloudflare Workers AI to generate contextual glucose summary text via a configurable model (`ai_model` in config). Digests are generated on a cron schedule and delivered to the user via Pushover notifications (no device display). The system supports both daily summaries (24-hour window) and hourly summaries (rolling 1-hour window).
 
 **AI Model & Configuration:**
 - **Model:** Configurable via `ai_model`; code default is `@cf/meta/llama-3.1-8b-instruct`, and current deployed value is `@cf/meta/llama-3.3-70b-instruct-fp8-fast`.
@@ -243,13 +242,13 @@ Each prompt is paired with a user message containing:
 **Pushover Integration:**
 - **Feature:** `sendDigestPushover()` cron trigger (every 5 minutes: `*/5 * * * *`) checks for new digests and sends via Pushover
 - **Daily push:** Sent once per calendar day at configurable hour (default 8 AM, config field `digest_pushover_hour`, range 0–23)
-  - Title: `"BG MiniView — Daily Summary"`
+  - Title: `"BG Display Mini — Daily Summary"`
   - Priority: 0 (normal — informational, not urgent)
   - Respects DND window: No push if DND active
   - Guard: Tracked via KV key `last_digest_pushover` (value = date string) to prevent duplicate sends
 
 - **Hourly push:** Sent during active hours (8 AM–10 PM local time) if enabled and DND not active
-  - Title: `"BG MiniView — Hourly Update"`
+  - Title: `"BG Display Mini — Hourly Update"`
   - Priority: 0 (normal)
   - Uses `digest_pushover_enabled` config flag
   - Guard: Tracked per-hour to prevent duplicates

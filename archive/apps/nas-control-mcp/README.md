@@ -42,7 +42,7 @@ Example:
 
 ```yaml
 ingress:
-  - hostname: mcp.2brokeboys.uk
+  - hostname: mcp.example.com
     service: http://127.0.0.1:8788
   - service: http_status:404
 ```
@@ -54,7 +54,7 @@ Then reload cloudflared.
 Set shell vars first:
 
 ```bash
-export MCP_URL="https://mcp.2brokeboys.uk/mcp"
+export MCP_URL="https://mcp.example.com/mcp"
 export MCP_BEARER="replace_me"
 export CF_ID="replace_me"
 export CF_SECRET="replace_me"
@@ -119,7 +119,7 @@ Use this script to import and activate all BG workflows through MCP:
 Example:
 
 ```bash
-export MCP_URL="https://mcp.2brokeboys.uk/mcp"
+export MCP_URL="https://mcp.example.com/mcp"
 export MCP_BEARER="your_nas_mcp_api_key"
 export CF_ID="your_cf_access_client_id"
 export CF_SECRET="your_cf_access_client_secret"

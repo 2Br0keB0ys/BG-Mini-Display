@@ -16,7 +16,9 @@ This guide explains what belongs in git and what must stay private.
 - `.env` / `.dev.vars` files with credentials
 - Local Infisical workspace config (`.infisical.json`)
 - Local assistant/editor permission overrides (`.claude/settings.local.json`)
+- Any AI local state/config (`.claude/`, local Copilot/assistant cache files)
 - Device enrollment exports or logs containing unique identifiers
+- Personal names, emails, phone numbers, home addresses, and personal hostnames/URLs
 
 ## Secret management policy
 
@@ -34,6 +36,7 @@ All real secrets should come from **Infisical** (or equivalent secret manager) a
 - [ ] `git status --short` is clean except intended files
 - [ ] No `.env`, `.dev.vars`, `secrets.h`, or `.infisical.json` in staged files
 - [ ] No raw tokens/keys in changed text
+- [ ] No personal identifiers in changed files
 - [ ] Commands and docs use placeholders like `<project-id>`
 
 ## If a secret was committed in the past
