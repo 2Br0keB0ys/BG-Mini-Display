@@ -39,6 +39,7 @@ apps/cloudflare/.dev.vars
 # Local Claude/Copilot permission overrides
 **/.claude/settings.local.json
 **/.claude/
+CLAUDE.md
 **/.aider*
 **/.copilot*
 **/.continue/
