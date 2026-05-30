@@ -389,16 +389,14 @@ void setup() {
   bootProgress(18, "Connecting to WiFi...");
   if (!connectWiFi(appConfig, prefs)) {
     sdLogError("WiFi connect failed, entering AP setup");
-    if (!hasStoredWifi) {
+    if (hasStoredWifi) {
+      sdLog("NET", "Saved WiFi failed; falling back to AP setup");
+      bootProgress(25, "WiFi failed — opening setup AP");
+    } else {
       sdLog("NET", "No saved WiFi; entering initial setup AP");
       bootProgress(25, "WiFi setup — connect to BG_Display_Mini_XXXX");
-      startAPMode(appConfig, prefs);
-    } else if (setupUnlockPressedDuringBoot()) {
-      bootProgress(25, "WiFi setup mode...");
-      startAPMode(appConfig, prefs);
-    } else {
-      sdLogError("AP setup locked; hold power during boot to unlock");
     }
+    startAPMode(appConfig, prefs);
   }
 
   if (WiFi.status() == WL_CONNECTED) {
