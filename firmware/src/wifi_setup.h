@@ -142,11 +142,28 @@ bool connectWiFi(AppConfig& cfg, Preferences& prefs) {
     M5.Display.drawString(WiFi.localIP().toString().c_str(), W/2, 190);
     delay(800);
     Serial.printf("WiFi: %s (%d dBm)\n", WiFi.SSID().c_str(), WiFi.RSSI());
-    sdLogfEx("NET", "WIFI", "connect_ok ip:%s rssi:%d", WiFi.localIP().toString().c_str(), WiFi.RSSI());
+    sdLogfEx("NET", "WIFI", "connect_ok ip:%s rssi:%d",
+      WiFi.localIP().toString().c_str(), WiFi.RSSI());
+#if DIAG_MODE
+    {
+      uint8_t* bssid = WiFi.BSSID();
+      char bssidStr[20];
+      snprintf(bssidStr, sizeof(bssidStr), "%02X:%02X:%02X:%02X:%02X:%02X",
+        bssid[0], bssid[1], bssid[2], bssid[3], bssid[4], bssid[5]);
+      sdLogfEx("NET", "WIFI",
+        "detail bssid:%s ch:%d subnet:%s gw:%s dns1:%s",
+        bssidStr,
+        (int)WiFi.channel(),
+        WiFi.subnetMask().toString().c_str(),
+        WiFi.gatewayIP().toString().c_str(),
+        WiFi.dnsIP(0).toString().c_str());
+    }
+#endif
     return true;
   }
   Serial.println("WiFi: failed to connect");
-  sdLogEx("ERR", "WIFI", "connect_failed");
+  sdLogfEx("ERR", "WIFI", "connect_failed status:%d ssid_len:%u",
+    (int)WiFi.status(), (unsigned)strlen(cfg.wifiSSID));
   return false;
 }
 
