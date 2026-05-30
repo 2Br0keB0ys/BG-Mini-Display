@@ -21,7 +21,7 @@ static void _wsEventHandler(WStype_t type, uint8_t* payload, size_t length) {
     case WStype_CONNECTED:
       _wsConnected   = true;
       _wsReconnectMs = 8000;  // reset backoff on successful connect
-      sdLog("WS", "Connected to relay");
+      sdLogfEx("WS", "WS", "connected ms:%lu", millis());
       break;
     case WStype_DISCONNECTED:
       _wsConnected      = false;
@@ -29,20 +29,27 @@ static void _wsEventHandler(WStype_t type, uint8_t* payload, size_t length) {
       // Double interval up to 5 min cap on each disconnect
       if (_wsReconnectMs < 300000U) _wsReconnectMs = min(_wsReconnectMs * 2U, 300000U);
       _wsClient.setReconnectInterval(_wsReconnectMs);
-      sdLog("WS", "Disconnected");
+      sdLogfEx("WS", "WS", "disconnected next_retry_ms:%lu", (unsigned long)_wsReconnectMs);
       break;
     case WStype_TEXT:
       // {"type":"config-changed","version":N} — any message triggers a pull
       _wsTriggerPull = true;
       if (payload && length > 0) {
-        char msg[72];
-        snprintf(msg, sizeof(msg), "Push rcvd: %.*s", (int)min((size_t)48, length), (char*)payload);
+        char msg[128];
+        snprintf(msg, sizeof(msg), "push_rcvd len:%u payload:%.*s",
+          (unsigned)length, (int)min((size_t)96, length), (char*)payload);
         sdLog("WS", msg);
       }
       break;
     case WStype_ERROR:
       _wsConnected = false;
-      sdLog("WS", "Error");
+      if (payload && length > 0) {
+        char msg[80];
+        snprintf(msg, sizeof(msg), "error payload:%.*s", (int)min((size_t)64, length), (char*)payload);
+        sdLog("WS", msg);
+      } else {
+        sdLog("WS", "error (no payload)");
+      }
       break;
     default:
       break;
@@ -75,7 +82,8 @@ void wsInit(AppConfig& cfg) {
   _wsClient.setReconnectInterval(_wsReconnectMs);
 
   _wsInitialized = true;
-  sdLog("WS", "Client initialized");
+  sdLogfEx("WS", "WS", "init host:%s port:%u secure:%d path:/api/ws",
+    host.c_str(), (unsigned)port, secure ? 1 : 0);
 }
 
 // Call from loop() every iteration.

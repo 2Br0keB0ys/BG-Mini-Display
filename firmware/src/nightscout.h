@@ -22,8 +22,21 @@ bool fetchNightscout(AppConfig& cfg, BGReading& reading) {
   HTTPClient http;
   http.begin(url);
   http.setTimeout(8000);
+#if DIAG_MODE
+  // Log domain only — never log the token value
+  {
+    String domain = base;
+    int sl = domain.indexOf('/', 8);  // skip https://
+    if (sl > 0) domain = domain.substring(0, sl);
+    sdLogfEx("NS", "NS_FETCH", "request domain:%s hasToken:%d",
+      domain.c_str(), strlen(cfg.nightscoutSecret) > 0 ? 1 : 0);
+  }
+#endif
+  unsigned long _nsT0 = millis();
   int code = http.GET();
-  sdLogfEx("NS", "NS_FETCH", "http:%d token:%d", code, strlen(cfg.nightscoutSecret) > 0 ? 1 : 0);
+  unsigned long _nsMs = millis() - _nsT0;
+  sdLogfEx("NS", "NS_FETCH", "http:%d elapsed_ms:%lu token:%d",
+    code, _nsMs, strlen(cfg.nightscoutSecret) > 0 ? 1 : 0);
 
   bool ok = false;
   if (code == 200) {
@@ -67,9 +80,19 @@ bool fetchNightscout(AppConfig& cfg, BGReading& reading) {
     }
   } else {
     Serial.printf("NS: HTTP %d\n", code);
-    char msg[40];
-    snprintf(msg, sizeof(msg), "Nightscout HTTP %d", code);
-    sdLogfEx("ERR", "NS_FETCH", "%s", msg);
+    {
+      char msg[48];
+      snprintf(msg, sizeof(msg), "Nightscout HTTP %d elapsed_ms:%lu", code, _nsMs);
+      sdLogfEx("ERR", "NS_FETCH", "%s", msg);
+    }
+#if DIAG_MODE
+    {
+      String errBody = http.getString();
+      if (errBody.length() > 0) {
+        sdLogfEx("NS", "NS_FETCH", "err_body_preview:%s", errBody.substring(0, 200).c_str());
+      }
+    }
+#endif
   }
   http.end();
   return ok;
