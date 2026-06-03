@@ -37,11 +37,20 @@ export function DeviceActions({ meta, onCommand, showToast }) {
           <button className="btn" onClick={() => onCommand('sync-now')}>
             Sync now
           </button>
+          <button
+            className="btn"
+            disabled={!ota}
+            onClick={() => {
+              if (!ota) return;
+              if (confirm(`Install firmware v${ota.version} now? Device will reboot after update.`)) {
+                onCommand('ota-apply');
+              }
+            }}
+          >
+            Update firmware now
+          </button>
           <button className="btn" onClick={() => onCommand('ota-check')}>
             Check OTA
-          </button>
-          <button className="btn" disabled={!ota} onClick={() => onCommand('ota-apply')}>
-            Apply OTA
           </button>
           <button className="btn" onClick={() => onCommand('upload-logs')}>
             Pull SD logs
