@@ -5,6 +5,7 @@
 #include <ArduinoJson.h>
 #include <Preferences.h>
 #include <time.h>
+#include <sys/time.h>
 #include <math.h>
 #include <esp_system.h>
 #include "mbedtls/md.h"
@@ -101,6 +102,7 @@ void pullCloudflareConfig(AppConfig&, Preferences&);
 void pingCloudflare(AppConfig&, Preferences&);
 bool pushStatus(AppConfig&);
 void syncTime(const char*);
+bool syncTimeFromWorker(AppConfig&);
 bool hasValidClock();
 void checkDailyAutoReboot();
 void pollCloudflareCommand(AppConfig&, Preferences&);
@@ -1401,6 +1403,57 @@ void fetchDigest(AppConfig& cfg) {
 // ─── NTP Time Sync ────────────────────────────────────────────────────────────
 // Uses NIST time servers for maximum accuracy
 
+bool syncTimeFromWorker(AppConfig& cfg) {
+  if (!strlen(cfg.workerUrl)) return false;
+
+  String base = normalizeWorkerBase(cfg.workerUrl);
+  if (!base.length()) return false;
+
+  HTTPClient http;
+  String path = "/api/detect-timezone";
+  http.begin(base + path);
+  http.addHeader("Accept", "application/json");
+  http.setTimeout(8000);
+
+  int code = http.GET();
+  if (code != 200) {
+    sdLogfEx("ERR", "TIME", "worker_time_http:%d", code);
+    http.end();
+    return false;
+  }
+
+  StaticJsonDocument<512> doc;
+  DeserializationError err = deserializeJson(doc, http.getString());
+  http.end();
+  if (err) {
+    sdLogfEx("ERR", "TIME", "worker_time_parse:%s", err.c_str());
+    return false;
+  }
+
+  long serverEpoch = doc["server_epoch"] | 0;
+  if (serverEpoch < 1700000000L) {
+    sdLogEx("ERR", "TIME", "worker_time_invalid_epoch");
+    return false;
+  }
+
+  struct timeval tv;
+  tv.tv_sec = (time_t)serverEpoch;
+  tv.tv_usec = 0;
+  settimeofday(&tv, nullptr);
+
+  struct tm ti;
+  if (getLocalTime(&ti, 2000)) {
+    Serial.printf("Time synced via worker: %04d-%02d-%02d %02d:%02d:%02d\n",
+      ti.tm_year + 1900, ti.tm_mon + 1, ti.tm_mday,
+      ti.tm_hour, ti.tm_min, ti.tm_sec);
+    sdLog("SYS", "Time synced via worker fallback");
+    return true;
+  }
+
+  sdLogEx("ERR", "TIME", "worker_time_apply_failed");
+  return false;
+}
+
 void syncTime(const char* tz) {
   const char* posix = "CST6CDT,M3.2.0,M11.1.0";
   if      (!strcmp(tz,"US/Eastern"))  posix = "EST5EDT,M3.2.0,M11.1.0";
@@ -1434,6 +1487,13 @@ void syncTime(const char* tz) {
       sdLog("SYS", "NTP synced (fallback)");
       return;
     }
+
+    // Final fallback for restrictive networks that block UDP NTP:
+    // bootstrap current epoch from Worker over HTTPS.
+    if (syncTimeFromWorker(appConfig)) {
+      return;
+    }
+
     Serial.println("NTP sync failed");
     sdLogError("NTP sync failed");
   }

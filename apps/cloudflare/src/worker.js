@@ -3015,11 +3015,14 @@ export default {
     if (path === "/api/detect-timezone" && method === "GET") {
       const cfTimeZone = request.cf?.timezone || "America/Chicago";
       const detected = detectTimezoneFromIANA(cfTimeZone);
+      const nowEpoch = Math.floor(Date.now() / 1000);
       return json({
         detected: detected,
         source_iana: cfTimeZone,
         confidence: cfTimeZone !== "America/Chicago" ? "high" : "default",
         supported_zones: ["US/Central", "US/Eastern", "US/Mountain", "US/Pacific"],
+        server_epoch: nowEpoch,
+        server_iso: new Date(nowEpoch * 1000).toISOString(),
       });
     }
 
