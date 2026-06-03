@@ -82,23 +82,37 @@ export function DeviceActions({ meta, onCommand, showToast }) {
         label="Latest SD log upload"
         desc={
           log
-            ? `${log.lineCount || 0} lines, ${log.bytes || 0} bytes · ${fmtTs(log.uploadedAt)}`
+            ? `${log.lineCount || 0} lines, ${log.bytes || 0} bytes · ${fmtTs(log.uploadedAt)}${meta.logHistoryCount ? ` · ${meta.logHistoryCount} saved package${meta.logHistoryCount === 1 ? '' : 's'}` : ''}`
             : 'No uploads yet'
         }
       >
         {log && (
-          <button
-            className="btn"
-            onClick={() => {
-              const s = getSession();
-              window.open(
-                `${WORKER_URL}/api/admin/logs/latest?download=1&session=${encodeURIComponent(s)}`,
-                '_blank'
-              );
-            }}
-          >
-            Download
-          </button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button
+              className="btn"
+              onClick={() => {
+                const s = getSession();
+                window.open(
+                  `${WORKER_URL}/api/admin/logs/latest?download=1&session=${encodeURIComponent(s)}`,
+                  '_blank'
+                );
+              }}
+            >
+              Download latest
+            </button>
+            <button
+              className="btn"
+              onClick={() => {
+                const s = getSession();
+                window.open(
+                  `${WORKER_URL}/api/admin/logs/all?download=1&session=${encodeURIComponent(s)}`,
+                  '_blank'
+                );
+              }}
+            >
+              Download all
+            </button>
+          </div>
         )}
       </Field>
       <Field label="Pending command">
