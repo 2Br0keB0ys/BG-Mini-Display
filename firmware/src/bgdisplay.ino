@@ -567,11 +567,29 @@ void loop() {
 
   if (appConfig.otaEnabled && WiFi.status() == WL_CONNECTED) {
     unsigned long otaCheckMs = (unsigned long)appConfig.otaCheckMin * 60000UL;
-    if (now - lastOTACheck > otaCheckMs) {
+    bool otaCheckDue = (lastOTACheck == 0) || (now - lastOTACheck > otaCheckMs);
+    if (otaCheckDue) {
       lastOTACheck = now;
       CloudOtaReleaseInfo release;
       if (fetchCloudOtaRelease(appConfig, release) && release.available) {
         sdLogfEx("OTA", "OTA", "available version:%s channel:%s", release.version, release.channel);
+
+        if (release.mandatory) {
+          sdLogfEx("OTA", "OTA", "mandatory_apply_start version:%s", release.version);
+          setDisplayBanner(dispState, "Mandatory OTA applying...", CLR_ORANGE, 4500UL);
+          String otaResult;
+          gOtaUpdateActive = true;
+          bool ok = performCloudOtaUpdate(appConfig, &release, &otaResult);
+          gOtaUpdateActive = false;
+          if (ok) {
+            sdLogfEx("OTA", "OTA", "mandatory_apply_ok version:%s", release.version);
+            delay(500);
+            ESP.restart();
+            return;
+          }
+          sdLogfEx("ERR", "OTA", "mandatory_apply_fail msg:%s", otaResult.c_str());
+          setDisplayBanner(dispState, "Mandatory OTA failed", CLR_RED, 3500UL);
+        }
       }
     }
   }
