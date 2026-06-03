@@ -3347,8 +3347,66 @@ export default {
 
       const limit = Math.max(1, Math.min(200, Number(url.searchParams.get("limit") || 60)));
       const entries = allEntries.slice(0, limit);
+      const format = String(url.searchParams.get("format") || "text")
+        .trim()
+        .toLowerCase();
+      if (!["text", "json", "ndjson"].includes(format)) {
+        return json({ error: "Invalid format. Use text, json, or ndjson." }, 400);
+      }
 
       if (url.searchParams.get("download") === "1") {
+        const records = [];
+        for (let i = 0; i < entries.length; i += 1) {
+          const entry = entries[i];
+          const text = await env.BGDISPLAY_CONFIG.get(entry.key);
+          if (!text) continue;
+          records.push({
+            uploadedAt: entry.uploadedAt,
+            lineCount: entry.lineCount || 0,
+            bytes: entry.bytes || 0,
+            commandId: entry.commandId || "",
+            key: entry.key,
+            text,
+          });
+        }
+
+        if (!records.length) return json({ error: "No retrievable logs found in history" }, 404);
+
+        const ts = new Date().toISOString().replace(/[:.]/g, "-");
+
+        if (format === "json") {
+          const body = JSON.stringify(
+            {
+              generatedAt: new Date().toISOString(),
+              included: records.length,
+              totalAvailable: allEntries.length,
+              logs: records,
+            },
+            null,
+            2
+          );
+          return new Response(body, {
+            status: 200,
+            headers: {
+              ...CORS_HEADERS,
+              "Content-Type": "application/json; charset=utf-8",
+              "Content-Disposition": `attachment; filename="bg-display-mini-sd-logs-all-${ts}.json"`,
+            },
+          });
+        }
+
+        if (format === "ndjson") {
+          const ndjson = records.map((record) => JSON.stringify(record)).join("\n");
+          return new Response(ndjson, {
+            status: 200,
+            headers: {
+              ...CORS_HEADERS,
+              "Content-Type": "application/x-ndjson; charset=utf-8",
+              "Content-Disposition": `attachment; filename="bg-display-mini-sd-logs-all-${ts}.ndjson"`,
+            },
+          });
+        }
+
         const chunks = [];
         chunks.push(`# BG Display Mini SD log bundle\n`);
         chunks.push(`# generatedAt: ${new Date().toISOString()}\n`);
@@ -3356,26 +3414,20 @@ export default {
         chunks.push(`# totalAvailable: ${allEntries.length}\n\n`);
 
         let included = 0;
-        for (let i = 0; i < entries.length; i += 1) {
-          const entry = entries[i];
-          const text = await env.BGDISPLAY_CONFIG.get(entry.key);
-          if (!text) continue;
+        for (let i = 0; i < records.length; i += 1) {
+          const record = records[i];
           included += 1;
           chunks.push(`===== LOG ${included} OF ${entries.length} =====\n`);
           chunks.push(
-            `uploadedAt: ${entry.uploadedAt ? new Date(entry.uploadedAt).toISOString() : "unknown"}\n`
+            `uploadedAt: ${record.uploadedAt ? new Date(record.uploadedAt).toISOString() : "unknown"}\n`
           );
-          chunks.push(`lineCount: ${entry.lineCount || 0}\n`);
-          chunks.push(`bytes: ${entry.bytes || 0}\n`);
-          if (entry.commandId) chunks.push(`commandId: ${entry.commandId}\n`);
-          chunks.push(`key: ${entry.key}\n\n`);
-          chunks.push(text.endsWith("\n") ? text : `${text}\n`);
+          chunks.push(`lineCount: ${record.lineCount || 0}\n`);
+          chunks.push(`bytes: ${record.bytes || 0}\n`);
+          if (record.commandId) chunks.push(`commandId: ${record.commandId}\n`);
+          chunks.push(`key: ${record.key}\n\n`);
+          chunks.push(record.text.endsWith("\n") ? record.text : `${record.text}\n`);
           chunks.push(`\n`);
         }
-
-        if (!included) return json({ error: "No retrievable logs found in history" }, 404);
-
-        const ts = new Date().toISOString().replace(/[:.]/g, "-");
         return new Response(chunks.join(""), {
           status: 200,
           headers: {
@@ -3389,6 +3441,8 @@ export default {
       return json({
         total: allEntries.length,
         returned: entries.length,
+        format,
+        availableFormats: ["text", "json", "ndjson"],
         entries: entries.map((entry) => ({
           uploadedAt: entry.uploadedAt,
           lineCount: entry.lineCount,

@@ -151,6 +151,22 @@ export function LogsSection({ showToast }) {
     window.open(`${WORKER_URL}/api/admin/logs/all?download=1&session=${session}`, '_blank');
   }
 
+  async function downloadAllJson() {
+    const session = getSession();
+    window.open(
+      `${WORKER_URL}/api/admin/logs/all?download=1&format=json&session=${session}`,
+      '_blank'
+    );
+  }
+
+  async function downloadAllNdjson() {
+    const session = getSession();
+    window.open(
+      `${WORKER_URL}/api/admin/logs/all?download=1&format=ndjson&session=${session}`,
+      '_blank'
+    );
+  }
+
   return (
     <Card iconClass="ic-diag" icon={diagIcon} title="Log explorer" sub="Search uploaded SD logs">
       <div className="field-row log-filter-row">
@@ -182,6 +198,12 @@ export function LogsSection({ showToast }) {
           </button>
           <button className="btn" onClick={downloadAll}>
             Download all
+          </button>
+          <button className="btn" onClick={downloadAllJson}>
+            All JSON
+          </button>
+          <button className="btn" onClick={downloadAllNdjson}>
+            All NDJSON
           </button>
         </div>
       </div>
