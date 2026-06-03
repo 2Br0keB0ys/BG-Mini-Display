@@ -68,8 +68,13 @@ bool dexAuthenticateAccount(AppConfig& cfg) {
   body["applicationId"] = "d89443d2-327c-4a6f-89e5-496bbb0317db";
 
   String bs; serializeJson(body, bs);
+  // Detect login type so we can correlate auth issues with account format
+  bool _isPhone = (strlen(cfg.dexcomUser) > 0 && cfg.dexcomUser[0] == '+');
+  unsigned long _authT0 = millis();
   int code = http.POST(bs);
-  sdLogfEx("DEX", "DEX_AUTH", "auth_http:%d region:%s userLen:%u", code, cfg.dexcomRegion, (unsigned)strlen(cfg.dexcomUser));
+  unsigned long _authMs = millis() - _authT0;
+  sdLogfEx("DEX", "DEX_AUTH", "auth_http:%d region:%s userType:%s elapsed_ms:%lu",
+    code, cfg.dexcomRegion, _isPhone ? "phone" : "email", _authMs);
 
   if (code == 200) {
     String r = http.getString();
@@ -83,9 +88,19 @@ bool dexAuthenticateAccount(AppConfig& cfg) {
   }
 
   Serial.printf("Dexcom auth failed: HTTP %d\n", code);
-  char msg[40];
-  snprintf(msg, sizeof(msg), "Dex auth HTTP %d", code);
-  sdLogfEx("ERR", "DEX_AUTH", "%s", msg);
+  {
+    char msg[48];
+    snprintf(msg, sizeof(msg), "Dex auth HTTP %d elapsed_ms:%lu", code, _authMs);
+    sdLogfEx("ERR", "DEX_AUTH", "%s", msg);
+  }
+#if DIAG_MODE
+  {
+    String errBody = http.getString();
+    if (errBody.length() > 0) {
+      sdLogfEx("DEX", "DEX_AUTH", "err_body_preview:%s", errBody.substring(0, 200).c_str());
+    }
+  }
+#endif
   dexAccountId = "";
   dexSessionId = "";
   http.end();
@@ -146,8 +161,11 @@ bool dexLogin(AppConfig& cfg) {
   body["applicationId"] = "d89443d2-327c-4a6f-89e5-496bbb0317db";
 
   String bs; serializeJson(body, bs);
+  unsigned long _loginT0 = millis();
   int code = http.POST(bs);
-  sdLogfEx("DEX", "DEX_LOGIN", "login_http:%d accountIdLen:%u", code, (unsigned)dexAccountId.length());
+  unsigned long _loginMs = millis() - _loginT0;
+  sdLogfEx("DEX", "DEX_LOGIN", "login_http:%d accountIdLen:%u elapsed_ms:%lu",
+    code, (unsigned)dexAccountId.length(), _loginMs);
 
   if (code == 200) {
     String r = http.getString();
@@ -157,16 +175,27 @@ bool dexLogin(AppConfig& cfg) {
       dexSessionExpiry = millis() + 4UL * 3600000UL;
       http.end();
       Serial.println("Dexcom: logged in");
-      sdLogfEx("DEX", "DEX_LOGIN", "login_ok sessionIdLen:%u", (unsigned)dexSessionId.length());
+      sdLogfEx("DEX", "DEX_LOGIN", "login_ok sessionIdLen:%u expiresIn_ms:%lu",
+        (unsigned)dexSessionId.length(), 4UL * 3600000UL);
       return true;
     }
     Serial.println("Dexcom login returned invalid sessionID");
   }
 
   Serial.printf("Dexcom login failed: HTTP %d\n", code);
-  char msg[40];
-  snprintf(msg, sizeof(msg), "Dex login HTTP %d", code);
-  sdLogfEx("ERR", "DEX_LOGIN", "%s", msg);
+  {
+    char msg[56];
+    snprintf(msg, sizeof(msg), "Dex login HTTP %d elapsed_ms:%lu", code, _loginMs);
+    sdLogfEx("ERR", "DEX_LOGIN", "%s", msg);
+  }
+#if DIAG_MODE
+  {
+    String errBody = http.getString();
+    if (errBody.length() > 0) {
+      sdLogfEx("DEX", "DEX_LOGIN", "err_body_preview:%s", errBody.substring(0, 200).c_str());
+    }
+  }
+#endif
   dexSessionId = "";
   http.end();
   return false;
@@ -199,8 +228,11 @@ bool fetchDexcomShare(AppConfig& cfg, BGReading& reading) {
   http.addHeader("Accept", "application/json");
   http.addHeader("User-Agent", "share2nightscout-bridge/0.2.5");
   http.setTimeout(8000);
+  unsigned long _egvT0 = millis();
   int code = http.POST("");
-  sdLogfEx("DEX", "DEX_FETCH", "egv_http:%d sessionLen:%u", code, (unsigned)dexSessionId.length());
+  unsigned long _egvMs = millis() - _egvT0;
+  sdLogfEx("DEX", "DEX_FETCH", "egv_http:%d sessionLen:%u elapsed_ms:%lu",
+    code, (unsigned)dexSessionId.length(), _egvMs);
 
   // Session expired (500) — force re-login once
   if (code == 500 || code == 401) {
@@ -220,7 +252,7 @@ bool fetchDexcomShare(AppConfig& cfg, BGReading& reading) {
     http.addHeader("User-Agent", "share2nightscout-bridge/0.2.5");
     http.setTimeout(8000);
     code = http.POST("");
-    sdLogfEx("DEX", "DEX_FETCH", "egv_http_retry:%d", code);
+    sdLogfEx("DEX", "DEX_FETCH", "egv_http_retry:%d elapsed_ms:%lu", code, millis() - _egvT0);
   }
 
   bool ok = false;
@@ -250,19 +282,30 @@ bool fetchDexcomShare(AppConfig& cfg, BGReading& reading) {
       ok = (reading.value > 0);
       Serial.printf("Dexcom: BG=%d trend=%d\n", reading.value, reading.trend);
       if (ok) {
-        sdLogfEx("DEX", "DEX_FETCH", "ok bg:%d trend:%d ts:%lu", reading.value, reading.trend, (unsigned long)reading.timestamp);
+        sdLogfEx("DEX", "DEX_FETCH", "ok bg:%d trend:%d ts:%lu session_age_ms:%lu",
+        reading.value, reading.trend, (unsigned long)reading.timestamp, millis() - dexSessionExpiry + 4UL*3600000UL);
       } else {
         sdLogfEx("ERR", "DEX_FETCH", "invalid_bg value:%d", reading.value);
       }
     } else {
       Serial.println("Dexcom fetch: JSON parse error or empty array");
-      sdLogfEx("ERR", "DEX_FETCH", "parse_or_empty code:%d", code);
+      sdLogfEx("ERR", "DEX_FETCH", "parse_or_empty code:%d err:%s", code, err.c_str());
     }
   } else {
     Serial.printf("Dexcom EGV failed: HTTP %d\n", code);
-    char msg[40];
-    snprintf(msg, sizeof(msg), "Dex EGV HTTP %d", code);
-    sdLogfEx("ERR", "DEX_FETCH", "%s", msg);
+    {
+      char msg[48];
+      snprintf(msg, sizeof(msg), "Dex EGV HTTP %d elapsed_ms:%lu", code, _egvMs);
+      sdLogfEx("ERR", "DEX_FETCH", "%s", msg);
+    }
+#if DIAG_MODE
+    {
+      String errBody = http.getString();
+      if (errBody.length() > 0) {
+        sdLogfEx("DEX", "DEX_FETCH", "err_body_preview:%s", errBody.substring(0, 200).c_str());
+      }
+    }
+#endif
   }
 
   http.end();

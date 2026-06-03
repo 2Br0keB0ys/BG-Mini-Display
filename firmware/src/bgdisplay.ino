@@ -52,7 +52,11 @@ unsigned long bootTime        = millis();
 unsigned long lastNoSourceWarn = 0;
 unsigned long lastHeartbeatMs = 0;
 
+#if DIAG_MODE
+static const bool kVerboseDiagLogs = true;   // DIAG_MODE: full verbose diagnostic logging
+#else
 static const bool kVerboseDiagLogs = false;
+#endif
 
 struct SourceHealthStats {
   uint16_t nsOk = 0;
@@ -325,7 +329,7 @@ void logHeartbeat(const AppConfig& cfg, const BGReading& reading) {
   snprintf(
     msg,
     sizeof(msg),
-    "uptime:%lus wifi:%d rssi:%d bg:%d trend:%d age:%lds src:%s cfgV:%d",
+    "uptime:%lus wifi:%d rssi:%d bg:%d trend:%d age:%lds src:%s cfgV:%d heap:%u minHeap:%u",
     millis() / 1000UL,
     wifi,
     rssi,
@@ -333,7 +337,9 @@ void logHeartbeat(const AppConfig& cfg, const BGReading& reading) {
     reading.trend,
     ageSec,
     src,
-    cfg.lastConfigVersion
+    cfg.lastConfigVersion,
+    (unsigned)ESP.getFreeHeap(),
+    (unsigned)ESP.getMinFreeHeap()
   );
   sdLog("HB", msg);
 }
@@ -389,16 +395,14 @@ void setup() {
   bootProgress(18, "Connecting to WiFi...");
   if (!connectWiFi(appConfig, prefs)) {
     sdLogError("WiFi connect failed, entering AP setup");
-    if (!hasStoredWifi) {
+    if (hasStoredWifi) {
+      sdLog("NET", "Saved WiFi failed; falling back to AP setup");
+      bootProgress(25, "WiFi failed — opening setup AP");
+    } else {
       sdLog("NET", "No saved WiFi; entering initial setup AP");
       bootProgress(25, "WiFi setup — connect to BG_Display_Mini_XXXX");
-      startAPMode(appConfig, prefs);
-    } else if (setupUnlockPressedDuringBoot()) {
-      bootProgress(25, "WiFi setup mode...");
-      startAPMode(appConfig, prefs);
-    } else {
-      sdLogError("AP setup locked; hold power during boot to unlock");
     }
+    startAPMode(appConfig, prefs);
   }
 
   if (WiFi.status() == WL_CONNECTED) {
@@ -643,7 +647,9 @@ void loop() {
     if (now - lastReconnect > 30000UL) {
       lastReconnect = now;
       Serial.println("WiFi lost — reconnecting...");
-      sdLogEx("ERR", "WIFI", "link_lost_reconnect");
+      sdLogfEx("ERR", "WIFI", "link_lost status:%d heap:%u minHeap:%u uptime_s:%lu",
+        (int)WiFi.status(), (unsigned)ESP.getFreeHeap(),
+        (unsigned)ESP.getMinFreeHeap(), millis() / 1000UL);
       WiFi.reconnect();
     }
   }
@@ -680,6 +686,15 @@ void loop() {
   otaTick(appConfig);
 
   updateDisplay(appConfig, lastReading, dispState);
+#if DIAG_MODE
+  {
+    unsigned long _loopMs = millis() - now;
+    if (_loopMs > 500) {
+      sdLogfEx("SYS", "SYS", "slow_loop_ms:%lu heap:%u minHeap:%u",
+        _loopMs, (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMinFreeHeap());
+    }
+  }
+#endif
   delay(50);
 }
 
@@ -739,7 +754,9 @@ void pingCloudflare(AppConfig& cfg, Preferences& p) {
     http.addHeader("X-Device-Key", cfg.deviceKey);
     addSignedHeaders(http, "GET", path, "", cfg);
     http.setTimeout(5000);
+    unsigned long _pingT0 = millis();
     code = http.GET();
+    unsigned long _pingMs = millis() - _pingT0;
 
     if (code == 200) {
       StaticJsonDocument<64> doc;
@@ -754,8 +771,12 @@ void pingCloudflare(AppConfig& cfg, Preferences& p) {
           pullCloudflareConfig(cfg, p);
           return;
         }
-        sdLogfEx("CFG", "CFG", "ping_no_changes remoteV:%d localV:%d", version, cfg.lastConfigVersion);
+        sdLogfEx("CFG", "CFG", "ping_no_changes remoteV:%d localV:%d elapsed_ms:%lu",
+          version, cfg.lastConfigVersion, _pingMs);
       }
+    } else {
+      sdLogfEx("CFG", "CFG", "ping_http:%d elapsed_ms:%lu heap:%u",
+        code, _pingMs, (unsigned)ESP.getFreeHeap());
     }
     http.end();
   }
@@ -841,8 +862,10 @@ void pullCloudflareConfig(AppConfig& cfg, Preferences& p) {
   addSignedHeaders(http, "GET", path, "", cfg);
   http.setTimeout(8000);
 
+  unsigned long _cfPullT0 = millis();
   int code = http.GET();
-  sdLogfEx("CFG", "CFG", "config_pull_http:%d localV:%d", code, cfg.lastConfigVersion);
+  sdLogfEx("CFG", "CFG", "config_pull_http:%d localV:%d elapsed_ms:%lu heap:%u",
+    code, cfg.lastConfigVersion, millis() - _cfPullT0, (unsigned)ESP.getFreeHeap());
   {
     char pullMsg[80];
     snprintf(pullMsg, sizeof(pullMsg), "Pull HTTP:%d priorV:%d", code, cfg.lastConfigVersion);
