@@ -146,6 +146,11 @@ export function LogsSection({ showToast }) {
     window.open(`${WORKER_URL}/api/admin/logs/latest?download=1&session=${session}`, '_blank');
   }
 
+  async function downloadAll() {
+    const session = getSession();
+    window.open(`${WORKER_URL}/api/admin/logs/all?download=1&session=${session}`, '_blank');
+  }
+
   return (
     <Card iconClass="ic-diag" icon={diagIcon} title="Log explorer" sub="Search uploaded SD logs">
       <div className="field-row log-filter-row">
@@ -173,7 +178,10 @@ export function LogsSection({ showToast }) {
             {busy ? '…' : 'Run'}
           </button>
           <button className="btn" onClick={download}>
-            Download
+            Download latest
+          </button>
+          <button className="btn" onClick={downloadAll}>
+            Download all
           </button>
         </div>
       </div>

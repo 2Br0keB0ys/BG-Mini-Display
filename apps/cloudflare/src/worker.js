@@ -11,6 +11,9 @@ const CORS_HEADERS = {
 const KEY_ROTATE_MS = 7 * 24 * 60 * 60 * 1000;
 const PENDING_KEY_TTL_MS = 48 * 60 * 60 * 1000;
 const ADMIN_SESSION_TTL_SEC = 8 * 60 * 60;
+const SD_LOG_HISTORY_INDEX_KEY = "sdlog:history:index";
+const SD_LOG_HISTORY_MAX_ENTRIES = 60;
+const SD_LOG_HISTORY_ENTRY_TTL_SEC = 30 * 24 * 60 * 60;
 /* global WebSocketPair */
 
 const DEFAULT_DND_SCHEDULE = {
@@ -2237,6 +2240,60 @@ async function appendWorkerEvent(env, event) {
   await env.BGDISPLAY_CONFIG.put("worker_events", JSON.stringify(log));
 }
 
+function normalizeSdLogHistoryEntry(entry) {
+  if (!entry || typeof entry !== "object") return null;
+  const key = String(entry.key || "").trim();
+  if (!key) return null;
+  return {
+    key,
+    uploadedAt: Number(entry.uploadedAt || 0) || 0,
+    lineCount: Number(entry.lineCount || 0) || 0,
+    bytes: Number(entry.bytes || 0) || 0,
+    commandId: String(entry.commandId || "").slice(0, 80),
+  };
+}
+
+async function appendSdLogHistory(env, text, meta) {
+  const uploadedAt = Number(meta?.uploadedAt || Date.now()) || Date.now();
+  const rawCommand = String(meta?.commandId || "").trim();
+  const commandTag = rawCommand
+    ? rawCommand
+        .replace(/[^a-zA-Z0-9_-]/g, "")
+        .slice(0, 24)
+        .toLowerCase() || "cmd"
+    : "auto";
+  const key = `sdlog:entry:${uploadedAt}:${commandTag}:${crypto.randomUUID().slice(0, 8)}`;
+
+  await env.BGDISPLAY_CONFIG.put(key, text, { expirationTtl: SD_LOG_HISTORY_ENTRY_TTL_SEC });
+
+  const nextEntry = {
+    key,
+    uploadedAt,
+    lineCount: Number(meta?.lineCount || 0) || 0,
+    bytes: Number(meta?.bytes || text.length || 0) || 0,
+    commandId: String(meta?.commandId || "").slice(0, 80),
+  };
+
+  const existing = await env.BGDISPLAY_CONFIG.get(SD_LOG_HISTORY_INDEX_KEY, { type: "json" });
+  const normalized = Array.isArray(existing)
+    ? existing.map((entry) => normalizeSdLogHistoryEntry(entry)).filter(Boolean)
+    : [];
+
+  const deduped = [nextEntry, ...normalized.filter((entry) => entry.key !== nextEntry.key)];
+  const kept = deduped.slice(0, SD_LOG_HISTORY_MAX_ENTRIES);
+  const dropped = deduped.slice(SD_LOG_HISTORY_MAX_ENTRIES);
+
+  await env.BGDISPLAY_CONFIG.put(SD_LOG_HISTORY_INDEX_KEY, JSON.stringify(kept));
+  await Promise.all(
+    dropped
+      .map((entry) => entry?.key)
+      .filter(Boolean)
+      .map((oldKey) => env.BGDISPLAY_CONFIG.delete(oldKey))
+  );
+
+  return kept.length;
+}
+
 async function shouldEmitAlert(env, key, cooldownMs) {
   const now = Date.now();
   const k = `alert:${key}`;
@@ -2336,7 +2393,7 @@ async function validateAdminSession(env, request) {
     const u = new URL(request.url);
     const allowQuerySession =
       request.method === "GET" &&
-      u.pathname === "/api/admin/logs/latest" &&
+      ["/api/admin/logs/latest", "/api/admin/logs/all"].includes(u.pathname) &&
       u.searchParams.get("download") === "1";
     if (allowQuerySession) token = u.searchParams.get("session") || "";
   }
@@ -2783,13 +2840,14 @@ export default {
       };
       await env.BGDISPLAY_CONFIG.put("sdlog:last_text", text);
       await env.BGDISPLAY_CONFIG.put("sdlog:last_meta", JSON.stringify(meta));
+      const historyCount = await appendSdLogHistory(env, text, meta);
       await appendChangeLog(env, `SD logs uploaded (${meta.lineCount} lines)`);
       await appendWorkerEvent(env, {
         type: "sd-log-upload",
         lines: meta.lineCount,
         bytes: meta.bytes,
       });
-      return json({ ok: true, meta });
+      return json({ ok: true, meta, historyCount });
     }
 
     // ── GET /api/command ─────────────────────────────────────────────────────
@@ -3013,6 +3071,8 @@ export default {
         (await env.BGDISPLAY_CONFIG.get("telemetry_recent", { type: "json" })) || [];
       const lastLogUpload =
         (await env.BGDISPLAY_CONFIG.get("sdlog:last_meta", { type: "json" })) || null;
+      const sdLogHistoryIndex =
+        (await env.BGDISPLAY_CONFIG.get(SD_LOG_HISTORY_INDEX_KEY, { type: "json" })) || [];
       const secretMeta = (await env.BGDISPLAY_CONFIG.get("secret_meta", { type: "json" })) || {};
       const pendingCmd = await env.BGDISPLAY_CONFIG.get("command:all", { type: "json" });
       const lastCmdAck = await env.BGDISPLAY_CONFIG.get("command:last_ack", { type: "json" });
@@ -3050,6 +3110,7 @@ export default {
         secretMeta,
         reminders,
         lastLogUpload,
+        logHistoryCount: Array.isArray(sdLogHistoryIndex) ? sdLogHistoryIndex.length : 0,
         pendingCommand: pendingCmd || null,
         lastCommandAck: lastCmdAck || null,
         failedAuthCount: failedAuth.count,
@@ -3275,6 +3336,66 @@ export default {
         });
       }
       return json({ meta, total: filtered.length, preview: filtered.slice(0, limit) });
+    }
+
+    if (path === "/api/admin/logs/all" && method === "GET") {
+      const index = await env.BGDISPLAY_CONFIG.get(SD_LOG_HISTORY_INDEX_KEY, { type: "json" });
+      const allEntries = Array.isArray(index)
+        ? index.map((entry) => normalizeSdLogHistoryEntry(entry)).filter(Boolean)
+        : [];
+      if (!allEntries.length) return json({ error: "No uploaded log history yet" }, 404);
+
+      const limit = Math.max(1, Math.min(200, Number(url.searchParams.get("limit") || 60)));
+      const entries = allEntries.slice(0, limit);
+
+      if (url.searchParams.get("download") === "1") {
+        const chunks = [];
+        chunks.push(`# BG Display Mini SD log bundle\n`);
+        chunks.push(`# generatedAt: ${new Date().toISOString()}\n`);
+        chunks.push(`# included: ${entries.length}\n`);
+        chunks.push(`# totalAvailable: ${allEntries.length}\n\n`);
+
+        let included = 0;
+        for (let i = 0; i < entries.length; i += 1) {
+          const entry = entries[i];
+          const text = await env.BGDISPLAY_CONFIG.get(entry.key);
+          if (!text) continue;
+          included += 1;
+          chunks.push(`===== LOG ${included} OF ${entries.length} =====\n`);
+          chunks.push(
+            `uploadedAt: ${entry.uploadedAt ? new Date(entry.uploadedAt).toISOString() : "unknown"}\n`
+          );
+          chunks.push(`lineCount: ${entry.lineCount || 0}\n`);
+          chunks.push(`bytes: ${entry.bytes || 0}\n`);
+          if (entry.commandId) chunks.push(`commandId: ${entry.commandId}\n`);
+          chunks.push(`key: ${entry.key}\n\n`);
+          chunks.push(text.endsWith("\n") ? text : `${text}\n`);
+          chunks.push(`\n`);
+        }
+
+        if (!included) return json({ error: "No retrievable logs found in history" }, 404);
+
+        const ts = new Date().toISOString().replace(/[:.]/g, "-");
+        return new Response(chunks.join(""), {
+          status: 200,
+          headers: {
+            ...CORS_HEADERS,
+            "Content-Type": "text/plain; charset=utf-8",
+            "Content-Disposition": `attachment; filename="bg-display-mini-sd-logs-all-${ts}.log"`,
+          },
+        });
+      }
+
+      return json({
+        total: allEntries.length,
+        returned: entries.length,
+        entries: entries.map((entry) => ({
+          uploadedAt: entry.uploadedAt,
+          lineCount: entry.lineCount,
+          bytes: entry.bytes,
+          commandId: entry.commandId,
+        })),
+      });
     }
 
     if (path === "/api/admin/maintenance" && method === "GET") {
