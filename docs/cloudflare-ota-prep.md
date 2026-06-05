@@ -66,6 +66,8 @@ PlatformIO build -> firmware .bin
 
 - `ota-check`: validates whether a newer release is available for channel/current version.
 - `ota-apply`: fetches manifest, downloads signed artifact, applies update, then reboots.
+- Firmware now performs the first periodic OTA manifest check immediately after boot (no initial multi-hour wait).
+- If release metadata has `mandatory: true`, device auto-applies that release on the next due OTA check.
 
 ## Operational Notes
 
@@ -73,3 +75,11 @@ PlatformIO build -> firmware .bin
 - Keep `ArduinoOTA` enabled for local recovery/update workflows.
 - Use channel strategy (`stable`, `beta`) for staged rollout.
 - Ensure minimum battery and network quality before triggering fleet-wide `ota-apply`.
+
+## Workday OTA Quick Plan (Recommended)
+
+1. Prepare release metadata in Worker (`/api/admin/ota`) with accurate `version`, `r2_key`, `size_bytes`, and hashes.
+2. Start with `mandatory: false` and queue `ota-check` to verify device sees the release.
+3. Queue `ota-apply` for controlled update timing.
+4. For urgent forced rollout, set `mandatory: true` and ensure devices are online; they will auto-apply on the next OTA check cycle.
+5. Confirm success via `/api/admin/config` device status (`firmware`, `lastSeen`) and latest SD log upload.

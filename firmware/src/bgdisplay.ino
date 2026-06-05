@@ -5,6 +5,7 @@
 #include <ArduinoJson.h>
 #include <Preferences.h>
 #include <time.h>
+#include <sys/time.h>
 #include <math.h>
 #include <esp_system.h>
 #include "mbedtls/md.h"
@@ -91,6 +92,34 @@ String normalizeWorkerBase(const char* raw) {
   return base;
 }
 
+bool isPlaceholderWorkerUrl(const char* raw) {
+  String v = normalizeWorkerBase(raw);
+  if (!v.length()) return true;
+  String lower = v;
+  lower.toLowerCase();
+  return (
+    lower.indexOf("example-worker") >= 0 ||
+    lower.indexOf("your-domain") >= 0 ||
+    lower.indexOf("your-subdomain") >= 0
+  );
+}
+
+bool isPlaceholderDeviceKey(const char* raw) {
+  String key = raw ? String(raw) : String("");
+  key.trim();
+  if (!key.length()) return true;
+  if (key == "bg_ro_replace_with_bootstrap_key") return true;
+  if (key == "bg_ro_replace_with_real_device_key") return true;
+  if (!key.startsWith("bg_ro_")) return true;
+  if (key.length() != 38) return true;
+  for (size_t i = 6; i < key.length(); i++) {
+    char c = key[i];
+    bool ok = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9');
+    if (!ok) return true;
+  }
+  return false;
+}
+
 String getDefaultWorkerBase() {
   return normalizeWorkerBase(BGDISPLAY_DEFAULT_WORKER_URL);
 }
@@ -101,6 +130,7 @@ void pullCloudflareConfig(AppConfig&, Preferences&);
 void pingCloudflare(AppConfig&, Preferences&);
 bool pushStatus(AppConfig&);
 void syncTime(const char*);
+bool syncTimeFromWorker(AppConfig&);
 bool hasValidClock();
 void checkDailyAutoReboot();
 void pollCloudflareCommand(AppConfig&, Preferences&);
@@ -375,6 +405,15 @@ void setup() {
     strlcpy(appConfig.workerUrl, normalizedWorker.c_str(), sizeof(appConfig.workerUrl));
   }
 
+  if (isPlaceholderWorkerUrl(appConfig.workerUrl)) {
+    appConfig.workerUrl[0] = '\0';
+    sdLogError("Cloudflare worker URL missing/placeholder");
+  }
+  if (isPlaceholderDeviceKey(appConfig.deviceKey)) {
+    appConfig.deviceKey[0] = '\0';
+    sdLogError("Cloudflare device key missing/placeholder");
+  }
+
   saveConfig(prefs, appConfig);
   logConfigDiagnostics("after-bootstrap", appConfig);
 
@@ -565,11 +604,29 @@ void loop() {
 
   if (appConfig.otaEnabled && WiFi.status() == WL_CONNECTED) {
     unsigned long otaCheckMs = (unsigned long)appConfig.otaCheckMin * 60000UL;
-    if (now - lastOTACheck > otaCheckMs) {
+    bool otaCheckDue = (lastOTACheck == 0) || (now - lastOTACheck > otaCheckMs);
+    if (otaCheckDue) {
       lastOTACheck = now;
       CloudOtaReleaseInfo release;
       if (fetchCloudOtaRelease(appConfig, release) && release.available) {
         sdLogfEx("OTA", "OTA", "available version:%s channel:%s", release.version, release.channel);
+
+        if (release.mandatory) {
+          sdLogfEx("OTA", "OTA", "mandatory_apply_start version:%s", release.version);
+          setDisplayBanner(dispState, "Mandatory OTA applying...", CLR_ORANGE, 4500UL);
+          String otaResult;
+          gOtaUpdateActive = true;
+          bool ok = performCloudOtaUpdate(appConfig, &release, &otaResult);
+          gOtaUpdateActive = false;
+          if (ok) {
+            sdLogfEx("OTA", "OTA", "mandatory_apply_ok version:%s", release.version);
+            delay(500);
+            ESP.restart();
+            return;
+          }
+          sdLogfEx("ERR", "OTA", "mandatory_apply_fail msg:%s", otaResult.c_str());
+          setDisplayBanner(dispState, "Mandatory OTA failed", CLR_RED, 3500UL);
+        }
       }
     }
   }
@@ -1401,6 +1458,57 @@ void fetchDigest(AppConfig& cfg) {
 // ─── NTP Time Sync ────────────────────────────────────────────────────────────
 // Uses NIST time servers for maximum accuracy
 
+bool syncTimeFromWorker(AppConfig& cfg) {
+  if (!strlen(cfg.workerUrl)) return false;
+
+  String base = normalizeWorkerBase(cfg.workerUrl);
+  if (!base.length()) return false;
+
+  HTTPClient http;
+  String path = "/api/detect-timezone";
+  http.begin(base + path);
+  http.addHeader("Accept", "application/json");
+  http.setTimeout(8000);
+
+  int code = http.GET();
+  if (code != 200) {
+    sdLogfEx("ERR", "TIME", "worker_time_http:%d", code);
+    http.end();
+    return false;
+  }
+
+  StaticJsonDocument<512> doc;
+  DeserializationError err = deserializeJson(doc, http.getString());
+  http.end();
+  if (err) {
+    sdLogfEx("ERR", "TIME", "worker_time_parse:%s", err.c_str());
+    return false;
+  }
+
+  long serverEpoch = doc["server_epoch"] | 0;
+  if (serverEpoch < 1700000000L) {
+    sdLogEx("ERR", "TIME", "worker_time_invalid_epoch");
+    return false;
+  }
+
+  struct timeval tv;
+  tv.tv_sec = (time_t)serverEpoch;
+  tv.tv_usec = 0;
+  settimeofday(&tv, nullptr);
+
+  struct tm ti;
+  if (getLocalTime(&ti, 2000)) {
+    Serial.printf("Time synced via worker: %04d-%02d-%02d %02d:%02d:%02d\n",
+      ti.tm_year + 1900, ti.tm_mon + 1, ti.tm_mday,
+      ti.tm_hour, ti.tm_min, ti.tm_sec);
+    sdLog("SYS", "Time synced via worker fallback");
+    return true;
+  }
+
+  sdLogEx("ERR", "TIME", "worker_time_apply_failed");
+  return false;
+}
+
 void syncTime(const char* tz) {
   const char* posix = "CST6CDT,M3.2.0,M11.1.0";
   if      (!strcmp(tz,"US/Eastern"))  posix = "EST5EDT,M3.2.0,M11.1.0";
@@ -1434,6 +1542,13 @@ void syncTime(const char* tz) {
       sdLog("SYS", "NTP synced (fallback)");
       return;
     }
+
+    // Final fallback for restrictive networks that block UDP NTP:
+    // bootstrap current epoch from Worker over HTTPS.
+    if (syncTimeFromWorker(appConfig)) {
+      return;
+    }
+
     Serial.println("NTP sync failed");
     sdLogError("NTP sync failed");
   }
