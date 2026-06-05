@@ -92,6 +92,34 @@ String normalizeWorkerBase(const char* raw) {
   return base;
 }
 
+bool isPlaceholderWorkerUrl(const char* raw) {
+  String v = normalizeWorkerBase(raw);
+  if (!v.length()) return true;
+  String lower = v;
+  lower.toLowerCase();
+  return (
+    lower.indexOf("example-worker") >= 0 ||
+    lower.indexOf("your-domain") >= 0 ||
+    lower.indexOf("your-subdomain") >= 0
+  );
+}
+
+bool isPlaceholderDeviceKey(const char* raw) {
+  String key = raw ? String(raw) : String("");
+  key.trim();
+  if (!key.length()) return true;
+  if (key == "bg_ro_replace_with_bootstrap_key") return true;
+  if (key == "bg_ro_replace_with_real_device_key") return true;
+  if (!key.startsWith("bg_ro_")) return true;
+  if (key.length() != 38) return true;
+  for (size_t i = 6; i < key.length(); i++) {
+    char c = key[i];
+    bool ok = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9');
+    if (!ok) return true;
+  }
+  return false;
+}
+
 String getDefaultWorkerBase() {
   return normalizeWorkerBase(BGDISPLAY_DEFAULT_WORKER_URL);
 }
@@ -375,6 +403,15 @@ void setup() {
   String normalizedWorker = normalizeWorkerBase(appConfig.workerUrl);
   if (normalizedWorker.length() > 0) {
     strlcpy(appConfig.workerUrl, normalizedWorker.c_str(), sizeof(appConfig.workerUrl));
+  }
+
+  if (isPlaceholderWorkerUrl(appConfig.workerUrl)) {
+    appConfig.workerUrl[0] = '\0';
+    sdLogError("Cloudflare worker URL missing/placeholder");
+  }
+  if (isPlaceholderDeviceKey(appConfig.deviceKey)) {
+    appConfig.deviceKey[0] = '\0';
+    sdLogError("Cloudflare device key missing/placeholder");
   }
 
   saveConfig(prefs, appConfig);

@@ -76,6 +76,20 @@ if (-not $Timezone) { $Timezone = "US/Central" }
 
 $WorkerUrl = $WorkerUrl.Trim().TrimEnd('/')
 
+if ($WorkerUrl -notmatch '^https://') {
+  throw "WorkerUrl must start with https://"
+}
+if ($WorkerUrl -match 'example-worker|your-domain|your-subdomain') {
+  throw "WorkerUrl appears to be a placeholder. Set a real Cloudflare Worker URL."
+}
+
+if ($DeviceBootstrapKey -match 'replace_with_bootstrap_key|replace_with_real_device_key') {
+  throw "DeviceBootstrapKey appears to be a placeholder. Set a real bg_ro_ key."
+}
+if ($DeviceBootstrapKey -notmatch '^bg_ro_[a-z0-9]{32}$') {
+  throw "DeviceBootstrapKey must match bg_ro_ + 32 lowercase alphanumeric chars."
+}
+
 $escapedWorker   = $WorkerUrl.Replace('"', '')
 $escapedDevice   = $DeviceBootstrapKey.Replace('"', '')
 $escapedTimezone = $Timezone.Replace('"', '')
