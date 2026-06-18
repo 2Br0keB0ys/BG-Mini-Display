@@ -73,7 +73,7 @@ export default function SourcesSection({ form, onChange }) {
             [5, '5 min'],
             [10, '10 min'],
           ]}
-          value={form.poll_interval_min || 5}
+          value={form.poll_interval_min || 1}
           onChange={(v) => onChange('poll_interval_min', Number(v))}
         />
       </Field>

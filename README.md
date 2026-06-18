@@ -192,7 +192,7 @@ High-level release flow:
 ## Display Features
 
 ### Main Screen
-- **Large BG value** with trend arrow (updated every 5 minutes)
+- **Large BG value** with trend arrow (updated every minute by default)
 - **Sparkline history** (24-point glucose trend chart)
 - **Status bar** with connection indicators and timestamp
 - **EndoAI digest delivery:** summaries are sent via Pushover notifications (display rendering removed in firmware v4.0.1-S)

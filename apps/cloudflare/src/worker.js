@@ -116,7 +116,7 @@ const DEFAULT_CONFIG = {
   dexcom_pass: "",
   dexcom_region: "US",
   // Polling
-  poll_interval_min: 5,
+  poll_interval_min: 1,
   stale_data_warn_min: 15,
   config_ping_min: 1,
   // BG thresholds

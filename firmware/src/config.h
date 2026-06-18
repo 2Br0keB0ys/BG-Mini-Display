@@ -3,7 +3,7 @@
 #include <Preferences.h>
 #include "crypto.h"
 
-#define FIRMWARE_VERSION "4.1.1"
+#define FIRMWARE_VERSION "4.1.2"
 
 #ifndef ENABLE_OTA
 #define ENABLE_OTA 1
@@ -36,7 +36,7 @@ struct AppConfig {
   char dexcomRegion[8]="US";
 
   // Polling
-  int  pollIntervalMin=5;
+  int  pollIntervalMin=1;
   int  staleDataWarnMin=15;
   int  configPingMin=1;      // lightweight ping interval
 
@@ -169,7 +169,7 @@ inline void loadConfig(Preferences& p, AppConfig& c) {
     strlcpy(c.dndFromByDay[i], from.c_str(), 8);
     strlcpy(c.dndToByDay[i], to.c_str(), 8);
   }
-  c.pollIntervalMin    = p.getInt("pollMin",5);
+  c.pollIntervalMin    = p.getInt("pollMin",1);
   c.staleDataWarnMin   = p.getInt("staleMin",15);
   c.configPingMin      = p.getInt("pingMin",1);
   c.urgentLow          = p.getInt("urgLow",55);
