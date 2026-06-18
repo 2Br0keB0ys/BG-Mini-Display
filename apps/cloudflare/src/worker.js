@@ -33,7 +33,7 @@ function normalizeClock(v, fallback) {
   return `${m[1].padStart(2, "0")}:${m[2]}`;
 }
 
-function normalizeDndSchedule(sched, fallbackFrom, fallbackTo) {
+export function normalizeDndSchedule(sched, fallbackFrom, fallbackTo) {
   const src = sched && typeof sched === "object" ? sched : {};
   const out = {};
   for (const [day, def] of Object.entries(DEFAULT_DND_SCHEDULE)) {
@@ -172,7 +172,7 @@ const DEFAULT_CONFIG = {
   insulin_pump_notes: "",
 };
 
-function normalizeConfig(cfg) {
+export function normalizeConfig(cfg) {
   const out = { ...DEFAULT_CONFIG, ...(cfg || {}) };
 
   if (out.config_ping_min === undefined && out.config_ping_sec !== undefined) {
@@ -412,7 +412,7 @@ const TREND_NAMES = {
 
 // Accepts either a Dexcom numeric trend (0-8) or a Nightscout direction string.
 // Returns { numeric, name } on the standard Dexcom scale.
-function normalizeTrend(trendNum, directionStr) {
+export function normalizeTrend(trendNum, directionStr) {
   const nsToNum = {
     DoubleUp: 1,
     SingleUp: 2,
@@ -748,7 +748,7 @@ const TREND_DESCRIPTIONS = {
   unknown: "trend unavailable",
 };
 
-function describeTrend(raw) {
+export function describeTrend(raw) {
   const key = String(raw || "")
     .trim()
     .toLowerCase()
@@ -756,7 +756,7 @@ function describeTrend(raw) {
   return TREND_DESCRIPTIONS[key] || "trend unavailable";
 }
 
-function buildDeterministicDigest(type, ctx) {
+export function buildDeterministicDigest(type, ctx) {
   const {
     tir,
     low,
@@ -822,7 +822,7 @@ function buildDigestStorageMeta(type, now = new Date()) {
   };
 }
 
-function parseVersionParts(version) {
+export function parseVersionParts(version) {
   return String(version || "")
     .trim()
     .replace(/^[^\d]*/, "")
@@ -831,7 +831,7 @@ function parseVersionParts(version) {
     .filter((part) => Number.isFinite(part));
 }
 
-function compareVersions(a, b) {
+export function compareVersions(a, b) {
   const left = parseVersionParts(a);
   const right = parseVersionParts(b);
   const len = Math.max(left.length, right.length);
@@ -844,7 +844,7 @@ function compareVersions(a, b) {
   return 0;
 }
 
-function normalizeOtaRelease(input, fallbackChannel = "stable") {
+export function normalizeOtaRelease(input, fallbackChannel = "stable") {
   if (!input || typeof input !== "object") return null;
   const channel =
     String(input.channel || fallbackChannel || "stable")

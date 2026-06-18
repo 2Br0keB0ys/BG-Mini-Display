@@ -33,5 +33,5 @@ jobs:
           stale-issue-label: stale
           stale-pr-label: stale
           exempt-issue-labels: security,firmware,p1,pinned
-          exempt-pr-labels: security,firmware,p1,pinned
+          exempt-pr-labels: security,firmware,p1,pinned,dependencies
           operations-per-run: 100

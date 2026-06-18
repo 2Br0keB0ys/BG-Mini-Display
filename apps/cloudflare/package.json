@@ -15,15 +15,21 @@
     "test:mcp:health": "powershell -ExecutionPolicy Bypass -File ./scripts/test_mcp.ps1 -UseAdminSession -RunHealth",
     "test:mcp:pushover": "powershell -ExecutionPolicy Bypass -File ./scripts/test_mcp.ps1 -RunPushover",
     "test:mcp:pushover:live": "powershell -ExecutionPolicy Bypass -File ./scripts/test_mcp.ps1 -RunPushover -SendLivePushover",
-    "lint": "eslint src --max-warnings 0",
-    "format": "prettier --write src",
-    "format:check": "prettier --check src"
+    "lint": "eslint src test --max-warnings 0",
+    "format": "prettier --write src test",
+    "format:check": "prettier --check src test",
+    "test": "vitest run"
   },
   "devDependencies": {
     "wrangler": "^4.101.0",
     "eslint": "^10.5.0",
     "@eslint/js": "^10.0.1",
     "globals": "^17.6.0",
-    "prettier": "^3.8.4"
+    "prettier": "^3.8.4",
+    "vitest": "^4.1.9"
+  },
+  "overrides": {
+    "esbuild": "^0.28.1",
+    "ws": "^8.21.0"
   }
 }

@@ -53,6 +53,10 @@ jobs:
       - name: Validate worker syntax
         run: node --check apps/cloudflare/src/worker.js
 
+      - name: Run worker unit tests
+        working-directory: apps/cloudflare
+        run: npm test
+
   format-check:
     runs-on: ubuntu-latest
     steps:
