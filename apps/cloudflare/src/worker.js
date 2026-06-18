@@ -731,6 +731,31 @@ function isAiTextUsable(text, type) {
   return t.length >= minLen;
 }
 
+// Converts a raw Dexcom/Nightscout trend enum ("NotComputable", "FortyFiveDown", ...)
+// into plain language for AI prompts and the deterministic fallback digest —
+// otherwise the raw enum gets echoed verbatim (e.g. "NOT COMPUTABLE trend status").
+const TREND_DESCRIPTIONS = {
+  doubleup: "rising rapidly",
+  singleup: "rising",
+  fortyfiveup: "rising slightly",
+  flat: "steady",
+  fortyfivedown: "falling slightly",
+  singledown: "falling",
+  doubledown: "falling rapidly",
+  notcomputable: "trend unavailable",
+  none: "trend unavailable",
+  rateoutofrange: "trend unavailable",
+  unknown: "trend unavailable",
+};
+
+function describeTrend(raw) {
+  const key = String(raw || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]/g, "");
+  return TREND_DESCRIPTIONS[key] || "trend unavailable";
+}
+
 function buildDeterministicDigest(type, ctx) {
   const {
     tir,
@@ -978,7 +1003,7 @@ async function generateDailyDigest(env, force = false, type = "daily") {
   const minVal = Math.min(...values),
     maxVal = Math.max(...values);
   const avgVal = Math.round(values.reduce((a, b) => a + b, 0) / values.length);
-  const latestTrend = latest?.direction || latest?.trend || "unknown";
+  const latestTrend = describeTrend(latest?.direction || latest?.trend);
   const latestAgeMin = latest?.date
     ? Math.max(0, Math.round((Date.now() - latest.date) / 60000))
     : null;
@@ -1080,7 +1105,7 @@ async function generateDailyDigest(env, force = false, type = "daily") {
 
       const userContent = [
         `Stats: ${statsLine}`,
-        `Current reading: ${latest?.sgv ?? "unknown"} mg/dL at ${latestLocalTime}, trend ${latestTrend}, approximately ${latestAgeMin ?? "unknown"} minutes old.`,
+        `Current reading: ${latest?.sgv ?? "unknown"} mg/dL at ${latestLocalTime} (${latestTrend}), approximately ${latestAgeMin ?? "unknown"} minutes old.`,
         `Short-term movement: average change ${avgDelta >= 0 ? "+" : ""}${avgDelta} mg/dL per 5-minute step over the latest samples. Variability estimate: ${variability} mg/dL.${overnightAvg !== null && overnightAvg !== undefined ? ` Overnight average: ${overnightAvg} mg/dL.` : ""}`,
         `Most recent values (newest first): ${recentStr} mg/dL.`,
         sensorContextLine ? sensorContextLine : null,
