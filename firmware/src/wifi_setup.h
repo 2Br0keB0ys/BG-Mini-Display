@@ -15,6 +15,50 @@ DNSServer dnsServer;
 // signals "captive portal" to iOS faster than a connection timeout.
 WiFiServer httpsStub(443);
 
+// Logs link-layer detail (BSSID/channel/subnet/gateway/DNS) plus a live DNS
+// resolution of the configured worker hostname. Called on initial connect and
+// on every reconnect so network changes (e.g. roaming between sites) are
+// captured, not just the boot-time connection.
+inline void logWifiDiagDetail(const char* tag, AppConfig& cfg) {
+#if DIAG_MODE
+  uint8_t* bssid = WiFi.BSSID();
+  char bssidStr[20];
+  snprintf(bssidStr, sizeof(bssidStr), "%02X:%02X:%02X:%02X:%02X:%02X",
+    bssid[0], bssid[1], bssid[2], bssid[3], bssid[4], bssid[5]);
+  sdLogfEx("NET", "WIFI",
+    "%s detail bssid:%s ch:%d subnet:%s gw:%s dns1:%s dns2:%s",
+    tag, bssidStr, (int)WiFi.channel(),
+    WiFi.subnetMask().toString().c_str(),
+    WiFi.gatewayIP().toString().c_str(),
+    WiFi.dnsIP(0).toString().c_str(),
+    WiFi.dnsIP(1).toString().c_str());
+
+  if (strlen(cfg.workerUrl)) {
+    String url = String(cfg.workerUrl);
+    bool secure = url.startsWith("https://");
+    String rest = url.substring(secure ? 8 : 7);
+    int slashIdx = rest.indexOf('/');
+    String host = (slashIdx >= 0) ? rest.substring(0, slashIdx) : rest;
+    int colonIdx = host.indexOf(':');
+    if (colonIdx >= 0) host = host.substring(0, colonIdx);
+
+    IPAddress resolved;
+    unsigned long t0 = millis();
+    bool ok = WiFi.hostByName(host.c_str(), resolved);
+    unsigned long tookMs = millis() - t0;
+    if (ok) {
+      sdLogfEx("NET", "WIFI", "%s dns_resolve host:%s ip:%s took_ms:%lu",
+        tag, host.c_str(), resolved.toString().c_str(), tookMs);
+    } else {
+      sdLogfEx("ERR", "WIFI", "%s dns_resolve_failed host:%s took_ms:%lu",
+        tag, host.c_str(), tookMs);
+    }
+  }
+#else
+  (void)tag; (void)cfg;
+#endif
+}
+
 inline void logApRequest(const char* tag) {
   String host = apServer.hostHeader();
   String uri = apServer.uri();
@@ -144,21 +188,7 @@ bool connectWiFi(AppConfig& cfg, Preferences& prefs) {
     Serial.printf("WiFi: %s (%d dBm)\n", WiFi.SSID().c_str(), WiFi.RSSI());
     sdLogfEx("NET", "WIFI", "connect_ok ip:%s rssi:%d",
       WiFi.localIP().toString().c_str(), WiFi.RSSI());
-#if DIAG_MODE
-    {
-      uint8_t* bssid = WiFi.BSSID();
-      char bssidStr[20];
-      snprintf(bssidStr, sizeof(bssidStr), "%02X:%02X:%02X:%02X:%02X:%02X",
-        bssid[0], bssid[1], bssid[2], bssid[3], bssid[4], bssid[5]);
-      sdLogfEx("NET", "WIFI",
-        "detail bssid:%s ch:%d subnet:%s gw:%s dns1:%s",
-        bssidStr,
-        (int)WiFi.channel(),
-        WiFi.subnetMask().toString().c_str(),
-        WiFi.gatewayIP().toString().c_str(),
-        WiFi.dnsIP(0).toString().c_str());
-    }
-#endif
+    logWifiDiagDetail("connect", cfg);
     return true;
   }
   Serial.println("WiFi: failed to connect");
