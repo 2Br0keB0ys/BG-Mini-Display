@@ -7,7 +7,7 @@ This project now uses a production OTA flow backed by Cloudflare Worker + R2.
 - Worker endpoints for OTA are deployed.
 - R2 firmware bucket is configured: `bgdisplay-firmware`.
 - Stable release metadata is present via `/api/admin/ota`.
-- Firmware `v4.1.4` is deployed on device and supports OTA commands.
+- Firmware `v4.1.5` is deployed on device and supports OTA commands.
 
 ## OTA Architecture
 
@@ -39,7 +39,7 @@ PlatformIO build -> firmware .bin
   - `pio run`
 2. Compute artifact hashes (`md5`, `sha256`) and size
 3. Upload artifact to R2 (remote)
-  - Example key: `stable/bg-display-mini-4.1.4.bin`
+  - Example key: `stable/bg-display-mini-4.1.5.bin`
 4. Register release metadata
   - `POST /api/admin/ota`
 5. Queue validation command
@@ -66,8 +66,8 @@ KV stores (and `normalizeOtaRelease()` expects) **camelCase** field names — `r
 ```json
 {
   "channel": "stable",
-  "version": "4.1.4",
-  "r2Key": "stable/bg-display-mini-4.1.4.bin",
+  "version": "4.1.5",
+  "r2Key": "stable/bg-display-mini-4.1.5.bin",
   "sizeBytes": 1332448,
   "md5": "628929b6c52fa68eddebee292642cc61",
   "sha256": "471c62abcaad755a77c911fcb069832cc82a43fbc20c19a9f1ab203e45d2328b",

@@ -15,7 +15,7 @@ Archived/retired optional surfaces now live under `archive/`.
 
 - Cloudflare Worker + Pages are deployed.
 - OTA release channel `stable` is active with signed manifest/download flow.
-- Firmware `v4.1.4` is the current production baseline.
+- Firmware `v4.1.5` is the current production baseline.
 
 ## Repository Layout
 
