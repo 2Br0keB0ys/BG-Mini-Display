@@ -100,6 +100,7 @@ inline bool performCloudOtaUpdate(AppConfig& cfg, CloudOtaReleaseInfo* releaseIn
 
   WiFiClientSecure client;
   client.setInsecure();
+  client.setTimeout(15000); // bound stalls so a bad download can't block loop() indefinitely
 
   httpUpdate.rebootOnUpdate(false);
   httpUpdate.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);

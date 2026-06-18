@@ -696,7 +696,9 @@ void loop() {
   }
 
   // WiFi watchdog
-  if (WiFi.status() != WL_CONNECTED) {
+  static bool wifiWasConnected = true;  // device boots already connected via connectWiFi()
+  bool wifiConnectedNow = (WiFi.status() == WL_CONNECTED);
+  if (!wifiConnectedNow) {
     static unsigned long lastReconnect = 0;
     if (now - lastReconnect > 30000UL) {
       lastReconnect = now;
@@ -706,7 +708,14 @@ void loop() {
         (unsigned)ESP.getMinFreeHeap(), millis() / 1000UL);
       WiFi.reconnect();
     }
+  } else if (!wifiWasConnected) {
+    // Roamed/reconnected without a reboot — capture fresh gateway/DNS/BSSID,
+    // since these can differ from the boot-time network (e.g. switching sites).
+    sdLogfEx("NET", "WIFI", "reconnect_ok ip:%s rssi:%d",
+      WiFi.localIP().toString().c_str(), WiFi.RSSI());
+    logWifiDiagDetail("reconnect", appConfig);
   }
+  wifiWasConnected = wifiConnectedNow;
 
   // Digest auto-refresh — once per local calendar day (picks up the freshly generated morning digest)
   if (WiFi.status() == WL_CONNECTED && now - lastDigestFetch > 14400000UL) { // check every 4 h
