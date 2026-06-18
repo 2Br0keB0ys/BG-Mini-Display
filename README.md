@@ -61,6 +61,8 @@ Line endings are normalized via repository-level `.gitattributes`:
 - Most source/docs/config files use `LF`
 - PowerShell scripts (`*.ps1`) use `CRLF`
 
+`main` is protected by repository rules that require `firmware-build`, `label`, and `worker-validate` before merge.
+
 CodeQL scope note:
 - JavaScript CodeQL is intentionally scoped to production surfaces only (`apps/cloudflare/` and `apps/ui/`).
 - `apps/pages/` and `archive/` are excluded because they are legacy/retired surfaces and can create non-actionable security noise.

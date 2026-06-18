@@ -42,7 +42,9 @@ export function DeviceActions({ meta, onCommand, showToast }) {
             disabled={!ota}
             onClick={() => {
               if (!ota) return;
-              if (confirm(`Install firmware v${ota.version} now? Device will reboot after update.`)) {
+              if (
+                confirm(`Install firmware v${ota.version} now? Device will reboot after update.`)
+              ) {
                 onCommand('ota-apply');
               }
             }}
