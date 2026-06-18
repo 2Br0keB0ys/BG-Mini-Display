@@ -8,6 +8,11 @@
 #include "config.h"
 #include <time.h>
 
+// Defined later in bgdisplay.ino — forward declared so showSettingsMenu() can
+// perform a signed live check against the worker.
+String normalizeWorkerBase(const char* raw);
+void addSignedHeaders(HTTPClient& http, const char* method, const String& pathWithQuery, const String& body, AppConfig& cfg);
+
 // ─── Colors ───────────────────────────────────────────────────────────────────
 #define CLR_BG      0x0000
 #define CLR_TEXT    0xFFFF
@@ -692,6 +697,20 @@ void showSettingsMenu(AppConfig& cfg, Preferences& prefs) {
     return code == 200;
   };
 
+  auto checkCloudflare = [&](bool& configured) -> bool {
+    configured = strlen(cfg.workerUrl) > 0 && strlen(cfg.deviceKey) > 0;
+    if (!configured || WiFi.status() != WL_CONNECTED) return false;
+    String path = String("/api/ping?v=") + String(cfg.lastConfigVersion);
+    HTTPClient http;
+    http.begin(normalizeWorkerBase(cfg.workerUrl) + path);
+    http.addHeader("X-Device-Key", cfg.deviceKey);
+    addSignedHeaders(http, "GET", path, "", cfg);
+    http.setTimeout(3000);
+    int code = http.GET();
+    http.end();
+    return code == 200;
+  };
+
   auto drawStatus = [&](const char* name, int y, bool ok, bool configured) {
     canvas.setTextDatum(middle_left);
     canvas.setFont(&fonts::FreeSans9pt7b);
@@ -708,12 +727,12 @@ void showSettingsMenu(AppConfig& cfg, Preferences& prefs) {
     canvas.drawString(ok ? "Connected" : "Not Connected", W - 12, y);
   };
 
-  auto drawSettingsScreen = [&](bool dexOk, bool dexCfg, bool nsOk, bool nsCfg) {
+  auto drawSettingsScreen = [&](bool dexOk, bool dexCfg, bool nsOk, bool nsCfg, bool cfOk, bool cfCfg) {
     canvas.fillScreen(CLR_BG);
     canvas.setFont(&fonts::FreeSansBold9pt7b);
     canvas.setTextColor(CLR_TEXT);
     canvas.setTextDatum(middle_center);
-    canvas.drawString("Settings", W/2, 18);
+    canvas.drawString("Device Status", W/2, 18);
     canvas.drawLine(10, 34, W-10, 34, CLR_SEP);
 
     canvas.setFont(&fonts::FreeSans9pt7b);
@@ -737,13 +756,7 @@ void showSettingsMenu(AppConfig& cfg, Preferences& prefs) {
 
     drawStatus("Dexcom Share", 124, dexOk, dexCfg);
     drawStatus("Nightscout", 142, nsOk, nsCfg);
-
-    canvas.drawLine(10, 186, W-10, 186, CLR_SEP);
-    canvas.setTextColor(CLR_MUTED);
-    canvas.setTextDatum(middle_left);
-    canvas.drawString("Setup at", 12, 202);
-    canvas.setTextColor(CLR_GREEN);
-    canvas.drawString("setup.example.com", 12, 220);
+    drawStatus("Cloudflare", 160, cfOk, cfCfg);
 
     canvas.setTextColor(CLR_DIM);
     canvas.setTextDatum(middle_center);
@@ -760,9 +773,11 @@ void showSettingsMenu(AppConfig& cfg, Preferences& prefs) {
       lastRefresh = millis();
       bool dexCfg = false;
       bool nsCfg = false;
+      bool cfCfg = false;
       bool dexOk = checkDexcom(dexCfg);
       bool nsOk = checkNightscout(nsCfg);
-      drawSettingsScreen(dexOk, dexCfg, nsOk, nsCfg);
+      bool cfOk = checkCloudflare(cfCfg);
+      drawSettingsScreen(dexOk, dexCfg, nsOk, nsCfg, cfOk, cfCfg);
     }
 
     if (M5.Touch.getCount() && M5.Touch.getDetail().wasPressed()) {
