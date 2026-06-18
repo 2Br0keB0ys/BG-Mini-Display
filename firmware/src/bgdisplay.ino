@@ -640,12 +640,9 @@ void loop() {
     setDisplayBanner(dispState, "Configure Dexcom/Nightscout", CLR_ORANGE, 3500UL);
   }
 
-  // BG poll — every pollIntervalMin
-  unsigned long pollMs = (unsigned long)appConfig.pollIntervalMin * 60000UL;
-  // If all BG sources are failing repeatedly, back off polling to reduce
-  // connection churn and avoid long-run instability under bad network/API states.
-  if (sourceHealth.consecutiveBgFailures >= 3 && pollMs < 180000UL) pollMs = 180000UL;
-  if (sourceHealth.consecutiveBgFailures >= 8 && pollMs < 300000UL) pollMs = 300000UL;
+  // BG poll — fixed at 60s cadence.
+  // Keep polling at 1 minute even when sources are failing to avoid 3/5 minute backoff.
+  unsigned long pollMs = 60000UL;
   if (WiFi.status()==WL_CONNECTED && now - lastBGPoll > pollMs) {
     lastBGPoll = now;
     bool ok = false;
