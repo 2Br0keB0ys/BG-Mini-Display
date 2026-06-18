@@ -2,6 +2,7 @@
   "name": "bgdisplay-cloudflare",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "description": "BGDisplay Cloudflare Worker + Pages deployment helpers",
   "scripts": {
     "deploy:worker": "wrangler deploy --config wrangler.toml",
@@ -19,8 +20,10 @@
     "format:check": "prettier --check src"
   },
   "devDependencies": {
-    "wrangler": "^4.90.0",
-    "eslint": "^8.57.0",
-    "prettier": "^3.2.5"
+    "wrangler": "^4.101.0",
+    "eslint": "^10.5.0",
+    "@eslint/js": "^10.0.1",
+    "globals": "^17.6.0",
+    "prettier": "^3.8.4"
   }
 }

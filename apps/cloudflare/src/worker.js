@@ -2747,7 +2747,7 @@ export default {
       const rawBody = await request.text();
       const sig = await verifyDeviceSignature(request, env, keyHash, rawBody);
       if (!sig.ok) return json({ error: sig.error }, 401);
-      let body = {};
+      let body;
       try {
         body = rawBody ? JSON.parse(rawBody) : {};
       } catch {
@@ -2812,7 +2812,7 @@ export default {
       const rawBody = await request.text();
       const sig = await verifyDeviceSignature(request, env, keyHash, rawBody);
       if (!sig.ok) return json({ error: sig.error }, 401);
-      let parsed = {};
+      let parsed;
       try {
         parsed = rawBody ? JSON.parse(rawBody) : {};
       } catch {
@@ -2922,7 +2922,7 @@ export default {
       const rawBody = await request.text();
       const sig = await verifyDeviceSignature(request, env, keyHash, rawBody);
       if (!sig.ok) return json({ error: sig.error }, 401);
-      let body = {};
+      let body;
       try {
         body = rawBody ? JSON.parse(rawBody) : {};
       } catch {
