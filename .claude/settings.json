@@ -1,0 +1,40 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(*:*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cat .claude/project-context.md"
+          }
+        ]
+      },
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cat .claude/project-context.md"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "auto",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '[PreCompact] Auto-compacting — project-context.md will re-inject after.'"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -37,8 +37,12 @@ apps/cloudflare/.dev.vars
 !**/.env.example
 
 # Local Claude/Copilot permission overrides
-**/.claude/settings.local.json
-**/.claude/
+# (.claude/* instead of .claude/ so settings.json can be un-ignored below;
+# git can't re-include a path whose parent directory is itself ignored)
+**/.claude/*
+!.claude/settings.json
+.claude/settings.local.json
+.claude/project-context.md
 CLAUDE.md
 **/.aider*
 **/.copilot*
