@@ -713,6 +713,7 @@ void loop() {
     // since these can differ from the boot-time network (e.g. switching sites).
     sdLogfEx("NET", "WIFI", "reconnect_ok ip:%s rssi:%d",
       WiFi.localIP().toString().c_str(), WiFi.RSSI());
+    applyPublicDns();
     logWifiDiagDetail("reconnect", appConfig);
   }
   wifiWasConnected = wifiConnectedNow;

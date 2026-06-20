@@ -15,6 +15,24 @@ DNSServer dnsServer;
 // signals "captive portal" to iOS faster than a connection timeout.
 WiFiServer httpsStub(443);
 
+// Some networks (open guest WiFi, ISP "secure" DNS, content filters) hand out
+// DNS resolvers via DHCP that block or fail to resolve *.workers.dev — the
+// worker hostname is structurally indistinguishable from the abuse traffic
+// those filters target. WiFi association and DHCP still succeed in that case
+// (the device gets a real IP/gateway), only DNS for our specific host fails.
+// Re-applying the DHCP-leased IP/gateway/subnet via WiFi.config() while
+// substituting public DNS servers sidesteps the network's resolver entirely
+// without needing a static IP. Call after every (re)connect, since
+// WiFi.reconnect() re-runs DHCP and would otherwise restore the filtered DNS.
+inline void applyPublicDns() {
+  if (WiFi.status() != WL_CONNECTED) return;
+  IPAddress dns1(1, 1, 1, 1);
+  IPAddress dns2(8, 8, 8, 8);
+  bool ok = WiFi.config(WiFi.localIP(), WiFi.gatewayIP(), WiFi.subnetMask(), dns1, dns2);
+  sdLogfEx("NET", "WIFI", "dns_override applied:%d dns1:%s dns2:%s",
+    ok ? 1 : 0, dns1.toString().c_str(), dns2.toString().c_str());
+}
+
 // Logs link-layer detail (BSSID/channel/subnet/gateway/DNS) plus a live DNS
 // resolution of the configured worker hostname. Called on initial connect and
 // on every reconnect so network changes (e.g. roaming between sites) are
@@ -188,6 +206,7 @@ bool connectWiFi(AppConfig& cfg, Preferences& prefs) {
     Serial.printf("WiFi: %s (%d dBm)\n", WiFi.SSID().c_str(), WiFi.RSSI());
     sdLogfEx("NET", "WIFI", "connect_ok ip:%s rssi:%d",
       WiFi.localIP().toString().c_str(), WiFi.RSSI());
+    applyPublicDns();
     logWifiDiagDetail("connect", cfg);
     return true;
   }
