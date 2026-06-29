@@ -1,4 +1,4 @@
-// glooko.h — Pump status fetch via Worker proxy
+// omnipod.h — Omnipod pod-status fetch via Worker proxy
 #pragma once
 
 #include <HTTPClient.h>
@@ -20,7 +20,7 @@ struct OmnipodStatus {
 };
 
 inline bool omnipodConfigured(const AppConfig& cfg) {
-  return cfg.glookoEnabled && strlen(cfg.workerUrl) > 0 && strlen(cfg.deviceKey) > 0;
+  return cfg.omnipodEnabled && strlen(cfg.workerUrl) > 0 && strlen(cfg.deviceKey) > 0;
 }
 
 inline time_t parseEpochSeconds(const JsonVariantConst& v) {
@@ -33,20 +33,20 @@ inline time_t parseEpochSeconds(const JsonVariantConst& v) {
   return 0;
 }
 
-inline bool fetchGlookoOmnipod(AppConfig& cfg, OmnipodStatus& out) {
+inline bool fetchOmnipodStatus(AppConfig& cfg, OmnipodStatus& out) {
   if (!omnipodConfigured(cfg)) {
     sdLogfEx(
       "ERR",
       "POD_SYNC",
       "not_configured enabled:%d hasWorker:%d hasKey:%d",
-      cfg.glookoEnabled ? 1 : 0,
+      cfg.omnipodEnabled ? 1 : 0,
       strlen(cfg.workerUrl) > 0 ? 1 : 0,
       strlen(cfg.deviceKey) > 0 ? 1 : 0
     );
     return false;
   }
 
-  sdLogfEx("POD", "POD_SYNC", "request_start pollMin:%d", cfg.glookoPollMin);
+  sdLogfEx("POD", "POD_SYNC", "request_start pollMin:%d", cfg.omnipodPollMin);
 
   HTTPClient http;
   String path = "/api/omnipod";
@@ -57,10 +57,10 @@ inline bool fetchGlookoOmnipod(AppConfig& cfg, OmnipodStatus& out) {
   http.setTimeout(9000);
 
   int code = http.GET();
-  sdLogfEx("POD", "POD_SYNC", "proxy_http:%d", code);
+  sdLogfEx("POD", "POD_SYNC", "proxy_http:%d err:%s", code, HTTPClient::errorToString(code).c_str());
   if (code != 200) {
-    char msg[48];
-    snprintf(msg, sizeof(msg), "Pump proxy HTTP %d", code);
+    char msg[80];
+    snprintf(msg, sizeof(msg), "Pump proxy HTTP %d (%s)", code, HTTPClient::errorToString(code).c_str());
     sdLogfEx("ERR", "POD_SYNC", "%s", msg);
     http.end();
     out.fetchedAtMs = millis();

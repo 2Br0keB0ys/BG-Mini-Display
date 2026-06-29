@@ -19,7 +19,7 @@
 #include "sd_logger.h"
 #include "ota.h"
 #include "ws_sync.h"
-#include "glooko.h"
+#include "omnipod.h"
 
 #if __has_include("secrets.h")
 #include "secrets.h"
@@ -137,7 +137,6 @@ void pollCloudflareCommand(AppConfig&, Preferences&);
 void ackCloudflareCommand(AppConfig&, const char* cmdId, bool ok, const char* message);
 bool uploadSdLogs(AppConfig&, const char* cmdId, int maxLines = 700, size_t maxBytes = 120000, bool failIfEmpty = true);
 bool setupUnlockPressedDuringBoot(unsigned long windowMs = 6000UL);
-void factoryResetToInitialSetup(AppConfig&, Preferences&);
 void logConfigDiagnostics(const char* stage, const AppConfig& cfg);
 void logRuntimeSnapshot(const char* stage, const AppConfig& cfg, const BGReading& reading);
 void logHeartbeat(const AppConfig& cfg, const BGReading& reading);
@@ -230,8 +229,8 @@ bool enrollDevice(AppConfig& cfg, Preferences& p) {
     http.end();
     return true;
   } else {
-    char msg[64];
-    snprintf(msg, sizeof(msg), "Enroll failed: HTTP %d", code);
+    char msg[96];
+    snprintf(msg, sizeof(msg), "Enroll failed: HTTP %d (%s)", code, HTTPClient::errorToString(code).c_str());
     sdLogError(msg);
     Serial.printf("[enroll] Failed: HTTP %d\n", code);
   }
@@ -502,10 +501,6 @@ void loop() {
 
   wsTick(appConfig, prefs);
 
-  if (gFactoryResetArmed && (now - gFactoryResetArmMs > 10000UL)) {
-    gFactoryResetArmed = false;
-  }
-
   // Single press on hardware power button = immediate settings sync.
   if (M5.BtnPWR.wasClicked()) {
     dispState.dndWakeUntilMs = now + 300000UL;
@@ -523,18 +518,8 @@ void loop() {
 
   // Local emergency reset gesture: hold power twice within 10 seconds.
   // This allows a true reset even if Cloudflare command path is unavailable.
-  if (M5.BtnPWR.wasHold()) {
-    if (gFactoryResetArmed && (now - gFactoryResetArmMs <= 10000UL)) {
-      gFactoryResetArmed = false;
-      sdLog("CMD", "Local factory reset gesture confirmed");
-      factoryResetToInitialSetup(appConfig, prefs);
-      return;
-    }
-    gFactoryResetArmed = true;
-    gFactoryResetArmMs = now;
-    sdLog("CMD", "Local factory reset armed; hold again to confirm");
-    setDisplayBanner(dispState, "Hold power again to reset", CLR_ORANGE, 3500UL);
-  }
+  // (Shared with startAPMode()'s loop — see checkFactoryResetGesture() in wifi_setup.h.)
+  if (checkFactoryResetGesture(appConfig, prefs, false)) return;
 
   checkDailyAutoReboot();
 
@@ -713,6 +698,8 @@ void loop() {
     // since these can differ from the boot-time network (e.g. switching sites).
     sdLogfEx("NET", "WIFI", "reconnect_ok ip:%s rssi:%d",
       WiFi.localIP().toString().c_str(), WiFi.RSSI());
+    checkCaptivePortal();
+    applyPublicDns(appConfig);
     logWifiDiagDetail("reconnect", appConfig);
   }
   wifiWasConnected = wifiConnectedNow;
@@ -736,13 +723,13 @@ void loop() {
     }
   }
 
-  // Pump proxy poll — only when integration is enabled
-  if (appConfig.glookoEnabled && WiFi.status() == WL_CONNECTED) {
-    unsigned long podPollMs = (unsigned long)appConfig.glookoPollMin * 60000UL;
+  // Omnipod pod-status proxy poll — only when integration is enabled
+  if (appConfig.omnipodEnabled && WiFi.status() == WL_CONNECTED) {
+    unsigned long podPollMs = (unsigned long)appConfig.omnipodPollMin * 60000UL;
     if (podPollMs < 1800000UL) podPollMs = 1800000UL; // hard floor 30 min
     if (now - lastOmnipodPoll > podPollMs) {
       lastOmnipodPoll = now;
-      fetchGlookoOmnipod(appConfig, lastOmnipod);
+      fetchOmnipodStatus(appConfig, lastOmnipod);
     }
   }
 
@@ -838,8 +825,8 @@ void pingCloudflare(AppConfig& cfg, Preferences& p) {
           version, cfg.lastConfigVersion, _pingMs);
       }
     } else {
-      sdLogfEx("CFG", "CFG", "ping_http:%d elapsed_ms:%lu heap:%u",
-        code, _pingMs, (unsigned)ESP.getFreeHeap());
+      sdLogfEx("CFG", "CFG", "ping_http:%d err:%s elapsed_ms:%lu heap:%u",
+        code, HTTPClient::errorToString(code).c_str(), _pingMs, (unsigned)ESP.getFreeHeap());
     }
     http.end();
   }
@@ -927,8 +914,8 @@ void pullCloudflareConfig(AppConfig& cfg, Preferences& p) {
 
   unsigned long _cfPullT0 = millis();
   int code = http.GET();
-  sdLogfEx("CFG", "CFG", "config_pull_http:%d localV:%d elapsed_ms:%lu heap:%u",
-    code, cfg.lastConfigVersion, millis() - _cfPullT0, (unsigned)ESP.getFreeHeap());
+  sdLogfEx("CFG", "CFG", "config_pull_http:%d err:%s localV:%d elapsed_ms:%lu heap:%u",
+    code, HTTPClient::errorToString(code).c_str(), cfg.lastConfigVersion, millis() - _cfPullT0, (unsigned)ESP.getFreeHeap());
   {
     char pullMsg[80];
     snprintf(pullMsg, sizeof(pullMsg), "Pull HTTP:%d priorV:%d", code, cfg.lastConfigVersion);
@@ -989,8 +976,8 @@ void pullCloudflareConfig(AppConfig& cfg, Preferences& p) {
     if (c.containsKey("timezone"))            strlcpy(cfg.timezone,     c["timezone"],       32);
     if (c.containsKey("dnd_from"))            strlcpy(cfg.dndFrom,      c["dnd_from"],       8);
     if (c.containsKey("dnd_to"))              strlcpy(cfg.dndTo,        c["dnd_to"],         8);
-    if (c.containsKey("glooko_enabled"))      cfg.glookoEnabled    = c["glooko_enabled"];
-    if (c.containsKey("glooko_poll_min"))     cfg.glookoPollMin    = c["glooko_poll_min"];
+    if (c.containsKey("omnipod_enabled"))     cfg.omnipodEnabled   = c["omnipod_enabled"];
+    if (c.containsKey("omnipod_poll_min"))    cfg.omnipodPollMin   = c["omnipod_poll_min"];
     if (c.containsKey("ota_enabled"))         cfg.otaEnabled       = c["ota_enabled"];
     if (c.containsKey("ota_check_min"))       cfg.otaCheckMin      = c["ota_check_min"];
     if (c.containsKey("ota_channel"))         strlcpy(cfg.otaChannel, c["ota_channel"], sizeof(cfg.otaChannel));
@@ -1164,9 +1151,9 @@ bool pushStatus(AppConfig& cfg) {
     if (gDigestFetchDay >= 0) doc["digestFetchDay"] = gDigestFetchDay;
     doc["otaEnabled"]       = cfg.otaEnabled;
     doc["otaChannel"]       = cfg.otaChannel;
-    // Pump proxy status (only when enabled and valid data available)
-    if (cfg.glookoEnabled) {
-      doc["glookoEnabled"] = true;
+    // Omnipod pod-status proxy (only when enabled and valid data available)
+    if (cfg.omnipodEnabled) {
+      doc["omnipodEnabled"] = true;
       if (lastOmnipod.valid) {
         doc["podActive"]      = lastOmnipod.podActive;
         doc["podMinToExpiry"] = lastOmnipod.minutesToExpiry;
@@ -1179,7 +1166,7 @@ bool pushStatus(AppConfig& cfg) {
     addSignedHeaders(http, "POST", path, body, cfg);
   int code = http.POST(body);
   if (code < 200 || code >= 300) {
-    sdLogfEx("ERR", "STATUS", "push_fail http:%d", code);
+    sdLogfEx("ERR", "STATUS", "push_fail http:%d err:%s", code, HTTPClient::errorToString(code).c_str());
     logHttpFailure("Status push", code);
     http.end();
     return false;
@@ -1202,7 +1189,7 @@ void pollCloudflareCommand(AppConfig& cfg, Preferences& p) {
 
   int code = http.GET();
   if (code != 200) {
-    sdLogfEx("ERR", "CMD", "poll_http:%d", code);
+    sdLogfEx("ERR", "CMD", "poll_http:%d err:%s", code, HTTPClient::errorToString(code).c_str());
     http.end();
     return;
   }
@@ -1381,7 +1368,8 @@ void ackCloudflareCommand(AppConfig& cfg, const char* cmdId, bool ok, const char
 
   addSignedHeaders(http, "POST", path, payload, cfg);
   int code = http.POST(payload);
-  sdLogfEx("CMD", "CMD_ACK", "id:%s ok:%d http:%d msg:%s", cmdId, ok ? 1 : 0, code, message ? message : "");
+  sdLogfEx("CMD", "CMD_ACK", "id:%s ok:%d http:%d err:%s msg:%s",
+    cmdId, ok ? 1 : 0, code, HTTPClient::errorToString(code).c_str(), message ? message : "");
   http.end();
 }
 
@@ -1438,7 +1426,7 @@ void fetchDigest(AppConfig& cfg) {
   http.setTimeout(5000);
 
   int code = http.GET();
-  sdLogfEx("AI", "DIGEST", "fetch_http:%d", code);
+  sdLogfEx("AI", "DIGEST", "fetch_http:%d err:%s", code, HTTPClient::errorToString(code).c_str());
   if (code == 200) {
     StaticJsonDocument<1536> doc;
     if (!deserializeJson(doc, http.getString())) {
@@ -1478,7 +1466,7 @@ bool syncTimeFromWorker(AppConfig& cfg) {
 
   int code = http.GET();
   if (code != 200) {
-    sdLogfEx("ERR", "TIME", "worker_time_http:%d", code);
+    sdLogfEx("ERR", "TIME", "worker_time_http:%d err:%s", code, HTTPClient::errorToString(code).c_str());
     http.end();
     return false;
   }
@@ -1584,7 +1572,7 @@ bool setupUnlockPressedDuringBoot(unsigned long windowMs) {
   return false;
 }
 
-void factoryResetToInitialSetup(AppConfig& cfg, Preferences& p) {
+void factoryResetToInitialSetup(AppConfig& cfg, Preferences& p, bool reenterApMode) {
   sdLog("CMD", "Factory reset initiated");
   setDisplayBanner(dispState, "Factory reset...", CLR_ORANGE, 3000UL);
 
@@ -1616,7 +1604,10 @@ void factoryResetToInitialSetup(AppConfig& cfg, Preferences& p) {
   if (!strlen(cfg.timezone)) strlcpy(cfg.timezone, BGDISPLAY_DEFAULT_TIMEZONE, sizeof(cfg.timezone));
   saveConfig(p, cfg);
 
-  sdLog("CMD", "Factory reset complete; entering setup AP");
-  startAPMode(cfg, p);
+  sdLog("CMD", "Factory reset complete");
+  if (reenterApMode) {
+    sdLog("CMD", "Entering setup AP");
+    startAPMode(cfg, p);
+  }
   ESP.restart();
 }

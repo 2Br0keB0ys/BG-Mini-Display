@@ -15,7 +15,7 @@ Archived/retired optional surfaces now live under `archive/`.
 
 - Cloudflare Worker + Pages are deployed.
 - OTA release channel `stable` is active with signed manifest/download flow.
-- Firmware `v4.1.4` is the current production baseline.
+- Firmware `v4.1.5` is the current production baseline.
 
 ## Repository Layout
 
@@ -174,7 +174,7 @@ From plain Windows shell, `pio` may need full path:
 Use the Cloudflare Pages UI for:
 - Display preferences
 - Dexcom and Nightscout credentials
-- **Insulin profile / pump data source** (Glooko, Tandem, Medtronic, Tidepool) with 30+ minute polling
+- **Insulin profile** (Tandem, Omnipod, Medtronic, Beta Bionics, Ypsomed, Roche, etc.) — metadata only, used as AI digest context
 - Alert thresholds and DND
 - **Pushover phone alerts** and digest push
 - **EndoAI** — AI-powered glucose summaries (daily at 7:00 AM, hourly 8 AM–11 PM)
@@ -202,7 +202,7 @@ High-level release flow:
 ### Settings Menu
 - Dexcom, Nightscout, and pump data source connection status
 - **EndoAI** section with today's summary, generation button, and hourly/daily schedule
-- Pump data source selection (Glooko, Tandem, Medtronic, Tidepool)
+- Insulin profile selection (brand/model/loop-mode metadata)
 - Alert and DND settings with per-day customization
 - Pushover phone alerts and digest push scheduling
 - Display brightness, timezone, and theme options
