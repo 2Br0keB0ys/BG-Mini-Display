@@ -71,9 +71,9 @@ struct AppConfig {
   // Last known config version from Worker
   int  lastConfigVersion=0;
 
-  // Pump data proxy (credentials are worker-side)
-  bool glookoEnabled=false;
-  int  glookoPollMin=30;
+  // Omnipod pod-status proxy (credentials are worker-side)
+  bool omnipodEnabled=false;
+  int  omnipodPollMin=30;
 };
 
 inline void sanitizeConfig(AppConfig& c) {
@@ -91,8 +91,8 @@ inline void sanitizeConfig(AppConfig& c) {
   if (c.high <= c.low) c.high = c.low + 1;
   if (c.urgentHigh <= c.high) c.urgentHigh = c.high + 1;
 
-  if (c.glookoPollMin < 30)  c.glookoPollMin = 30;
-  if (c.glookoPollMin > 240) c.glookoPollMin = 240;
+  if (c.omnipodPollMin < 30)  c.omnipodPollMin = 30;
+  if (c.omnipodPollMin > 240) c.omnipodPollMin = 240;
 
   if (c.otaCheckMin < 30)  c.otaCheckMin = 30;
   if (c.otaCheckMin > 1440) c.otaCheckMin = 1440;
@@ -134,8 +134,8 @@ inline void saveConfig(Preferences& p, const AppConfig& c) {
   p.putInt("autoDim",       c.autoDimMin);
   p.putInt("dimTo",         c.dimToPct);
   p.putInt("cfgVersion",    c.lastConfigVersion);
-  p.putBool("glookoEn",     c.glookoEnabled);
-  p.putInt("glookoMin",     c.glookoPollMin);
+  p.putBool("omnipodEn",    c.omnipodEnabled);
+  p.putInt("omnipodMin",    c.omnipodPollMin);
   p.putBool("otaEnable",    c.otaEnabled);
   p.putInt("otaCheckMin",   c.otaCheckMin);
   p.putString("otaChannel", c.otaChannel);
@@ -184,8 +184,8 @@ inline void loadConfig(Preferences& p, AppConfig& c) {
   c.autoDimMin         = p.getInt("autoDim",10);
   c.dimToPct           = p.getInt("dimTo",10);
   c.lastConfigVersion  = p.getInt("cfgVersion",0);
-  c.glookoEnabled      = p.getBool("glookoEn", false);
-  c.glookoPollMin      = p.getInt("glookoMin", 30);
+  c.omnipodEnabled     = p.getBool("omnipodEn", false);
+  c.omnipodPollMin     = p.getInt("omnipodMin", 30);
   c.otaEnabled         = p.getBool("otaEnable", true);
   c.otaCheckMin        = p.getInt("otaCheckMin", 360);
   strlcpy(c.otaChannel, p.getString("otaChannel","stable").c_str(), sizeof(c.otaChannel));

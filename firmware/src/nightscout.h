@@ -35,8 +35,8 @@ bool fetchNightscout(AppConfig& cfg, BGReading& reading) {
   unsigned long _nsT0 = millis();
   int code = http.GET();
   unsigned long _nsMs = millis() - _nsT0;
-  sdLogfEx("NS", "NS_FETCH", "http:%d elapsed_ms:%lu token:%d",
-    code, _nsMs, strlen(cfg.nightscoutSecret) > 0 ? 1 : 0);
+  sdLogfEx("NS", "NS_FETCH", "http:%d err:%s elapsed_ms:%lu token:%d",
+    code, HTTPClient::errorToString(code).c_str(), _nsMs, strlen(cfg.nightscoutSecret) > 0 ? 1 : 0);
 
   bool ok = false;
   if (code == 200) {
@@ -81,8 +81,9 @@ bool fetchNightscout(AppConfig& cfg, BGReading& reading) {
   } else {
     Serial.printf("NS: HTTP %d\n", code);
     {
-      char msg[48];
-      snprintf(msg, sizeof(msg), "Nightscout HTTP %d elapsed_ms:%lu", code, _nsMs);
+      char msg[80];
+      snprintf(msg, sizeof(msg), "Nightscout HTTP %d (%s) elapsed_ms:%lu",
+        code, HTTPClient::errorToString(code).c_str(), _nsMs);
       sdLogfEx("ERR", "NS_FETCH", "%s", msg);
     }
 #if DIAG_MODE

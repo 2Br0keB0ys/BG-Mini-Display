@@ -73,8 +73,8 @@ bool dexAuthenticateAccount(AppConfig& cfg) {
   unsigned long _authT0 = millis();
   int code = http.POST(bs);
   unsigned long _authMs = millis() - _authT0;
-  sdLogfEx("DEX", "DEX_AUTH", "auth_http:%d region:%s userType:%s elapsed_ms:%lu",
-    code, cfg.dexcomRegion, _isPhone ? "phone" : "email", _authMs);
+  sdLogfEx("DEX", "DEX_AUTH", "auth_http:%d err:%s region:%s userType:%s elapsed_ms:%lu",
+    code, HTTPClient::errorToString(code).c_str(), cfg.dexcomRegion, _isPhone ? "phone" : "email", _authMs);
 
   if (code == 200) {
     String r = http.getString();
@@ -89,8 +89,9 @@ bool dexAuthenticateAccount(AppConfig& cfg) {
 
   Serial.printf("Dexcom auth failed: HTTP %d\n", code);
   {
-    char msg[48];
-    snprintf(msg, sizeof(msg), "Dex auth HTTP %d elapsed_ms:%lu", code, _authMs);
+    char msg[80];
+    snprintf(msg, sizeof(msg), "Dex auth HTTP %d (%s) elapsed_ms:%lu",
+      code, HTTPClient::errorToString(code).c_str(), _authMs);
     sdLogfEx("ERR", "DEX_AUTH", "%s", msg);
   }
 #if DIAG_MODE
@@ -130,7 +131,7 @@ bool dexAuthenticateAccount(AppConfig& cfg) {
         return true;
       }
     }
-    sdLogfEx("ERR", "DEX_AUTH", "alt_region_also_failed code:%d", code2);
+    sdLogfEx("ERR", "DEX_AUTH", "alt_region_also_failed code:%d err:%s", code2, HTTPClient::errorToString(code2).c_str());
     http2.end();
   }
 
@@ -164,8 +165,8 @@ bool dexLogin(AppConfig& cfg) {
   unsigned long _loginT0 = millis();
   int code = http.POST(bs);
   unsigned long _loginMs = millis() - _loginT0;
-  sdLogfEx("DEX", "DEX_LOGIN", "login_http:%d accountIdLen:%u elapsed_ms:%lu",
-    code, (unsigned)dexAccountId.length(), _loginMs);
+  sdLogfEx("DEX", "DEX_LOGIN", "login_http:%d err:%s accountIdLen:%u elapsed_ms:%lu",
+    code, HTTPClient::errorToString(code).c_str(), (unsigned)dexAccountId.length(), _loginMs);
 
   if (code == 200) {
     String r = http.getString();
@@ -184,8 +185,9 @@ bool dexLogin(AppConfig& cfg) {
 
   Serial.printf("Dexcom login failed: HTTP %d\n", code);
   {
-    char msg[56];
-    snprintf(msg, sizeof(msg), "Dex login HTTP %d elapsed_ms:%lu", code, _loginMs);
+    char msg[88];
+    snprintf(msg, sizeof(msg), "Dex login HTTP %d (%s) elapsed_ms:%lu",
+      code, HTTPClient::errorToString(code).c_str(), _loginMs);
     sdLogfEx("ERR", "DEX_LOGIN", "%s", msg);
   }
 #if DIAG_MODE
@@ -231,8 +233,8 @@ bool fetchDexcomShare(AppConfig& cfg, BGReading& reading) {
   unsigned long _egvT0 = millis();
   int code = http.POST("");
   unsigned long _egvMs = millis() - _egvT0;
-  sdLogfEx("DEX", "DEX_FETCH", "egv_http:%d sessionLen:%u elapsed_ms:%lu",
-    code, (unsigned)dexSessionId.length(), _egvMs);
+  sdLogfEx("DEX", "DEX_FETCH", "egv_http:%d err:%s sessionLen:%u elapsed_ms:%lu",
+    code, HTTPClient::errorToString(code).c_str(), (unsigned)dexSessionId.length(), _egvMs);
 
   // Session expired (500) — force re-login once
   if (code == 500 || code == 401) {
@@ -252,7 +254,8 @@ bool fetchDexcomShare(AppConfig& cfg, BGReading& reading) {
     http.addHeader("User-Agent", "share2nightscout-bridge/0.2.5");
     http.setTimeout(8000);
     code = http.POST("");
-    sdLogfEx("DEX", "DEX_FETCH", "egv_http_retry:%d elapsed_ms:%lu", code, millis() - _egvT0);
+    sdLogfEx("DEX", "DEX_FETCH", "egv_http_retry:%d err:%s elapsed_ms:%lu",
+      code, HTTPClient::errorToString(code).c_str(), millis() - _egvT0);
   }
 
   bool ok = false;
@@ -294,8 +297,9 @@ bool fetchDexcomShare(AppConfig& cfg, BGReading& reading) {
   } else {
     Serial.printf("Dexcom EGV failed: HTTP %d\n", code);
     {
-      char msg[48];
-      snprintf(msg, sizeof(msg), "Dex EGV HTTP %d elapsed_ms:%lu", code, _egvMs);
+      char msg[80];
+      snprintf(msg, sizeof(msg), "Dex EGV HTTP %d (%s) elapsed_ms:%lu",
+        code, HTTPClient::errorToString(code).c_str(), _egvMs);
       sdLogfEx("ERR", "DEX_FETCH", "%s", msg);
     }
 #if DIAG_MODE

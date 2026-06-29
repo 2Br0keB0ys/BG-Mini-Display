@@ -3,6 +3,7 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <DNSServer.h>
+#include <HTTPClient.h>
 #include <M5Unified.h>
 #include "config.h"
 #include "crypto.h"
@@ -10,10 +11,92 @@
 
 WebServer apServer(80);
 DNSServer dnsServer;
+
+// Defined later in bgdisplay.ino — declared here so the AP-mode loop below can
+// reuse the same local factory-reset gesture as the main loop().
+extern DisplayState dispState;
+extern bool gFactoryResetArmed;
+extern unsigned long gFactoryResetArmMs;
+extern void factoryResetToInitialSetup(AppConfig& cfg, Preferences& prefs, bool reenterApMode = true);
+
+// Local emergency reset gesture: hold the power button once to arm, hold
+// again within 10s to confirm. Shared between the main loop() and
+// startAPMode()'s captive-portal loop below — a device stuck in AP setup
+// mode (e.g. it can't see/auth to its only saved SSID at a new location)
+// still needs a way to wipe local config, since the Cloudflare command path
+// requires connectivity it doesn't have by definition while stuck here.
+// Pass inApMode:true when called from within an already-running AP session
+// so factoryResetToInitialSetup() doesn't redundantly re-enter it.
+inline bool checkFactoryResetGesture(AppConfig& cfg, Preferences& prefs, bool inApMode) {
+  unsigned long now = millis();
+  if (gFactoryResetArmed && (now - gFactoryResetArmMs > 10000UL)) {
+    gFactoryResetArmed = false;
+  }
+  if (!M5.BtnPWR.wasHold()) return false;
+  if (gFactoryResetArmed && (now - gFactoryResetArmMs <= 10000UL)) {
+    gFactoryResetArmed = false;
+    sdLog("CMD", "Local factory reset gesture confirmed");
+    factoryResetToInitialSetup(cfg, prefs, !inApMode);
+    return true;
+  }
+  gFactoryResetArmed = true;
+  gFactoryResetArmMs = now;
+  sdLog("CMD", "Local factory reset armed; hold again to confirm");
+  setDisplayBanner(dispState, "Hold power again to reset", CLR_ORANGE, 3500UL);
+  return false;
+}
 // Port-443 stub: iOS 18+ probes https://captive.apple.com/ via HTTPS.
 // The ESP32 can't serve TLS, but opening a socket and immediately closing it
 // signals "captive portal" to iOS faster than a connection timeout.
 WiFiServer httpsStub(443);
+
+inline String extractHostFromUrl(const char* url) {
+  String s = String(url);
+  bool secure = s.startsWith("https://");
+  String rest = s.substring(secure ? 8 : 7);
+  int slashIdx = rest.indexOf('/');
+  String host = (slashIdx >= 0) ? rest.substring(0, slashIdx) : rest;
+  int colonIdx = host.indexOf(':');
+  if (colonIdx >= 0) host = host.substring(0, colonIdx);
+  return host;
+}
+
+// Captive-portal / open-internet check. Some networks let WiFi association +
+// DHCP succeed while gating real internet behind a browser login page, or
+// simply firewall all egress traffic; either way every later HTTPS attempt
+// (worker, Dexcom, Nightscout, NTP) fails identically and the failure mode is
+// easy to misdiagnose after the fact from DNS-timing alone. A plain HTTP GET
+// to a generate_204 endpoint comes back empty with HTTP 204 on a clean
+// network; a captive portal typically answers with a redirect or an HTML
+// body instead, and a fully egress-blocked network just times out. Purely
+// diagnostic — does not change connect/retry behavior, just makes the
+// failure mode visible in diag_wifi.log immediately. Runs before the DNS
+// override below so the result reflects the network's own DHCP-leased DNS.
+inline void checkCaptivePortal() {
+  HTTPClient http;
+  http.setConnectTimeout(4000);
+  http.setTimeout(4000);
+  if (!http.begin("http://connectivitycheck.gstatic.com/generate_204")) {
+    sdLogfEx("ERR", "WIFI", "captive_check_failed reason:begin_failed");
+    return;
+  }
+  unsigned long t0 = millis();
+  int code = http.GET();
+  unsigned long tookMs = millis() - t0;
+  if (code == 204) {
+    sdLogfEx("NET", "WIFI", "captive_check ok http:%d took_ms:%lu", code, tookMs);
+  } else if (code > 0) {
+    String location = http.header("Location");
+    String body = http.getString();
+    sdLogfEx("ERR", "WIFI",
+      "captive_check_failed reason:unexpected_response http:%d took_ms:%lu body_len:%d redirect:%s",
+      code, tookMs, (int)body.length(), location.length() ? location.c_str() : "-");
+  } else {
+    sdLogfEx("ERR", "WIFI", "captive_check_failed reason:%s http:%d took_ms:%lu",
+      HTTPClient::errorToString(code).c_str(), code, tookMs);
+  }
+  http.end();
+}
 
 // Some networks (open guest WiFi, ISP "secure" DNS, content filters) hand out
 // DNS resolvers via DHCP that block or fail to resolve *.workers.dev — the
@@ -22,15 +105,42 @@ WiFiServer httpsStub(443);
 // (the device gets a real IP/gateway), only DNS for our specific host fails.
 // Re-applying the DHCP-leased IP/gateway/subnet via WiFi.config() while
 // substituting public DNS servers sidesteps the network's resolver entirely
-// without needing a static IP. Call after every (re)connect, since
-// WiFi.reconnect() re-runs DHCP and would otherwise restore the filtered DNS.
-inline void applyPublicDns() {
+// without needing a static IP.
+//
+// Other networks do the opposite: they allow their own DHCP-leased resolver
+// fine, but firewall off egress DNS queries to any other resolver (a common
+// anti-DNS-tunneling / content-filtering policy on otherwise fully open
+// networks). A blind override to public DNS breaks resolution entirely there
+// even though the DHCP resolver itself works. So: apply the override, verify
+// it can actually resolve the worker hostname, and revert to the DHCP-leased
+// resolver if not. Call after every (re)connect, since WiFi.reconnect()
+// re-runs DHCP and would otherwise restore whichever DNS state preceded it.
+inline void applyPublicDns(AppConfig& cfg) {
   if (WiFi.status() != WL_CONNECTED) return;
-  IPAddress dns1(1, 1, 1, 1);
-  IPAddress dns2(8, 8, 8, 8);
-  bool ok = WiFi.config(WiFi.localIP(), WiFi.gatewayIP(), WiFi.subnetMask(), dns1, dns2);
+  IPAddress dhcpDns1 = WiFi.dnsIP(0);
+  IPAddress dhcpDns2 = WiFi.dnsIP(1);
+  IPAddress pubDns1(1, 1, 1, 1);
+  IPAddress pubDns2(8, 8, 8, 8);
+  bool ok = WiFi.config(WiFi.localIP(), WiFi.gatewayIP(), WiFi.subnetMask(), pubDns1, pubDns2);
   sdLogfEx("NET", "WIFI", "dns_override applied:%d dns1:%s dns2:%s",
-    ok ? 1 : 0, dns1.toString().c_str(), dns2.toString().c_str());
+    ok ? 1 : 0, pubDns1.toString().c_str(), pubDns2.toString().c_str());
+
+  if (!strlen(cfg.workerUrl)) return;
+  String host = extractHostFromUrl(cfg.workerUrl);
+  IPAddress resolved;
+  unsigned long t0 = millis();
+  bool resolveOk = WiFi.hostByName(host.c_str(), resolved);
+  unsigned long tookMs = millis() - t0;
+  if (resolveOk) {
+    sdLogfEx("NET", "WIFI", "dns_override_verify ok host:%s ip:%s took_ms:%lu",
+      host.c_str(), resolved.toString().c_str(), tookMs);
+    return;
+  }
+  sdLogfEx("ERR", "WIFI", "dns_override_verify_failed host:%s took_ms:%lu reverting_to_dhcp_dns",
+    host.c_str(), tookMs);
+  bool revertOk = WiFi.config(WiFi.localIP(), WiFi.gatewayIP(), WiFi.subnetMask(), dhcpDns1, dhcpDns2);
+  sdLogfEx("NET", "WIFI", "dns_override_reverted ok:%d dns1:%s dns2:%s",
+    revertOk ? 1 : 0, dhcpDns1.toString().c_str(), dhcpDns2.toString().c_str());
 }
 
 // Logs link-layer detail (BSSID/channel/subnet/gateway/DNS) plus a live DNS
@@ -52,13 +162,7 @@ inline void logWifiDiagDetail(const char* tag, AppConfig& cfg) {
     WiFi.dnsIP(1).toString().c_str());
 
   if (strlen(cfg.workerUrl)) {
-    String url = String(cfg.workerUrl);
-    bool secure = url.startsWith("https://");
-    String rest = url.substring(secure ? 8 : 7);
-    int slashIdx = rest.indexOf('/');
-    String host = (slashIdx >= 0) ? rest.substring(0, slashIdx) : rest;
-    int colonIdx = host.indexOf(':');
-    if (colonIdx >= 0) host = host.substring(0, colonIdx);
+    String host = extractHostFromUrl(cfg.workerUrl);
 
     IPAddress resolved;
     unsigned long t0 = millis();
@@ -206,7 +310,8 @@ bool connectWiFi(AppConfig& cfg, Preferences& prefs) {
     Serial.printf("WiFi: %s (%d dBm)\n", WiFi.SSID().c_str(), WiFi.RSSI());
     sdLogfEx("NET", "WIFI", "connect_ok ip:%s rssi:%d",
       WiFi.localIP().toString().c_str(), WiFi.RSSI());
-    applyPublicDns();
+    checkCaptivePortal();
+    applyPublicDns(cfg);
     logWifiDiagDetail("connect", cfg);
     return true;
   }
@@ -388,6 +493,7 @@ void startAPMode(AppConfig& cfg, Preferences& prefs) {
       sdLogfEx("NET", "AP", "heartbeat stations:%d", WiFi.softAPgetStationNum());
     }
     M5.update();
+    if (checkFactoryResetGesture(cfg, prefs, true)) return;
   }
   apServer.stop(); httpsStub.stop(); dnsServer.stop(); WiFi.mode(WIFI_STA);
 }
