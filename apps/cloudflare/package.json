@@ -21,12 +21,12 @@
     "test": "vitest run"
   },
   "devDependencies": {
-    "wrangler": "^4.101.0",
-    "eslint": "^10.5.0",
+    "wrangler": "^4.107.0",
+    "eslint": "^10.6.0",
     "@eslint/js": "^10.0.1",
-    "globals": "^17.6.0",
-    "prettier": "^3.8.4",
-    "vitest": "^4.1.9"
+    "globals": "^17.7.0",
+    "prettier": "^3.9.4",
+    "vitest": "^4.1.10"
   },
   "overrides": {
     "esbuild": "^0.28.1",
