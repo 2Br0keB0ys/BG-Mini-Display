@@ -15,6 +15,7 @@
 
 #pragma once
 #include <Arduino.h>
+#include <SPI.h>
 #include <SD.h>
 #include <stdarg.h>
 #include "crypto.h"
@@ -104,10 +105,12 @@ inline void sdLogRawJson(const String& entry, const char* path = LOG_FILE) {
   diagRotateFile(path);
   File f = SD.open(path, FILE_APPEND);
   if (f) { f.println(entry); f.close(); }
+  else { Serial.printf("SD: open failed: %s\n", path); }
 #else
   String enc = aesEncrypt(entry, "BGDisplay_SD_v1");
   File f = SD.open(LOG_FILE, FILE_APPEND);
   if (f) { f.println(enc); f.close(); }
+  else { Serial.printf("SD: open failed: %s\n", LOG_FILE); }
   // Production rotation — keep 2 archives
   File chk = SD.open(LOG_FILE);
   if (chk) {
@@ -172,7 +175,21 @@ inline void sdLogfEx(const char* level, const char* feature, const char* fmt, ..
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 void sdInit() {
-  if (SD.begin(4)) {
+  // M5Unified (LGFX) drives the display via its own ESP-IDF SPI host and never
+  // calls Arduino's SPI.begin().  Without this call, Arduino SPI defaults to
+  // MISO=19, but the Core2 SD card wires MISO to GPIO 38 — so SD.begin()
+  // fails silently and sdAvailable stays false for the entire session.
+  // Core2 SD pinout: SCK=18, MISO=38, MOSI=23, CS=4.
+  SPI.begin(18, 38, 23, 4);
+
+  bool mounted = false;
+  for (int attempt = 1; attempt <= 3; attempt++) {
+    if (SD.begin(4, SPI, 25000000)) { mounted = true; break; }
+    Serial.printf("SD: init attempt %d/3 failed\n", attempt);
+    if (attempt < 3) delay(200);
+  }
+
+  if (mounted) {
     sdAvailable = true;
     Serial.println("SD: mounted");
 #if DIAG_MODE
@@ -193,10 +210,12 @@ void sdInit() {
         ",\"msg\":\"BG Display Mini started\",\"fw\":\"" + String(FIRMWARE_VERSION) + "\"}";
       f.println(aesEncrypt(entry, "BGDisplay_SD_v1"));
       f.close();
+    } else {
+      Serial.println("SD: boot header write failed");
     }
 #endif
   } else {
-    Serial.println("SD: not found or failed");
+    Serial.println("SD: not found or failed after 3 attempts");
     sdAvailable = false;
   }
 }
