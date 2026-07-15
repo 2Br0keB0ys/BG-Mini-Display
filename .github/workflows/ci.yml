@@ -30,7 +30,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install PlatformIO
-        run: pip install platformio
+        run: 'pip install --only-binary :all: platformio==6.1.19'
 
       - name: Build firmware
         run: pio run
@@ -48,7 +48,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: apps/cloudflare
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Validate worker syntax
         run: node --check apps/cloudflare/src/worker.js
@@ -70,7 +70,7 @@ jobs:
 
       - name: Install cloudflare dependencies
         working-directory: apps/cloudflare
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Check cloudflare formatting
         working-directory: apps/cloudflare
@@ -78,8 +78,21 @@ jobs:
 
       - name: Install ui dependencies
         working-directory: apps/ui
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Check ui formatting
         working-directory: apps/ui
         run: npm run format:check
+
+  sonarqube:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+
+      - name: SonarQube Cloud Scan
+        uses: SonarSource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f # v8.2.1
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
