@@ -14,7 +14,13 @@ function headers(extra = {}) {
 
 export async function ensureSession() {
   if (_session) return;
-  const r = await fetch(`${WORKER_URL}/api/admin/session`);
+  // VITE_ADMIN_DEV_KEY is only set locally (.env.local, gitignored) for `npm run dev`
+  // against the deployed worker's origin-trust fallback. Production builds never have
+  // it, so the deployed Pages bundle relies solely on the real Cloudflare Access login.
+  const devKey = import.meta.env.VITE_ADMIN_DEV_KEY;
+  const r = await fetch(`${WORKER_URL}/api/admin/session`, {
+    headers: devKey ? { 'X-Admin-Dev-Key': devKey } : {},
+  });
   if (!r.ok) throw new Error('session');
   const d = await r.json();
   _session = d.token || '';

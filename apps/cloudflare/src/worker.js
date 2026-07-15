@@ -5,7 +5,7 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
   "Access-Control-Allow-Headers":
-    "Content-Type, X-Device-Key, X-Device-Id, X-Command-Id, X-Log-Lines, X-Admin-Session, CF-Access-Jwt-Assertion",
+    "Content-Type, X-Device-Key, X-Device-Id, X-Command-Id, X-Log-Lines, X-Admin-Session, X-Admin-Dev-Key, CF-Access-Jwt-Assertion",
 };
 
 const KEY_ROTATE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -3074,10 +3074,20 @@ export default {
     }
 
     // ── Admin auth gate ───────────────────────────────────────────────────────
+    // Origin/Referer alone is NOT a valid trust boundary: this worker is reachable
+    // directly via its raw workers.dev URL (unprotected by Cloudflare Access), and
+    // this codebase is public, so every entry in the origin allowlist is public
+    // knowledge. The origin check is only ever combined with a real shared secret
+    // known to local dev tooling / this repo's own admin clients, never trusted alone.
     const cfJwt = request.headers.get("CF-Access-Jwt-Assertion");
     const hasSession = await validateAdminSession(env, request);
     const trustedOrigin = isTrustedAdminOrigin(request, env);
-    if (!cfJwt && !trustedOrigin && !hasSession) {
+    const devKeyHeader = request.headers.get("X-Admin-Dev-Key") || "";
+    const devKeyValid =
+      !!env.ADMIN_DEV_KEY &&
+      !!devKeyHeader &&
+      (await sha256(devKeyHeader)) === (await sha256(env.ADMIN_DEV_KEY));
+    if (!cfJwt && !hasSession && !(trustedOrigin && devKeyValid)) {
       return json({ error: "Unauthorized. Cloudflare Access is required." }, 401);
     }
 
