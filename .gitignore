@@ -29,6 +29,8 @@ firmware/scripts/provision_logs/
 
 # Generated UI build output
 apps/ui/dist/
+apps/log-viewer/dist/
+apps/log-viewer/release/
 
 # Cloudflare local secrets
 apps/cloudflare/.dev.vars
