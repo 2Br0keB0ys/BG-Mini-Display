@@ -26,6 +26,24 @@ export default function App() {
     });
   }, []);
 
+  const features = useMemo(
+    () =>
+      Array.from(new Set(rows.map((r) => r.feat).filter(Boolean))).sort((a, b) =>
+        a.localeCompare(b)
+      ),
+    [rows]
+  );
+
+  const filteredRows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return rows.filter((row) => {
+      if (q && !row.msg.toLowerCase().includes(q)) return false;
+      if (selectedLevels.size && !selectedLevels.has(row.lvl)) return false;
+      if (selectedFeatures.size && !selectedFeatures.has(row.feat)) return false;
+      return true;
+    });
+  }, [rows, search, selectedLevels, selectedFeatures]);
+
   if (!hasApi) {
     return (
       <div className="app">
@@ -71,11 +89,6 @@ export default function App() {
     }
   };
 
-  const features = useMemo(
-    () => Array.from(new Set(rows.map((r) => r.feat).filter(Boolean))).sort(),
-    [rows]
-  );
-
   const toggleLevel = (lvl) => {
     setSelectedLevels((prev) => {
       const next = new Set(prev);
@@ -93,16 +106,6 @@ export default function App() {
       return next;
     });
   };
-
-  const filteredRows = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return rows.filter((row) => {
-      if (q && !row.msg.toLowerCase().includes(q)) return false;
-      if (selectedLevels.size && !selectedLevels.has(row.lvl)) return false;
-      if (selectedFeatures.size && !selectedFeatures.has(row.feat)) return false;
-      return true;
-    });
-  }, [rows, search, selectedLevels, selectedFeatures]);
 
   return (
     <div className="app">
