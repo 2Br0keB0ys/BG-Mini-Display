@@ -1,3 +1,7 @@
+[![Quality gate status](https://sonarcloud.io/api/project_badges/measure?project=2Br0keB0ys_BG-Mini-Display&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=2Br0keB0ys_BG-Mini-Display)
+[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=2Br0keB0ys_BG-Mini-Display&metric=bugs)](https://sonarcloud.io/summary/new_code?id=2Br0keB0ys_BG-Mini-Display)
+[![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=2Br0keB0ys_BG-Mini-Display&metric=vulnerabilities)](https://sonarcloud.io/summary/new_code?id=2Br0keB0ys_BG-Mini-Display)
+
 # BG Display Mini
 
 BG Display Mini is an ESP32-based blood glucose display for M5Stack Core2.
