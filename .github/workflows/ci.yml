@@ -30,7 +30,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install PlatformIO
-        run: pip install platformio
+        run: 'pip install --only-binary :all: platformio==6.1.19'
 
       - name: Build firmware
         run: pio run
@@ -70,7 +70,7 @@ jobs:
 
       - name: Install cloudflare dependencies
         working-directory: apps/cloudflare
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Check cloudflare formatting
         working-directory: apps/cloudflare
@@ -78,7 +78,7 @@ jobs:
 
       - name: Install ui dependencies
         working-directory: apps/ui
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Check ui formatting
         working-directory: apps/ui
