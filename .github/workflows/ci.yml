@@ -48,7 +48,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: apps/cloudflare
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Validate worker syntax
         run: node --check apps/cloudflare/src/worker.js
